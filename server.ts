@@ -230,15 +230,14 @@ async function startServer() {
             t.assignedTo === u.employeeId || 
             t.assignedTo === u.id || 
             (t.assignedTo && u.name && t.assignedTo.toLowerCase() === u.name.toLowerCase()) ||
-            (t.assignedTechnicians && t.assignedTechnicians.some((at: any) => at.employeeId === u.employeeId))
+            (t.assignedTechnicians && t.assignedTechnicians.some((at: any) => at.employeeId === u.employeeId || at.id === u.id || (at.name && u.name && at.name.toLowerCase() === u.name.toLowerCase())))
           )
         );
 
-        // Preserve leave/off statuses if they exist
-        if (techAttendance) {
-          if (techAttendance.status === 'PRESENT') {
-            u.status = hasActiveTasks ? 'WORKING' : 'FREE';
-          } else if (techAttendance.status === 'LEAVE' || techAttendance.status === 'ABSENT') {
+        if (hasActiveTasks) {
+          u.status = 'WORKING';
+        } else if (techAttendance) {
+          if (techAttendance.status === 'LEAVE' || techAttendance.status === 'ABSENT') {
             u.status = 'ON_LEAVE';
           } else if (techAttendance.status === 'SHORT_LEAVE') {
             u.status = 'SHORT_LEAVE';
@@ -248,16 +247,12 @@ async function startServer() {
             let isWorkingShift = false;
             if (techAttendance.status === 'SHIFT_A') isWorkingShift = currentHour >= 6 && currentHour < 14;
             else if (techAttendance.status === 'SHIFT_B') isWorkingShift = currentHour >= 14 && currentHour < 22;
-            
-            if (isWorkingShift) {
-              u.status = hasActiveTasks ? 'WORKING' : 'FREE';
-            } else {
-              u.status = 'SHIFT_OFF';
-            }
+            u.status = isWorkingShift ? 'FREE' : 'SHIFT_OFF';
+          } else {
+            u.status = 'FREE';
           }
         } else {
-          // If no attendance record, base it solely on tasks
-          u.status = hasActiveTasks ? 'WORKING' : 'FREE';
+          u.status = 'FREE';
         }
       }
     });
@@ -339,44 +334,7 @@ async function startServer() {
 
   // Force rebuild technician statuses on startup to recover from any broken states
   rebuildTechnicianStatuses();
-
-  // Initialize technician status if missing or needs update
-  const todayDate = new Date().toISOString().split('T')[0];
-  users.forEach((u: any) => {
-    if (u.role === 'TECHNICIAN') {
-      const techAttendance = attendanceRecords.find((a: any) => a.technicianId === u.employeeId && a.date === todayDate);
-      const hasRunningTasks = tasks.some((t: any) => 
-        t.status === 'RUNNING' && 
-        (t.assignedTo === u.employeeId || t.assignedTo === u.name || t.assignedTo === u.id || (t.assignedTechnicians && t.assignedTechnicians.some((at: any) => at.employeeId === u.employeeId)))
-      );
-
-      if (techAttendance) {
-        if (techAttendance.status === 'PRESENT') {
-          u.status = hasRunningTasks ? 'WORKING' : 'FREE';
-        } else if (techAttendance.status === 'LEAVE' || techAttendance.status === 'ABSENT') {
-          u.status = 'ON_LEAVE';
-        } else if (techAttendance.status === 'SHORT_LEAVE') {
-          u.status = 'SHORT_LEAVE';
-        } else if (techAttendance.status === 'SHIFT_A' || techAttendance.status === 'SHIFT_B') {
-          const now = new Date();
-          const currentHour = now.getHours();
-          let isWorkingShift = false;
-          if (techAttendance.status === 'SHIFT_A') isWorkingShift = currentHour >= 6 && currentHour < 14;
-          else if (techAttendance.status === 'SHIFT_B') isWorkingShift = currentHour >= 14 && currentHour < 22;
-          
-          if (isWorkingShift) {
-            u.status = hasRunningTasks ? 'WORKING' : 'FREE';
-          } else {
-            u.status = 'SHIFT_OFF';
-          }
-        }
-      } else {
-        // Default to FREE if no attendance yet, but check for running tasks
-        u.status = hasRunningTasks ? 'WORKING' : 'FREE';
-      }
-      updated = true;
-    }
-  });
+  updated = true;
 
   if (updated) {
     await saveData();
@@ -1558,6 +1516,7 @@ async function startServer() {
       });
     }
 
+    rebuildTechnicianStatuses();
     await saveData();
     res.status(201).json(newTask);
   });
@@ -1741,6 +1700,7 @@ async function startServer() {
       });
     }
 
+    rebuildTechnicianStatuses();
     await saveData();
     res.json(task);
   });
@@ -1788,6 +1748,7 @@ async function startServer() {
       });
     }
 
+    rebuildTechnicianStatuses();
     await saveData();
     res.json(task);
   });
@@ -1848,36 +1809,7 @@ async function startServer() {
     }
 
     // Update Technician Status based on attendance
-    const tech = users.find(u => u.employeeId === technicianId);
-    if (tech) {
-      if (status === 'PRESENT') {
-        const hasRunningTasks = tasks.some(t => 
-          t.status === 'RUNNING' && 
-          (t.assignedTo === technicianId || (t.assignedTechnicians && t.assignedTechnicians.some((at: any) => at.employeeId === technicianId)))
-        );
-        tech.status = hasRunningTasks ? 'WORKING' : 'FREE';
-      } else if (status === 'LEAVE' || status === 'ABSENT') {
-        tech.status = 'ON_LEAVE';
-      } else if (status === 'SHORT_LEAVE') {
-        tech.status = 'SHORT_LEAVE';
-      } else if (status === 'SHIFT_A' || status === 'SHIFT_B') {
-        const now = new Date();
-        const currentHour = now.getHours();
-        let isWorkingShift = false;
-        if (status === 'SHIFT_A') isWorkingShift = currentHour >= 6 && currentHour < 14;
-        else if (status === 'SHIFT_B') isWorkingShift = currentHour >= 14 && currentHour < 22;
-        
-        if (isWorkingShift) {
-          const hasRunningTasks = tasks.some(t => 
-            t.status === 'RUNNING' && 
-            (t.assignedTo === technicianId || (t.assignedTechnicians && t.assignedTechnicians.some((at: any) => at.employeeId === technicianId)))
-          );
-          tech.status = hasRunningTasks ? 'WORKING' : 'FREE';
-        } else {
-          tech.status = 'SHIFT_OFF';
-        }
-      }
-    }
+    rebuildTechnicianStatuses();
 
     await saveData();
     res.json({ success: true });
@@ -2402,6 +2334,7 @@ async function startServer() {
     const index = tasks.findIndex(t => t.id === id);
     if (index !== -1) {
       tasks.splice(index, 1);
+      rebuildTechnicianStatuses();
       await saveData();
       console.log(`Task ${id} deleted successfully`);
       res.status(204).send();
@@ -2700,6 +2633,7 @@ async function startServer() {
     const task = tasks[taskIndex];
     
     tasks.splice(taskIndex, 1);
+    rebuildTechnicianStatuses();
     
     await logAdminAction(user, 'TASK_DELETED', `Deleted task ${task.title} (${task.taskId})`, undefined, id);
     await saveData();

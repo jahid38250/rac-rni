@@ -3524,33 +3524,44 @@ export default function App() {
   };
 
   const getTechnicianStatus = (techId: string) => {
-    const tech = staffList.find(s => s.employeeId === techId);
-    if (!tech) return { status: 'Idle', color: 'text-gray-400', bg: 'bg-gray-400/10', task: null };
+    const tech = staffList.find(s => s.employeeId === techId || s.id === techId);
+    if (!tech) return { status: 'Free', color: 'text-emerald-400', bg: 'bg-emerald-400/10', task: null };
 
     const techTasks = tasks.filter(t => {
-      const techName = tech.name.toLowerCase();
+      // Completed, rejected, or cancelled tasks are finished and not active
+      if (t.status === 'COMPLETED' || t.status === 'REJECTED' || (t as any).status === 'CANCELLED') return false;
+
+      const techName = (tech.name || '').toLowerCase();
       const assignedTo = (t.assignedTo || '').toLowerCase();
       if (assignedTo === techName || t.assignedTo === tech.id || t.assignedTo === tech.employeeId) return true;
-      // Also check assignedTechnicians regardless of workType for consistency with server
+      // Also check assignedTechnicians for team tasks
       if (t.assignedTechnicians && Array.isArray(t.assignedTechnicians)) {
-        return t.assignedTechnicians.some((at: any) => at.employeeId === techId);
+        return t.assignedTechnicians.some((at: any) => at.employeeId === techId || at.id === tech.id || (at.name && tech.name && at.name.toLowerCase() === tech.name.toLowerCase()));
       }
       return false;
     });
-    const activeTask = techTasks.find(t => t.status === 'RUNNING' || (t.status === 'PENDING' && t.requestStatus === 'RECOMMENDED'));
-    const assignedTask = techTasks.find(t => t.status === 'PENDING' || t.status === 'REQUESTED' || t.status === 'DELAYED' || t.status === 'HOLD');
-    
-    if (tech.status === 'WORKING' || assignedTask) return { 
-      status: activeTask ? 'Working' : 'Assigned', 
-      color: activeTask ? 'text-blue-400' : 'text-amber-400', 
-      bg: activeTask ? 'bg-blue-400/10' : 'bg-amber-400/10', 
-      task: activeTask || assignedTask 
-    };
 
+    const activeTask = techTasks.find(t => t.status === 'RUNNING') || 
+      techTasks.find(t => t.status === 'PENDING' || t.status === 'REQUESTED' || t.status === 'DELAYED' || t.status === 'HOLD') || 
+      techTasks[0];
+    
+    // Check leave / shift off statuses from attendance or user record
     if (tech.status === 'ON_LEAVE') return { status: 'On Leave', color: 'text-red-400', bg: 'bg-red-400/10', task: null };
     if (tech.status === 'SHORT_LEAVE') return { status: 'Short Leave', color: 'text-amber-400', bg: 'bg-amber-400/10', task: null };
     if (tech.status === 'SHIFT_OFF') return { status: 'Shift Off', color: 'text-gray-500', bg: 'bg-gray-500/10', task: null };
-    return { status: 'Idle', color: 'text-gray-400', bg: 'bg-gray-400/10', task: null };
+
+    // ONLY when task is assigned, show as 'Working'
+    if (activeTask) {
+      return { 
+        status: 'Working', 
+        color: 'text-green-400', 
+        bg: 'bg-green-400/10', 
+        task: activeTask 
+      };
+    }
+
+    // All remaining technicians show as 'Free'
+    return { status: 'Free', color: 'text-emerald-400', bg: 'bg-emerald-400/10', task: null };
   };
 
   const getThemeStyles = () => {
@@ -4653,10 +4664,10 @@ export default function App() {
                                 >
                                   <span>{s.name} ({s.employeeId})</span>
                                   <span className={cn(
-                                    "text-[10px] px-2 py-0.5 rounded-full",
-                                    s.status === 'WORKING' ? "bg-amber-500/20 text-amber-500" : "bg-green-500/20 text-green-500"
+                                    "text-[10px] px-2 py-0.5 rounded-full font-bold",
+                                    getTechnicianStatus(s.employeeId).status === 'Working' ? "bg-amber-500/20 text-amber-400" : "bg-emerald-500/20 text-emerald-400"
                                   )}>
-                                    {s.status || 'FREE'}
+                                    {getTechnicianStatus(s.employeeId).status === 'Working' ? 'WORKING' : 'FREE'}
                                   </span>
                                 </button>
                               ))}
@@ -7235,17 +7246,17 @@ export default function App() {
                       {staffList.filter(s => {
                         if (s.role !== 'TECHNICIAN') return false;
                         if (user?.role !== 'OFFICER' && !isStaffInScope(s)) return false;
-                        return s.status === 'WORKING';
+                        return getTechnicianStatus(s.employeeId).status === 'Working';
                       }).length} Working
                     </span>
                   </div>
-                  <div className="px-4 py-2 bg-gray-400/10 border border-gray-400/20 rounded-xl flex items-center gap-2">
-                    <div className="w-2 h-2 bg-gray-400 rounded-full" />
-                    <span className="text-xs font-bold text-gray-400">
+                  <div className="px-4 py-2 bg-emerald-400/10 border border-emerald-400/20 rounded-xl flex items-center gap-2">
+                    <div className="w-2 h-2 bg-emerald-400 rounded-full" />
+                    <span className="text-xs font-bold text-emerald-400">
                       {staffList.filter(s => {
                         if (s.role !== 'TECHNICIAN') return false;
                         if (user?.role !== 'OFFICER' && !isStaffInScope(s)) return false;
-                        return s.status === 'FREE';
+                        return getTechnicianStatus(s.employeeId).status !== 'Working';
                       }).length} Free
                     </span>
                   </div>
@@ -7262,7 +7273,7 @@ export default function App() {
                       {staffList.filter(s => {
                         if (s.role !== 'TECHNICIAN') return false;
                         if (user?.role !== 'OFFICER' && !isStaffInScope(s)) return false;
-                        return s.status === 'WORKING';
+                        return getTechnicianStatus(s.employeeId).status === 'Working';
                       }).length}
                     </span>
                   </div>
@@ -7271,13 +7282,13 @@ export default function App() {
                       .filter(s => {
                         if (s.role !== 'TECHNICIAN') return false;
                         if (user?.role !== 'OFFICER' && !isStaffInScope(s)) return false;
-                        return s.status === 'WORKING';
+                        return getTechnicianStatus(s.employeeId).status === 'Working';
                       })
                       .map((tech) => renderTechnicianCard(tech))}
                     {staffList.filter(s => {
                       if (s.role !== 'TECHNICIAN') return false;
                       if (user?.role !== 'OFFICER' && !isStaffInScope(s)) return false;
-                      return s.status === 'WORKING';
+                      return getTechnicianStatus(s.employeeId).status === 'Working';
                     }).length === 0 && (
                       <div className="col-span-full py-12 text-center bg-white/5 rounded-3xl border border-dashed border-white/10">
                         <p className="text-gray-500">No technicians are currently working on tasks.</p>
@@ -7289,13 +7300,13 @@ export default function App() {
                 {/* Free Technicians Section */}
                 <section>
                   <div className="flex items-center gap-3 mb-6">
-                    <div className="w-1.5 h-6 bg-gray-500 rounded-full" />
+                    <div className="w-1.5 h-6 bg-emerald-500 rounded-full" />
                     <h2 className="text-2xl font-bold text-white">Free Technicians</h2>
-                    <span className="px-2.5 py-0.5 bg-gray-500/10 text-gray-500 text-xs font-bold rounded-full border border-gray-500/20">
+                    <span className="px-2.5 py-0.5 bg-emerald-500/10 text-emerald-500 text-xs font-bold rounded-full border border-emerald-500/20">
                       {staffList.filter(s => {
                         if (s.role !== 'TECHNICIAN') return false;
                         if (user?.role !== 'OFFICER' && !isStaffInScope(s)) return false;
-                        return s.status === 'FREE' && isTechnicianAvailable(s.employeeId);
+                        return getTechnicianStatus(s.employeeId).status !== 'Working';
                       }).length}
                     </span>
                   </div>
@@ -7304,13 +7315,13 @@ export default function App() {
                       .filter(s => {
                         if (s.role !== 'TECHNICIAN') return false;
                         if (user?.role !== 'OFFICER' && !isStaffInScope(s)) return false;
-                        return s.status === 'FREE' && isTechnicianAvailable(s.employeeId);
+                        return getTechnicianStatus(s.employeeId).status !== 'Working';
                       })
                       .map((tech) => renderTechnicianCard(tech))}
                     {staffList.filter(s => {
                       if (s.role !== 'TECHNICIAN') return false;
                       if (user?.role !== 'OFFICER' && !isStaffInScope(s)) return false;
-                      return s.status === 'FREE' && isTechnicianAvailable(s.employeeId);
+                      return getTechnicianStatus(s.employeeId).status !== 'Working';
                     }).length === 0 && (
                       <div className="col-span-full py-12 text-center bg-white/5 rounded-3xl border border-dashed border-white/10">
                         <p className="text-gray-500">No free technicians available at the moment.</p>
@@ -8455,7 +8466,7 @@ export default function App() {
                                         className="w-full text-left px-4 py-3 hover:bg-white/5 text-sm text-gray-300 border-b border-white/5 last:border-0"
                                       >
                                         <div className="font-medium text-white">{s.name}</div>
-                                        <div className="text-[10px] text-gray-500">ID: {s.employeeId} • {s.supervisorId !== user.id ? 'Other Team' : 'My Team'}</div>
+                                        <div className="text-[10px] text-gray-500">ID: {s.employeeId} • {getTechnicianStatus(s.employeeId).status === 'Working' ? 'Working' : 'Free'} • {s.supervisorId !== user.id ? 'Other Team' : 'My Team'}</div>
                                       </button>
                                     ))
                                   }
