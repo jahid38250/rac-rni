@@ -1500,7 +1500,12 @@ export default function App() {
         return taskDate.getMonth() === now.getMonth() && taskDate.getFullYear() === now.getFullYear();
       }
       return true;
-    }).reduce((sum, t) => sum + (Number(t.points) || 0), 0);
+    }).reduce((sum, t) => {
+      const ptMatch = pointTransactions.find(pt => pt.taskId === t.id && (pt.officerId === officer.id || pt.officerId === officer.employeeId));
+      const ptVal = ptMatch ? Number(ptMatch.pointValue || 0) : 0;
+      const tVal = Number(t.points || 0);
+      return sum + Math.max(tVal, ptVal);
+    }, 0);
 
     // Include manual adjustments from pointTransactions to ensure they aren't lost,
     // but the primary source is the tasks table.
@@ -2578,6 +2583,8 @@ export default function App() {
 
   const [pointTransactions, setPointTransactions] = useState<PointTransaction[]>([]);
   const [technicianPerformance, setTechnicianPerformance] = useState<TechnicianPerformance[]>([]);
+  const [recPoints, setRecPoints] = useState<Record<string, number>>({});
+  const [recDeadlines, setRecDeadlines] = useState<Record<string, string>>({});
 
   const fetchPoints = async (token: string) => {
     try {
@@ -2864,6 +2871,28 @@ export default function App() {
     }
 
     return false;
+  };
+
+  const isTaskPendingRecommendation = (t: Task) => {
+    if (user?.role !== 'ENGINEER') return false;
+    const creator = staffList.find(s => s.employeeId === t.createdBy || s.id === t.createdBy);
+    if (!creator || creator.role !== 'OFFICER') return false;
+    const isMyOfficer = (creator.assignedEngineers || []).includes(user.employeeId);
+    if (!isMyOfficer) return false;
+
+    // If engineer has already approved and assigned points > 0, it's completed
+    if (t.engineerApproved && (t.points || 0) > 0) return false;
+
+    // Show in Recommendation Panel if:
+    // - requestStatus === 'RECOMMENDED'
+    // - OR task.points === 0
+    // - OR !task.engineerApproved
+    return (
+      t.requestStatus === 'RECOMMENDED' ||
+      (t.points === 0 && !t.engineerApproved) ||
+      (!t.points && !t.engineerApproved) ||
+      (t.status === 'REQUESTED' && !t.engineerApproved)
+    );
   };
 
   const handleThemeChange = async (themeId: string, removeBg = false) => {
@@ -5168,6 +5197,7 @@ export default function App() {
               else setActiveTab('tasks');
             }} 
             color="text-purple-500"
+            count={user?.role === 'ENGINEER' ? tasks.filter(isTaskPendingRecommendation).length : undefined}
           />
 
           {/* 4. Daily Task */}
@@ -5603,76 +5633,149 @@ export default function App() {
             <div className="space-y-6">
               {user?.role === 'ENGINEER' && (
                 <div className="space-y-4 mb-8">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-amber-500/20 rounded-lg text-amber-500">
-                      <Zap size={20} />
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-amber-500/20 rounded-lg text-amber-500">
+                        <Zap size={20} />
+                      </div>
+                      <div>
+                        <h2 className="text-2xl font-bold">Recommendation Panel</h2>
+                        <p className="text-xs text-gray-400">Review task entries & team requests from your Officers to recommend points and approve deadlines</p>
+                      </div>
                     </div>
-                    <h2 className="text-2xl font-bold">Recommendation Panel</h2>
+                    <span className="px-3 py-1 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-bold rounded-full">
+                      {tasks.filter(isTaskPendingRecommendation).length} Pending
+                    </span>
                   </div>
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {tasks.filter(t => t.requestStatus === 'RECOMMENDED' && (staffList.find(s => s.employeeId === t.createdBy)?.assignedEngineers || []).includes(user.employeeId)).length === 0 ? (
+                    {tasks.filter(isTaskPendingRecommendation).length === 0 ? (
                       <div className="md:col-span-2 p-8 bg-white/5 border border-dashed border-white/10 rounded-2xl text-center">
                         <p className="text-gray-500">No pending recommendations from your Officers.</p>
                       </div>
                     ) : (
-                      tasks.filter(t => t.requestStatus === 'RECOMMENDED' && (staffList.find(s => s.employeeId === t.createdBy)?.assignedEngineers || []).includes(user.employeeId)).map(task => (
-                        <GlassCard key={task.id} className="p-6 border-amber-500/20">
-                          <div className="flex justify-between items-start mb-4">
-                            <div>
-                              <h3 className="font-bold text-lg">{task.title}</h3>
-                              <p className="text-xs text-gray-500 mt-1">From: {staffList.find(s => s.employeeId === task.createdBy)?.name} ({task.createdBy})</p>
+                      tasks.filter(isTaskPendingRecommendation).map(task => {
+                        const creator = staffList.find(s => s.employeeId === task.createdBy || s.id === task.createdBy);
+                        const assignedPoint = recPoints[task.id] !== undefined 
+                          ? recPoints[task.id] 
+                          : (task.points && task.points > 0 ? task.points : 1);
+                        const currentDeadline = recDeadlines[task.id] !== undefined
+                          ? recDeadlines[task.id]
+                          : (task.engineer_deadline || task.deadline || '');
+
+                        let techDisplay = task.assignedTo;
+                        if (task.workType === 'TEAM' && Array.isArray(task.assignedTechnicians) && task.assignedTechnicians.length > 0) {
+                          techDisplay = task.assignedTechnicians.map((t: any) => t.name || t.employeeId).join(', ');
+                        }
+
+                        return (
+                          <GlassCard key={task.id} className="p-6 border-amber-500/20">
+                            <div className="flex justify-between items-start mb-3">
+                              <div>
+                                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                  <h3 className="font-bold text-lg">{task.title}</h3>
+                                  {task.workType === 'TEAM' && (
+                                    <span className="px-2 py-0.5 bg-purple-500/20 text-purple-400 text-[10px] font-bold rounded uppercase">Team Task</span>
+                                  )}
+                                  <span className={cn(
+                                    "px-2 py-0.5 text-[10px] font-bold rounded uppercase",
+                                    task.urgency === 'MOST_URGENT' ? "bg-red-500/20 text-red-400" :
+                                    task.urgency === 'URGENT' ? "bg-yellow-500/20 text-yellow-400" : "bg-blue-500/20 text-blue-400"
+                                  )}>
+                                    {task.urgency || 'REGULAR'}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-gray-400">
+                                  Officer: <span className="text-white font-medium">{creator?.name || task.createdBy}</span> ({task.createdBy})
+                                </p>
+                                <p className="text-xs text-gray-400 mt-0.5">
+                                  {task.workType === 'TEAM' ? 'Technicians: ' : 'Technician: '}
+                                  <span className="text-amber-300 font-medium">{techDisplay || 'Not assigned'}</span>
+                                </p>
+                              </div>
+                              <div className="flex flex-col items-end gap-1">
+                                {task.status === 'REQUESTED' ? (
+                                  <span className="px-2 py-1 bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 text-[10px] font-bold rounded uppercase">
+                                    Awaiting Supervisor
+                                  </span>
+                                ) : task.status === 'RUNNING' ? (
+                                  <span className="px-2 py-1 bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[10px] font-bold rounded uppercase">
+                                    Running
+                                  </span>
+                                ) : task.status === 'COMPLETED' ? (
+                                  <span className="px-2 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold rounded uppercase">
+                                    Completed (Pending Points)
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-1 bg-amber-500/10 text-amber-500 border border-amber-500/20 text-[10px] font-bold rounded uppercase">
+                                    Recommended
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                            <span className="px-2 py-1 bg-amber-500/10 text-amber-500 text-[10px] font-bold rounded uppercase">Recommended</span>
-                          </div>
-                          <div className="space-y-4">
-                            <div className="flex items-center gap-4">
-                              <div className="flex-1">
-                                <label className="text-[10px] text-gray-500 uppercase font-bold mb-1 block">Assign Points (1-3)</label>
-                                <div className="flex gap-2">
-                                  {[1, 2, 3].map(p => (
-                                    <button
-                                      key={p}
-                                      onClick={() => handleUpdateTask(task.id, { points: p })}
-                                      className={cn(
-                                        "flex-1 py-2 rounded-lg text-xs font-bold transition-all",
-                                        task.points === p ? "bg-blue-600 text-white" : "bg-white/5 text-gray-400 hover:bg-white/10"
-                                      )}
-                                    >
-                                      {p} Point{p > 1 ? 's' : ''}
-                                    </button>
-                                  ))}
+
+                            <div className="space-y-4">
+                              <div className="flex items-center gap-4">
+                                <div className="flex-1">
+                                  <label className="text-[10px] text-gray-500 uppercase font-bold mb-1 block">Assign Points (1-3)</label>
+                                  <div className="flex gap-2">
+                                    {[1, 2, 3].map(p => (
+                                      <button
+                                        key={p}
+                                        type="button"
+                                        onClick={() => {
+                                          setRecPoints(prev => ({ ...prev, [task.id]: p }));
+                                          handleUpdateTask(task.id, { points: p });
+                                        }}
+                                        className={cn(
+                                          "flex-1 py-2 rounded-lg text-xs font-bold transition-all",
+                                          assignedPoint === p ? "bg-blue-600 text-white shadow-md shadow-blue-500/30" : "bg-white/5 text-gray-400 hover:bg-white/10"
+                                        )}
+                                      >
+                                        {p} Point{p > 1 ? 's' : ''}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                                <div className="flex-1">
+                                  <label className="text-[10px] text-gray-500 uppercase font-bold mb-1 block">Set Deadline</label>
+                                  <input 
+                                    type="date"
+                                    value={currentDeadline}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      setRecDeadlines(prev => ({ ...prev, [task.id]: val }));
+                                      handleUpdateTask(task.id, { engineer_deadline: val });
+                                    }}
+                                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none"
+                                  />
                                 </div>
                               </div>
-                              <div className="flex-1">
-                                <label className="text-[10px] text-gray-500 uppercase font-bold mb-1 block">Set Deadline</label>
-                                <input 
-                                  type="date"
-                                  value={task.engineer_deadline || task.deadline}
-                                  onChange={(e) => handleUpdateTask(task.id, { engineer_deadline: e.target.value })}
-                                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none"
-                                />
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleApproveRequest(task.id, assignedPoint, currentDeadline)}
+                                  className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-xl transition-all shadow-lg shadow-green-500/20"
+                                >
+                                  {task.status === 'COMPLETED' ? `Recommend Points & Finalize (+${assignedPoint} Pts)` :
+                                   task.status === 'REQUESTED' ? `Recommend Points (${assignedPoint} Pts)` :
+                                   `Approve & Start (+${assignedPoint} Pts)`}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setRejectTaskId(task.id);
+                                    setIsRejectModalOpen(true);
+                                  }}
+                                  className="px-4 py-2.5 bg-red-600/10 hover:bg-red-600/20 text-red-500 text-xs font-bold rounded-xl transition-all"
+                                >
+                                  Reject
+                                </button>
                               </div>
                             </div>
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => handleApproveRequest(task.id, task.points, task.engineer_deadline)}
-                                className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-xl transition-all shadow-lg shadow-green-500/20"
-                              >
-                                Approve & Start
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setRejectTaskId(task.id);
-                                  setIsRejectModalOpen(true);
-                                }}
-                                className="px-4 py-2.5 bg-red-600/10 hover:bg-red-600/20 text-red-500 text-xs font-bold rounded-xl transition-all"
-                              >
-                                Reject
-                              </button>
-                            </div>
-                          </div>
-                        </GlassCard>
-                      ))
+                          </GlassCard>
+                        );
+                      })
                     )}
                   </div>
                 </div>

@@ -81,6 +81,11 @@ export interface Task {
   overTime?: string;
   totalTeamProgress?: number;
   pointAdded?: boolean;
+  engineerApproved?: boolean;
+  recommendedBy?: string;
+  recommendedPoints?: number;
+  supervisorApproved?: boolean;
+  supervisorApprovedBy?: string;
 }
 
 export interface Attendance {

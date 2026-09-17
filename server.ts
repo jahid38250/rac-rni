@@ -380,16 +380,18 @@ async function startServer() {
         }
 
         if (assignedOfficer) {
+          const pVal = Number(task.points !== undefined ? task.points : (creator?.role !== 'OFFICER' ? 1 : 0));
+          assignedOfficer.total_point = (assignedOfficer.total_point || 0) + pVal;
           pointTransactions.push({
             id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
             taskId: task.id,
             officerId: assignedOfficer.id,
-            engineerId: task.approvedBy || (creator?.role !== 'OFFICER' ? creator?.employeeId : ''),
-            pointValue: task.points || 1,
+            engineerId: task.approvedBy || task.recommendedBy || (creator?.role !== 'OFFICER' ? creator?.employeeId : ''),
+            pointValue: pVal,
             taskPriority: task.urgency,
             completedAt: task.completedAt || new Date().toISOString()
           });
-          task.pointAdded = true;
+          task.pointAdded = pVal > 0;
           count++;
         }
       } else {
@@ -1371,8 +1373,9 @@ async function startServer() {
 
       if (hasOtherTeamTech) {
         // STRICT FLOW: Officer -> Request -> Technician Supervisor
+        // Keep requestStatus = 'RECOMMENDED' so Officer's Engineer also sees it in Recommendation Panel
         status = "REQUESTED";
-        requestStatus = "PENDING";
+        requestStatus = "RECOMMENDED";
       } else {
         // Own Technician -> Direct Assign
         status = "RUNNING";
@@ -1510,8 +1513,8 @@ async function startServer() {
       }
     }
 
-    // Add notification for Engineers if recommended
-    if (status === 'PENDING' && requestStatus === 'RECOMMENDED') {
+    // Add notification for Engineers if created by Officer or recommended
+    if (user.role === 'OFFICER' || requestStatus === 'RECOMMENDED') {
       const assignedEngIds = user.assignedEngineers || [];
       assignedEngIds.forEach((engId: string) => {
         const eng = users.find(u => u.employeeId === engId);
@@ -1563,76 +1566,82 @@ async function startServer() {
     if (taskIndex === -1) return res.status(404).json({ error: "Task not found" });
     const task = tasks[taskIndex];
 
-    // Engineer Approval Logic
+    // Engineer Approval & Recommendation Logic
     if (user.role === 'ENGINEER') {
-      if (task.requestStatus !== 'RECOMMENDED') {
-        return res.status(400).json({ error: "This task is not in the recommendation panel." });
-      }
-      
       // Engineer must be assigned to the Officer who created the task
-      const officer = users.find(u => u.employeeId === task.createdBy);
+      const officer = users.find(u => u.employeeId === task.createdBy || u.id === task.createdBy);
       if (!officer || !(officer.assignedEngineers || []).includes(user.employeeId)) {
-        return res.status(403).json({ error: "You are not authorized to approve tasks for this Officer." });
+        return res.status(403).json({ error: "You are not authorized to recommend/approve tasks for this Officer." });
       }
 
-      task.points = points || task.points || 1;
+      const pointVal = Number(points) || task.points || 1;
+      task.points = pointVal;
       task.engineer_deadline = engineer_deadline || task.deadline;
-      task.status = "RUNNING";
-      task.requestStatus = "APPROVED";
+      task.engineerApproved = true;
+      task.recommendedBy = user.employeeId;
+      task.recommendedPoints = pointVal;
       task.approvedBy = user.employeeId;
-      task.startedAt = new Date().toISOString();
 
-      // Update Technician Status to WORKING
-      if (task.workType === 'TEAM' && Array.isArray(task.assignedTechnicians)) {
-        task.assignedTechnicians.forEach((at: any) => {
-          const tech = users.find(u => u.employeeId === at.employeeId);
-          if (tech) tech.status = 'WORKING';
-        });
-      } else if (task.assignedTo) {
-        const tech = users.find(u => u.id === task.assignedTo || u.name === task.assignedTo || u.employeeId === task.assignedTo);
-        if (tech && tech.role === 'TECHNICIAN') tech.status = 'WORKING';
+      // If task is not waiting on supervisor approval (not REQUESTED), start it and set APPROVED
+      if (task.status !== 'REQUESTED') {
+        task.requestStatus = "APPROVED";
+        if (task.status === 'PENDING') {
+          task.status = "RUNNING";
+          task.startedAt = new Date().toISOString();
+        }
+      } else {
+        // Cross-team task waiting for technician supervisor approval
+        // Points are now recommended by Engineer! Keep REQUESTED until supervisor approves technician
+        task.requestStatus = "RECOMMENDED";
       }
 
-      if (task.workType === 'TEAM' && task.assignedTechnicians) {
+      // Update Technician Status to WORKING if task is running
+      if (task.status === 'RUNNING') {
+        if (task.workType === 'TEAM' && Array.isArray(task.assignedTechnicians)) {
+          task.assignedTechnicians.forEach((at: any) => {
+            const tech = users.find(u => u.employeeId === at.employeeId);
+            if (tech) tech.status = 'WORKING';
+          });
+        } else if (task.assignedTo) {
+          const tech = users.find(u => u.id === task.assignedTo || u.name === task.assignedTo || u.employeeId === task.assignedTo);
+          if (tech && tech.role === 'TECHNICIAN') tech.status = 'WORKING';
+        }
+      }
+
+      if (task.workType === 'TEAM' && task.assignedTechnicians && task.status === 'RUNNING') {
         task.assignedTechnicians = task.assignedTechnicians.map((at: any) => ({
           ...at,
           status: 'RUNNING',
-          startedAt: new Date().toISOString()
+          startedAt: at.startedAt || new Date().toISOString()
         }));
       }
 
       task.logs.push({
         id: Date.now().toString(),
-        action: `Task Approved by Engineer ${user.name} with ${task.points} points`,
+        action: `Task Recommended by Engineer ${user.name} with ${pointVal} points`,
         timestamp: new Date().toISOString(),
         user: user.name
       });
 
-      // Point System: Point added to Officer Profile only after Task COMPLETE + Engineer APPROVE
-      // This is handled in the main update-task logic when status changes to COMPLETED.
-      // We only check here if the task was ALREADY completed before approval (rare case).
-      if ((task.status as string) === 'COMPLETED' && officer && !task.pointAdded) {
-        pointTransactions.push({
-          id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-          taskId: task.id,
-          officerId: officer.id,
-          engineerId: user.employeeId,
-          pointValue: task.points || 0,
-          taskPriority: task.urgency,
-          completedAt: task.completedAt || new Date().toISOString()
-        });
+      // Point System: If task is COMPLETED, add/update points to Officer profile immediately!
+      if (task.status === 'COMPLETED' && officer) {
+        const existingTxIndex = pointTransactions.findIndex(pt => pt.taskId === task.id);
+        if (existingTxIndex !== -1) {
+          pointTransactions[existingTxIndex].pointValue = pointVal;
+          pointTransactions[existingTxIndex].engineerId = user.employeeId;
+        } else {
+          pointTransactions.push({
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+            taskId: task.id,
+            officerId: officer.id,
+            engineerId: user.employeeId,
+            pointValue: pointVal,
+            taskPriority: task.urgency,
+            completedAt: task.completedAt || new Date().toISOString()
+          });
+        }
         task.pointAdded = true;
-      }
-
-      // Update Technician Status to WORKING
-      if (task.workType === 'TEAM' && task.assignedTechnicians) {
-        task.assignedTechnicians.forEach((at: any) => {
-          const tech = users.find(u => u.employeeId === at.employeeId);
-          if (tech) tech.status = 'WORKING';
-        });
-      } else if (task.assignedTo) {
-        const tech = users.find(u => u.id === task.assignedTo || u.name === task.assignedTo || u.employeeId === task.assignedTo);
-        if (tech && tech.role === 'TECHNICIAN') tech.status = 'WORKING';
+        officer.total_point = (officer.total_point || 0) + pointVal;
       }
 
       // Notify Officer
@@ -1640,7 +1649,7 @@ async function startServer() {
         notifications.push({
           id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
           userId: officer.id,
-          message: `Engineer ${user.name} approved your task "${task.title}" and assigned ${task.points} points.`,
+          message: `Engineer ${user.name} recommended your task "${task.title}" with ${pointVal} points.`,
           read: false,
           timestamp: new Date().toISOString()
         });
@@ -1667,9 +1676,18 @@ async function startServer() {
 
     // Cross-team request approved by supervisor: Start task immediately and assign technician
     task.status = "RUNNING";
-    task.requestStatus = "APPROVED";
-    task.approvedBy = user.employeeId;
-    task.startedAt = new Date().toISOString();
+    task.supervisorApproved = true;
+    task.supervisorApprovedBy = user.employeeId;
+    task.startedAt = task.startedAt || new Date().toISOString();
+    
+    // If created by Officer and not yet recommended by Engineer, keep requestStatus = "RECOMMENDED"
+    // so the Officer's Engineer still sees it in their Recommendation Panel!
+    if (creator?.role === 'OFFICER' && !task.engineerApproved) {
+      task.requestStatus = "RECOMMENDED";
+    } else {
+      task.requestStatus = "APPROVED";
+      task.approvedBy = task.approvedBy || user.employeeId;
+    }
     
     if (task.workType !== 'TEAM' && targetTechnician) {
       task.assignedTo = targetTechnician.name;
@@ -1679,7 +1697,7 @@ async function startServer() {
       task.assignedTechnicians = task.assignedTechnicians.map((at: any) => ({
         ...at,
         status: 'RUNNING',
-        startedAt: new Date().toISOString()
+        startedAt: at.startedAt || new Date().toISOString()
       }));
     }
 
@@ -1906,10 +1924,12 @@ async function startServer() {
         }
       }
       
-      // Engineers shouldn't be able to update points or quality unless they created the task
+      // Engineers can update points or quality if they created the task OR if created by their assigned Officer
       if (req.body.points !== undefined || req.body.quality !== undefined) {
-        if (oldTask.createdBy !== user.employeeId && user.role !== 'SUPER_ADMIN' && user.role !== 'HOD') {
-          return res.status(403).json({ error: "Access Denied: Only the creator or admin can update points and quality." });
+        const creator = users.find(u => u.employeeId === oldTask.createdBy || u.id === oldTask.createdBy);
+        const isMyOfficer = creator && creator.role === 'OFFICER' && (creator.assignedEngineers || []).includes(user.employeeId);
+        if (oldTask.createdBy !== user.employeeId && !isMyOfficer && user.role !== 'SUPER_ADMIN' && user.role !== 'HOD') {
+          return res.status(403).json({ error: "Access Denied: Only the creator, assigned engineer, or admin can update points and quality." });
         }
       }
     } else if (user.role === 'OFFICER') {
@@ -2230,15 +2250,36 @@ async function startServer() {
         }
       }
 
-      // Point System: Add points if COMPLETED + APPROVED
+      // Point System: Add points if COMPLETED + APPROVED (or recommended)
       const creator = users.find(u => u.employeeId === oldTask.createdBy);
       const isOfficerTask = creator?.role === 'OFFICER';
       const isEngineerTask = creator?.role === 'ENGINEER';
-      const isApproved = updatedData.requestStatus === 'APPROVED' || oldTask.requestStatus === 'APPROVED' || (!oldTask.requestStatus && oldTask.status === 'RUNNING');
+      const isApproved = updatedData.requestStatus === 'APPROVED' || oldTask.requestStatus === 'APPROVED' || (!oldTask.requestStatus && oldTask.status === 'RUNNING') || oldTask.engineerApproved || updatedData.engineerApproved;
 
-      // Point System: Add points if COMPLETED + APPROVED
-
-      if (!oldTask.pointAdded && (isEngineerTask || (isOfficerTask && isApproved))) {
+      if (isOfficerTask) {
+        const officer = users.find(u => u.employeeId === oldTask.assignedBy) || users.find(u => u.employeeId === oldTask.createdBy);
+        if (officer && officer.role === 'OFFICER') {
+          const finalPoints = Number(updatedData.points !== undefined ? updatedData.points : (oldTask.points || 0));
+          const existingTxIndex = pointTransactions.findIndex(pt => pt.taskId === oldTask.id);
+          if (existingTxIndex !== -1) {
+            pointTransactions[existingTxIndex].pointValue = finalPoints;
+            pointTransactions[existingTxIndex].completedAt = updatedData.completedAt || new Date().toISOString();
+          } else {
+            pointTransactions.push({
+              id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+              taskId: oldTask.id,
+              officerId: officer.id,
+              engineerId: oldTask.approvedBy || oldTask.recommendedBy || '',
+              pointValue: finalPoints,
+              taskPriority: oldTask.urgency,
+              completedAt: updatedData.completedAt || new Date().toISOString()
+            });
+          }
+          if (finalPoints > 0) {
+            updatedData.pointAdded = true;
+          }
+        }
+      } else if (!oldTask.pointAdded && isEngineerTask) {
         const officer = users.find(u => u.employeeId === oldTask.assignedBy) || users.find(u => u.employeeId === oldTask.createdBy);
         if (officer && officer.role === 'OFFICER') {
           pointTransactions.push({
