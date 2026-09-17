@@ -3067,6 +3067,13 @@ export default function App() {
             toast.error("Access Denied: Officers can only assign tasks to Technicians or their assigned Authorities.");
             return;
           }
+          if (assignedStaff.role === 'TECHNICIAN') {
+            const techStat = getTechnicianStatus(assignedStaff.employeeId).status;
+            if (techStat === 'Working') {
+              toast.error(`Technician ${assignedStaff.name} is currently WORKING on an active task. Please select a FREE technician.`);
+              return;
+            }
+          }
         } else if (currentUserData?.role === 'ENGINEER') {
           // Engineer can ONLY assign to Officers who have them in assignedEngineers
           if (assignedStaff.role !== 'OFFICER' || !(assignedStaff.assignedEngineers || []).includes(myEmpId || '')) {
@@ -4711,29 +4718,36 @@ export default function App() {
                                 s.employeeId.toString().includes(techSearch)
                               )
                               .filter(s => newTask.workType === 'SINGLE' ? true : !selectedTechs.some(st => st.employeeId === s.employeeId))
-                              .map(s => (
-                                <button
-                                  key={s.id}
-                                  type="button"
-                                  onClick={() => {
-                                    if (newTask.workType === 'SINGLE') {
-                                      setNewTask({...newTask, assignedTo: s.id});
-                                    } else {
-                                      setSelectedTechs([...selectedTechs, { employeeId: s.employeeId, name: s.name }]);
-                                    }
-                                    setTechSearch('');
-                                  }}
-                                  className="w-full text-left px-4 py-2 hover:bg-white/5 rounded-lg text-sm transition-colors flex justify-between items-center"
-                                >
-                                  <span>{s.name} ({s.employeeId})</span>
-                                  <span className={cn(
-                                    "text-[10px] px-2 py-0.5 rounded-full font-bold",
-                                    getTechnicianStatus(s.employeeId).status === 'Working' ? "bg-amber-500/20 text-amber-400" : "bg-emerald-500/20 text-emerald-400"
-                                  )}>
-                                    {getTechnicianStatus(s.employeeId).status === 'Working' ? 'WORKING' : 'FREE'}
-                                  </span>
-                                </button>
-                              ))}
+                              .map(s => {
+                                const techStatus = getTechnicianStatus(s.employeeId).status;
+                                return (
+                                  <button
+                                    key={s.id}
+                                    type="button"
+                                    onClick={() => {
+                                      if (techStatus === 'Working') {
+                                        toast.error(`Technician ${s.name} is currently WORKING on an active task. Please select a FREE technician.`);
+                                        return;
+                                      }
+                                      if (newTask.workType === 'SINGLE') {
+                                        setNewTask({...newTask, assignedTo: s.id});
+                                      } else {
+                                        setSelectedTechs([...selectedTechs, { employeeId: s.employeeId, name: s.name }]);
+                                      }
+                                      setTechSearch('');
+                                    }}
+                                    className="w-full text-left px-4 py-2 hover:bg-white/5 rounded-lg text-sm transition-colors flex justify-between items-center"
+                                  >
+                                    <span>{s.name} ({s.employeeId})</span>
+                                    <span className={cn(
+                                      "text-[10px] px-2 py-0.5 rounded-full font-bold",
+                                      techStatus === 'Working' ? "bg-amber-500/20 text-amber-400" : "bg-emerald-500/20 text-emerald-400"
+                                    )}>
+                                      {techStatus === 'Working' ? 'WORKING' : 'FREE'}
+                                    </span>
+                                  </button>
+                                );
+                              })}
                           </div>
                         )}
 

@@ -219,20 +219,49 @@ async function startServer() {
     }
   }
 
+  function isTechnicianCurrentlyWorking(techUser: any): boolean {
+    if (!techUser || techUser.role !== 'TECHNICIAN') return false;
+    const techEmpId = (techUser.employeeId || '').toString().toLowerCase();
+    const techId = (techUser.id || '').toString().toLowerCase();
+    const techName = (techUser.name || '').toLowerCase();
+
+    return tasks.some((t: any) => {
+      // Completed, rejected, cancelled, or pending requests are NOT active working tasks
+      if (t.status !== 'RUNNING' && t.status !== 'DELAYED' && t.status !== 'HOLD') {
+        return false;
+      }
+      if (t.status === 'PENDING') {
+        return false;
+      }
+
+      // Check single assignment
+      if (t.assignedTo) {
+        const assigned = t.assignedTo.toString().toLowerCase();
+        if (assigned === techEmpId || assigned === techId || assigned === techName) {
+          return true;
+        }
+      }
+
+      // Check team assignment
+      if (Array.isArray(t.assignedTechnicians)) {
+        return t.assignedTechnicians.some((at: any) => {
+          const atEmp = (at.employeeId || '').toString().toLowerCase();
+          const atId = (at.id || '').toString().toLowerCase();
+          const atName = (at.name || '').toLowerCase();
+          return atEmp === techEmpId || atId === techId || atName === techName;
+        });
+      }
+
+      return false;
+    });
+  }
+
   function rebuildTechnicianStatuses() {
     const todayDate = new Date().toISOString().split('T')[0];
     users.forEach((u: any) => {
       if (u.role === 'TECHNICIAN') {
         const techAttendance = attendanceRecords.find((a: any) => a.technicianId === u.employeeId && a.date === todayDate);
-        const hasActiveTasks = tasks.some((t: any) => 
-          (t.status === 'RUNNING' || t.status === 'DELAYED' || t.status === 'HOLD') && 
-          (
-            t.assignedTo === u.employeeId || 
-            t.assignedTo === u.id || 
-            (t.assignedTo && u.name && t.assignedTo.toLowerCase() === u.name.toLowerCase()) ||
-            (t.assignedTechnicians && t.assignedTechnicians.some((at: any) => at.employeeId === u.employeeId || at.id === u.id || (at.name && u.name && at.name.toLowerCase() === u.name.toLowerCase())))
-          )
-        );
+        const hasActiveTasks = isTechnicianCurrentlyWorking(u);
 
         if (hasActiveTasks) {
           u.status = 'WORKING';
@@ -1308,6 +1337,9 @@ async function startServer() {
     const assignedToName = req.body.assignedTo || (req.body.workType === 'TEAM' && Array.isArray(assignedTechnicians) && assignedTechnicians.length > 0 ? assignedTechnicians[0].name : '');
     const workType = req.body.workType;
     
+    // Always refresh technician statuses first so we evaluate live task state
+    rebuildTechnicianStatuses();
+
     if (user.role === 'OFFICER') {
       if (!assignedToName && workType !== 'TEAM') {
         return res.status(400).json({ error: "Task must be assigned to a Technician." });
@@ -1317,16 +1349,16 @@ async function startServer() {
         if (!targetUser || targetUser.role !== 'TECHNICIAN') {
           return res.status(403).json({ error: "Access Denied: Officers can only assign tasks to Technicians." });
         }
-        // Technician Monitoring: Cannot assign to WORKING technician
-        if (targetUser.status === 'WORKING') {
-          return res.status(400).json({ error: `Technician ${targetUser.name} is currently WORKING. Please wait until they are FREE.` });
+        // Technician Monitoring: Only block if they have an active running task
+        if (isTechnicianCurrentlyWorking(targetUser)) {
+          return res.status(400).json({ error: `Technician ${targetUser.name} is currently WORKING on an active task. Please wait until they are FREE.` });
         }
       }
       if (workType === 'TEAM' && Array.isArray(assignedTechnicians)) {
         for (const at of assignedTechnicians) {
-          const tech = users.find(u => u.employeeId === at.employeeId);
-          if (tech && tech.status === 'WORKING') {
-            return res.status(400).json({ error: `Technician ${tech.name} is currently WORKING. Please wait until they are FREE.` });
+          const tech = users.find(u => u.employeeId === at.employeeId || u.name === at.name || u.id === at.id);
+          if (tech && isTechnicianCurrentlyWorking(tech)) {
+            return res.status(400).json({ error: `Technician ${tech.name} is currently WORKING on an active task. Please wait until they are FREE.` });
           }
         }
       }
@@ -1453,10 +1485,10 @@ async function startServer() {
     tasks.push(newTask);
     
     // Update Technician Status to WORKING (only if RUNNING)
-    if (status === "RUNNING" || (user.role === 'OFFICER' && status === 'PENDING' && requestStatus === 'RECOMMENDED')) {
+    if (status === "RUNNING") {
       if (workType === 'TEAM' && Array.isArray(assignedTechnicians)) {
         assignedTechnicians.forEach((at: any) => {
-          const tech = users.find(u => u.employeeId === at.employeeId);
+          const tech = users.find(u => u.employeeId === at.employeeId || u.name === at.name || u.id === at.id);
           if (tech) tech.status = 'WORKING';
         });
       } else if (assignedToName) {
