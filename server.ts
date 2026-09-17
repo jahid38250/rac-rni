@@ -225,7 +225,7 @@ async function startServer() {
       if (u.role === 'TECHNICIAN') {
         const techAttendance = attendanceRecords.find((a: any) => a.technicianId === u.employeeId && a.date === todayDate);
         const hasActiveTasks = tasks.some((t: any) => 
-          (t.status === 'RUNNING' || t.status === 'PENDING' || t.status === 'REQUESTED' || t.status === 'DELAYED' || t.status === 'HOLD') && 
+          (t.status === 'RUNNING' || t.status === 'DELAYED' || t.status === 'HOLD') && 
           (
             t.assignedTo === u.employeeId || 
             t.assignedTo === u.id || 
@@ -1366,7 +1366,7 @@ async function startServer() {
 
       const hasOtherTeamTech = targetTechs.some((t: any) => {
         const u = users.find(usr => usr.employeeId === (t?.employeeId || t?.name) || usr.name === (t?.name || t?.employeeId) || usr.id === (t?.id || t?.employeeId));
-        return u && u.supervisorId !== user.id;
+        return u && u.supervisorId && u.supervisorId !== user.id && u.supervisorId !== user.employeeId;
       });
 
       if (hasOtherTeamTech) {
@@ -1384,18 +1384,18 @@ async function startServer() {
       }
       
       const hasOtherTeamTech = assignedTechnicians.some((at: any) => {
-        const tech = users.find(u => u.employeeId === at.employeeId);
-        return tech && tech.supervisorId !== user.id;
+        const tech = users.find(u => u.employeeId === at.employeeId || u.name === at.name || u.id === at.id);
+        return tech && tech.supervisorId && tech.supervisorId !== user.id && tech.supervisorId !== user.employeeId;
       });
 
-      if (hasOtherTeamTech) {
+      if (hasOtherTeamTech && user.role !== 'SUPER_ADMIN') {
         status = "REQUESTED";
         requestStatus = "PENDING";
       } else {
         status = "RUNNING";
       }
     } else if (targetUser && targetUser.role === 'TECHNICIAN') {
-      if (user.role !== 'ENGINEER' && targetUser.supervisorId !== user.id) {
+      if (user.role !== 'ENGINEER' && user.role !== 'SUPER_ADMIN' && targetUser.supervisorId && targetUser.supervisorId !== user.id && targetUser.supervisorId !== user.employeeId) {
         status = "REQUESTED";
         requestStatus = "PENDING";
       } else {
@@ -1405,7 +1405,7 @@ async function startServer() {
 
     const newTask: Task = {
       ...req.body,
-      assignedTo: assignedToName,
+      assignedTo: targetUser?.name || assignedToName,
       id: Date.now().toString(),
       taskId: `${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${new Date().getHours()}${new Date().getMinutes()}-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`,
       createdAt: new Date().toISOString(),
@@ -1413,7 +1413,7 @@ async function startServer() {
       assignedBy: user.employeeId,
       status: status,
       requestStatus: requestStatus as any,
-      startedAt: user.role === 'OFFICER' ? new Date().toISOString() : undefined,
+      startedAt: status === "RUNNING" ? (req.body.customStartTime || new Date().toISOString()) : undefined,
       progress: req.body.progress || 0,
       points: (user.role === 'OFFICER' && user.employeeId !== '42949') ? 0 : (req.body.points || 1),
       customStartTime: req.body.customStartTime || '',
@@ -1427,7 +1427,9 @@ async function startServer() {
       })) : undefined,
       logs: [{
         id: Date.now().toString(),
-        action: user.role === 'OFFICER' ? "Task Created (Sent for Engineer Recommendation)" : (requestStatus === "RECOMMENDED" ? "Task Created (Sent for Engineer Recommendation)" : (status === "REQUESTED" ? "Task Requested (Cross-Team)" : "Task Created")),
+        action: status === "REQUESTED"
+          ? `Cross-team request submitted for technician approval (${workType === 'TEAM' ? assignedTechnicians.map((t: any) => t.name).join(', ') : (targetUser?.name || assignedToName)})`
+          : (user.role === 'OFFICER' ? "Task Created (Sent for Engineer Recommendation)" : (requestStatus === "RECOMMENDED" ? "Task Created (Sent for Engineer Recommendation)" : "Task Created")),
         timestamp: new Date().toISOString(),
         user: user.name
       }]
@@ -1438,7 +1440,7 @@ async function startServer() {
       if (workType !== 'TEAM') {
         newTask.logs.push({
           id: (Date.now() + 1).toString(),
-          action: `Task assigned to ${targetUser?.name} - Started`,
+          action: `Task assigned to ${targetUser?.name || assignedToName} - Started`,
           timestamp: new Date().toISOString(),
           user: "System"
         });
@@ -1447,7 +1449,7 @@ async function startServer() {
 
     tasks.push(newTask);
     
-    // Update Technician Status to WORKING
+    // Update Technician Status to WORKING (only if RUNNING)
     if (status === "RUNNING" || (user.role === 'OFFICER' && status === 'PENDING' && requestStatus === 'RECOMMENDED')) {
       if (workType === 'TEAM' && Array.isArray(assignedTechnicians)) {
         assignedTechnicians.forEach((at: any) => {
@@ -1460,8 +1462,39 @@ async function startServer() {
       }
     }
 
-    // Add notification for the assignee (if not recommended)
-    if (assignedToName && status !== 'PENDING') {
+    // Add notification for the concern supervisor if REQUESTED
+    if (status === 'REQUESTED') {
+      const supervisorsToNotify = new Set<string>();
+      if (workType === 'TEAM' && Array.isArray(assignedTechnicians)) {
+        assignedTechnicians.forEach((at: any) => {
+          const tech = users.find(u => u.employeeId === at.employeeId || u.name === at.name || u.id === at.id);
+          if (tech && tech.supervisorId && tech.supervisorId !== user.id && tech.supervisorId !== user.employeeId) {
+            supervisorsToNotify.add(tech.supervisorId);
+          }
+        });
+      } else if (targetUser && targetUser.supervisorId) {
+        supervisorsToNotify.add(targetUser.supervisorId);
+      }
+
+      supervisorsToNotify.forEach(supId => {
+        const supervisor = users.find(u => u.id === supId || u.employeeId === supId);
+        if (supervisor) {
+          notifications.push({
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+            userId: supervisor.id,
+            senderId: user.id,
+            taskId: newTask.id,
+            type: 'TEAM_REQUEST',
+            message: `Officer ${user.name} requested technician (${workType === 'TEAM' ? assignedTechnicians.map((t: any) => t.name).join(', ') : (targetUser?.name || assignedToName)}) for task: "${newTask.title}". Please approve in Team Requests.`,
+            read: false,
+            timestamp: new Date().toISOString()
+          });
+        }
+      });
+    }
+
+    // Add notification for the assignee (only if RUNNING)
+    if (assignedToName && status === 'RUNNING') {
       const targetUser = users.find(u => u.id === assignedToName || u.name === assignedToName || u.employeeId === assignedToName);
       if (targetUser) {
         notifications.push({
@@ -1497,8 +1530,8 @@ async function startServer() {
       });
     }
 
-    // Add notification for team members
-    if (workType === 'TEAM' && Array.isArray(assignedTechnicians)) {
+    // Add notification for team members (only if RUNNING)
+    if (workType === 'TEAM' && Array.isArray(assignedTechnicians) && status === 'RUNNING') {
       assignedTechnicians.forEach((at: any) => {
         const targetUser = users.find(u => u.employeeId === at.employeeId);
         if (targetUser) {
@@ -1620,83 +1653,95 @@ async function startServer() {
     // Supervisor Approval Logic (Cross-Team or Officer Request)
     const targetTechnician = users.find(u => u.employeeId === task.assignedTo || u.name === task.assignedTo || u.id === task.assignedTo);
     const isTeamMemberSupervisor = task.workType === 'TEAM' && task.assignedTechnicians?.some((at: any) => {
-      const tech = users.find(u => u.employeeId === at.employeeId);
-      return tech && tech.supervisorId === user.id;
+      const tech = users.find(u => u.employeeId === at.employeeId || u.name === at.name || u.id === at.id);
+      return tech && (tech.supervisorId === user.id || tech.supervisorId === user.employeeId);
     });
 
-    if ((!targetTechnician || targetTechnician.supervisorId !== user.id) && !isTeamMemberSupervisor) {
+    const isAuthorizedSupervisor = (targetTechnician && (targetTechnician.supervisorId === user.id || targetTechnician.supervisorId === user.employeeId)) || isTeamMemberSupervisor || user.role === 'SUPER_ADMIN';
+
+    if (!isAuthorizedSupervisor && user.role !== 'ENGINEER') {
       return res.status(403).json({ error: "Only the technician's supervisor can approve this request" });
     }
 
-    const creator = users.find(u => u.employeeId === task.createdBy);
-    if (creator && creator.role === 'OFFICER') {
-      // If approved by Supervisor, it goes to Engineer Recommendation Panel
-      task.requestStatus = "RECOMMENDED";
-      task.status = "PENDING";
-      
-      task.logs.push({
-        id: Date.now().toString(),
-        action: `Request Approved by Supervisor ${user.name} (Sent for Engineer Recommendation)`,
-        timestamp: new Date().toISOString(),
-        user: user.name
-      });
+    const creator = users.find(u => u.employeeId === task.createdBy || u.id === task.createdBy);
 
-      // Notify Engineer
-      const assignedEngineers = creator.assignedEngineers || [];
-      assignedEngineers.forEach(engId => {
-        const eng = users.find(u => u.employeeId === engId || u.id === engId);
-        if (eng) {
-          notifications.push({
-            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-            userId: eng.id,
-            message: `New task recommendation request from Officer ${creator.name} (Approved by Supervisor)`,
-            read: false,
-            timestamp: new Date().toISOString()
-          });
-        }
-      });
-    } else {
-      // Normal cross-team request from another supervisor/manager
-      task.status = "RUNNING";
-      task.requestStatus = "APPROVED";
-      task.startedAt = new Date().toISOString();
-      
-      if (task.workType === 'TEAM' && task.assignedTechnicians) {
-        task.assignedTechnicians = task.assignedTechnicians.map((at: any) => ({
-          ...at,
-          status: 'RUNNING',
-          startedAt: new Date().toISOString()
-        }));
-      }
-
-      task.logs.push({
-        id: Date.now().toString(),
-        action: `Request Approved by Supervisor ${user.name}`,
-        timestamp: new Date().toISOString(),
-        user: user.name
-      });
-
-      // Update Technician Status to WORKING
-      if (task.workType === 'TEAM' && task.assignedTechnicians) {
-        task.assignedTechnicians.forEach((at: any) => {
-          const tech = users.find(u => u.employeeId === at.employeeId);
-          if (tech) tech.status = 'WORKING';
-        });
-      } else if (task.assignedTo) {
-        const tech = users.find(u => u.name === task.assignedTo || u.employeeId === task.assignedTo || u.id === task.assignedTo);
-        if (tech && tech.role === 'TECHNICIAN') tech.status = 'WORKING';
-      }
+    // Cross-team request approved by supervisor: Start task immediately and assign technician
+    task.status = "RUNNING";
+    task.requestStatus = "APPROVED";
+    task.approvedBy = user.employeeId;
+    task.startedAt = new Date().toISOString();
+    
+    if (task.workType !== 'TEAM' && targetTechnician) {
+      task.assignedTo = targetTechnician.name;
     }
 
-    // Notify requester
-    const requester = users.find(u => u.employeeId === task.assignedBy);
+    if (task.workType === 'TEAM' && task.assignedTechnicians) {
+      task.assignedTechnicians = task.assignedTechnicians.map((at: any) => ({
+        ...at,
+        status: 'RUNNING',
+        startedAt: new Date().toISOString()
+      }));
+    }
+
+    task.logs.push({
+      id: Date.now().toString(),
+      action: `Cross-team request APPROVED by Supervisor ${user.name}. Task is now RUNNING and technician is assigned.`,
+      timestamp: new Date().toISOString(),
+      user: user.name
+    });
+
+    // Update Technician Status to WORKING
+    if (task.workType === 'TEAM' && task.assignedTechnicians) {
+      task.assignedTechnicians.forEach((at: any) => {
+        const tech = users.find(u => u.employeeId === at.employeeId || u.name === at.name || u.id === at.id);
+        if (tech) tech.status = 'WORKING';
+      });
+    } else if (targetTechnician) {
+      targetTechnician.status = 'WORKING';
+    }
+
+    // Notify requester (Officer / Supervisor who requested)
+    const requester = users.find(u => u.employeeId === task.assignedBy || u.employeeId === task.createdBy || u.id === task.createdBy);
     if (requester) {
       notifications.push({
         id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
         userId: requester.id,
-        message: `Your request for task "${task.title}" has been APPROVED by ${user.name}`,
+        senderId: user.id,
+        taskId: task.id,
+        type: 'TASK_APPROVED',
+        message: `Supervisor ${user.name} APPROVED your request for technician ${targetTechnician?.name || task.assignedTo} for task "${task.title}". The task is now RUNNING!`,
         read: false,
         timestamp: new Date().toISOString()
+      });
+    }
+
+    // Notify technician(s)
+    if (targetTechnician) {
+      notifications.push({
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+        userId: targetTechnician.id,
+        senderId: user.id,
+        taskId: task.id,
+        type: 'TASK_ASSIGNED',
+        message: `Supervisor ${user.name} approved your assignment to task "${task.title}". The task has started.`,
+        read: false,
+        timestamp: new Date().toISOString()
+      });
+    } else if (task.workType === 'TEAM' && task.assignedTechnicians) {
+      task.assignedTechnicians.forEach((at: any) => {
+        const tech = users.find(u => u.employeeId === at.employeeId || u.name === at.name || u.id === at.id);
+        if (tech) {
+          notifications.push({
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+            userId: tech.id,
+            senderId: user.id,
+            taskId: task.id,
+            type: 'TASK_ASSIGNED',
+            message: `Supervisor ${user.name} approved your team task "${task.title}". The task has started.`,
+            read: false,
+            timestamp: new Date().toISOString()
+          });
+        }
       });
     }
 
@@ -1716,13 +1761,15 @@ async function startServer() {
     if (taskIndex === -1) return res.status(404).json({ error: "Task not found" });
     const task = tasks[taskIndex];
 
-    const targetTechnician = users.find(u => u.employeeId === task.assignedTo || u.name === task.assignedTo);
+    const targetTechnician = users.find(u => u.employeeId === task.assignedTo || u.name === task.assignedTo || u.id === task.assignedTo);
     const isTeamMemberSupervisor = task.workType === 'TEAM' && task.assignedTechnicians?.some((at: any) => {
-      const tech = users.find(u => u.employeeId === at.employeeId);
-      return tech && tech.supervisorId === user.id;
+      const tech = users.find(u => u.employeeId === at.employeeId || u.name === at.name || u.id === at.id);
+      return tech && (tech.supervisorId === user.id || tech.supervisorId === user.employeeId);
     });
 
-    if ((!targetTechnician || targetTechnician.supervisorId !== user.id) && !isTeamMemberSupervisor) {
+    const isAuthorizedSupervisor = (targetTechnician && (targetTechnician.supervisorId === user.id || targetTechnician.supervisorId === user.employeeId)) || isTeamMemberSupervisor || user.role === 'SUPER_ADMIN';
+
+    if (!isAuthorizedSupervisor && user.role !== 'ENGINEER') {
       return res.status(403).json({ error: "Only the technician's supervisor can reject this request" });
     }
 
@@ -1731,18 +1778,21 @@ async function startServer() {
     task.requestRemarks = remarks;
     task.logs.push({
       id: Date.now().toString(),
-      action: `Request Rejected by Supervisor ${user.name}: ${remarks}`,
+      action: `Cross-team request REJECTED by Supervisor ${user.name}: ${remarks}`,
       timestamp: new Date().toISOString(),
       user: user.name
     });
 
     // Notify requester
-    const requester = users.find(u => u.employeeId === task.assignedBy);
+    const requester = users.find(u => u.employeeId === task.assignedBy || u.employeeId === task.createdBy || u.id === task.createdBy);
     if (requester) {
       notifications.push({
         id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
         userId: requester.id,
-        message: `Your request for task "${task.title}" has been REJECTED by ${user.name}. Reason: ${remarks}`,
+        senderId: user.id,
+        taskId: task.id,
+        type: 'TASK_REJECTED',
+        message: `Your request for task "${task.title}" was REJECTED by Supervisor ${user.name}. Reason: ${remarks}`,
         read: false,
         timestamp: new Date().toISOString()
       });
@@ -1989,82 +2039,88 @@ async function startServer() {
       // Only Supervisor can approve PENDING requests
       const targetTechnician = users.find(u => u.employeeId === oldTask.assignedTo || u.name === oldTask.assignedTo || u.id === oldTask.assignedTo);
       const isTeamMemberSupervisor = oldTask.workType === 'TEAM' && oldTask.assignedTechnicians?.some((at: any) => {
-        const tech = users.find(u => u.employeeId === at.employeeId);
-        return tech && tech.supervisorId === user.id;
+        const tech = users.find(u => u.employeeId === at.employeeId || u.name === at.name || u.id === at.id);
+        return tech && (tech.supervisorId === user.id || tech.supervisorId === user.employeeId);
       });
 
-      if ((!targetTechnician || targetTechnician.supervisorId !== user.id) && !isTeamMemberSupervisor) {
+      const isAuthorizedSupervisor = (targetTechnician && (targetTechnician.supervisorId === user.id || targetTechnician.supervisorId === user.employeeId)) || isTeamMemberSupervisor || user.role === 'SUPER_ADMIN';
+
+      if (!isAuthorizedSupervisor && user.role !== 'ENGINEER') {
         return res.status(403).json({ error: "Only the technician's supervisor can approve this request" });
       }
 
-      const creator = users.find(u => u.employeeId === oldTask.createdBy);
-      if (creator && creator.role === 'OFFICER') {
-        updatedData.requestStatus = 'RECOMMENDED';
-        updatedData.status = 'PENDING';
-        
-        if (!updatedData.logs) updatedData.logs = [...(oldTask.logs || [])];
-        updatedData.logs.push({
-          id: Date.now().toString(),
-          action: `Request Approved by Supervisor ${user.name} (Sent for Engineer Recommendation)`,
-          timestamp: new Date().toISOString(),
-          user: user.name
-        });
+      updatedData.status = 'RUNNING';
+      updatedData.requestStatus = 'APPROVED';
+      updatedData.approvedBy = user.employeeId;
+      updatedData.startedAt = new Date().toISOString();
+      
+      if (oldTask.workType === 'TEAM' && oldTask.assignedTechnicians) {
+        updatedData.assignedTechnicians = oldTask.assignedTechnicians.map(at => ({
+          ...at,
+          status: 'RUNNING',
+          startedAt: new Date().toISOString()
+        }));
+      } else if (targetTechnician) {
+        updatedData.assignedTo = targetTechnician.name;
+      }
+      
+      if (!updatedData.logs) updatedData.logs = [...(oldTask.logs || [])];
+      updatedData.logs.push({
+        id: Date.now().toString(),
+        action: `Cross-team request APPROVED by Supervisor ${user.name}. Task is now RUNNING and technician is assigned.`,
+        timestamp: new Date().toISOString(),
+        user: user.name
+      });
 
-        // Notify Engineer
-        const assignedEngineers = creator.assignedEngineers || [];
-        assignedEngineers.forEach(engId => {
-          const eng = users.find(u => u.employeeId === engId || u.id === engId);
-          if (eng) {
-            notifications.push({
-              id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-              userId: eng.id,
-              message: `New task recommendation request from Officer ${creator.name} (Approved by Supervisor)`,
-              read: false,
-              timestamp: new Date().toISOString()
-            });
-          }
+      // Update Technician Status to WORKING
+      if (oldTask.workType === 'TEAM' && oldTask.assignedTechnicians) {
+        oldTask.assignedTechnicians.forEach((at: any) => {
+          const tech = users.find(u => u.employeeId === at.employeeId || u.name === at.name || u.id === at.id);
+          if (tech) tech.status = 'WORKING';
         });
-      } else {
-        updatedData.status = 'RUNNING';
-        updatedData.requestStatus = 'APPROVED';
-        updatedData.startedAt = new Date().toISOString();
-        
-        if (oldTask.workType === 'TEAM' && oldTask.assignedTechnicians) {
-          updatedData.assignedTechnicians = oldTask.assignedTechnicians.map(at => ({
-            ...at,
-            status: 'RUNNING',
-            startedAt: new Date().toISOString()
-          }));
-        }
-        
-        if (!updatedData.logs) updatedData.logs = [...(oldTask.logs || [])];
-        updatedData.logs.push({
-          id: Date.now().toString(),
-          action: `Request Approved by Supervisor ${user.name}`,
-          timestamp: new Date().toISOString(),
-          user: user.name
-        });
+      } else if (targetTechnician) {
+        targetTechnician.status = 'WORKING';
+      }
 
-        // Update Technician Status to WORKING
-        if (oldTask.workType === 'TEAM' && oldTask.assignedTechnicians) {
-          oldTask.assignedTechnicians.forEach((at: any) => {
-            const tech = users.find(u => u.employeeId === at.employeeId);
-            if (tech) tech.status = 'WORKING';
-          });
-        } else if (oldTask.assignedTo) {
-          const tech = users.find(u => u.name === oldTask.assignedTo || u.employeeId === oldTask.assignedTo || u.id === oldTask.assignedTo);
-          if (tech && tech.role === 'TECHNICIAN') tech.status = 'WORKING';
-        }
+      // Notify requester
+      const requester = users.find(u => u.employeeId === oldTask.assignedBy || u.employeeId === oldTask.createdBy || u.id === oldTask.createdBy);
+      if (requester) {
+        notifications.push({
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+          userId: requester.id,
+          senderId: user.id,
+          taskId: oldTask.id,
+          type: 'TASK_APPROVED',
+          message: `Supervisor ${user.name} APPROVED your request for technician ${targetTechnician?.name || oldTask.assignedTo} on task "${oldTask.title}". The task is now RUNNING!`,
+          read: false,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // Notify technician
+      if (targetTechnician) {
+        notifications.push({
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+          userId: targetTechnician.id,
+          senderId: user.id,
+          taskId: oldTask.id,
+          type: 'TASK_ASSIGNED',
+          message: `Supervisor ${user.name} approved your assignment to task "${oldTask.title}". The task has started.`,
+          read: false,
+          timestamp: new Date().toISOString()
+        });
       }
     } else if (updatedData.requestStatus === 'REJECTED' && oldTask.requestStatus === 'PENDING') {
       // Only Supervisor can reject PENDING requests
       const targetTechnician = users.find(u => u.employeeId === oldTask.assignedTo || u.name === oldTask.assignedTo || u.id === oldTask.assignedTo);
       const isTeamMemberSupervisor = oldTask.workType === 'TEAM' && oldTask.assignedTechnicians?.some((at: any) => {
-        const tech = users.find(u => u.employeeId === at.employeeId);
-        return tech && tech.supervisorId === user.id;
+        const tech = users.find(u => u.employeeId === at.employeeId || u.name === at.name || u.id === at.id);
+        return tech && (tech.supervisorId === user.id || tech.supervisorId === user.employeeId);
       });
 
-      if ((!targetTechnician || targetTechnician.supervisorId !== user.id) && !isTeamMemberSupervisor) {
+      const isAuthorizedSupervisor = (targetTechnician && (targetTechnician.supervisorId === user.id || targetTechnician.supervisorId === user.employeeId)) || isTeamMemberSupervisor || user.role === 'SUPER_ADMIN';
+
+      if (!isAuthorizedSupervisor && user.role !== 'ENGINEER') {
         return res.status(403).json({ error: "Only the technician's supervisor can reject this request" });
       }
 
@@ -2073,10 +2129,25 @@ async function startServer() {
       if (!updatedData.logs) updatedData.logs = [...(oldTask.logs || [])];
       updatedData.logs.push({
         id: Date.now().toString(),
-        action: `Request Rejected by Supervisor ${user.name}: ${updatedData.requestRemarks || 'No reason provided'}`,
+        action: `Cross-team request REJECTED by Supervisor ${user.name}: ${updatedData.requestRemarks || 'No reason provided'}`,
         timestamp: new Date().toISOString(),
         user: user.name
       });
+
+      // Notify requester
+      const requester = users.find(u => u.employeeId === oldTask.assignedBy || u.employeeId === oldTask.createdBy || u.id === oldTask.createdBy);
+      if (requester) {
+        notifications.push({
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+          userId: requester.id,
+          senderId: user.id,
+          taskId: oldTask.id,
+          type: 'TASK_REJECTED',
+          message: `Your request for task "${oldTask.title}" was REJECTED by Supervisor ${user.name}. Reason: ${updatedData.requestRemarks || 'No reason provided'}`,
+          read: false,
+          timestamp: new Date().toISOString()
+        });
+      }
     } else if (updatedData.requestStatus === 'APPROVED' && oldTask.requestStatus === 'RECOMMENDED') {
       // Only Engineer can approve RECOMMENDED requests
       const creator = users.find(u => u.employeeId === oldTask.createdBy);

@@ -2830,12 +2830,40 @@ export default function App() {
       if (response.ok) {
         toast.success('Task request rejected');
         fetchTasks(token!);
+        fetchStaff(token!);
+        fetchPoints(token!);
       } else {
         toast.error('Failed to reject request');
       }
     } catch (error) {
       toast.error('Error rejecting request');
     }
+  };
+
+  const isTaskRequestedForMe = (t: Task) => {
+    if (t.status !== 'REQUESTED' && !(t.status === 'PENDING' && t.requestStatus === 'PENDING')) return false;
+    if (user?.role === 'SUPER_ADMIN') return true;
+
+    const currentUserId = user?.id;
+    const currentEmpId = user?.employeeId;
+
+    // Check single assigned technician
+    if (t.assignedTo) {
+      const tech = staffList.find(s => s.id === t.assignedTo || s.employeeId === t.assignedTo || (s.name && t.assignedTo && s.name.toLowerCase() === t.assignedTo.toLowerCase()));
+      if (tech && tech.supervisorId && (tech.supervisorId === currentUserId || tech.supervisorId === currentEmpId)) {
+        return true;
+      }
+    }
+
+    // Check team assigned technicians
+    if (t.workType === 'TEAM' && Array.isArray(t.assignedTechnicians)) {
+      return t.assignedTechnicians.some((at: any) => {
+        const tech = staffList.find(s => s.employeeId === at.employeeId || s.id === at.id || (s.name && at.name && s.name.toLowerCase() === at.name.toLowerCase()));
+        return tech && tech.supervisorId && (tech.supervisorId === currentUserId || tech.supervisorId === currentEmpId);
+      });
+    }
+
+    return false;
   };
 
   const handleThemeChange = async (themeId: string, removeBg = false) => {
@@ -3528,8 +3556,8 @@ export default function App() {
     if (!tech) return { status: 'Free', color: 'text-emerald-400', bg: 'bg-emerald-400/10', task: null };
 
     const techTasks = tasks.filter(t => {
-      // Completed, rejected, or cancelled tasks are finished and not active
-      if (t.status === 'COMPLETED' || t.status === 'REJECTED' || (t as any).status === 'CANCELLED') return false;
+      // Completed, rejected, cancelled, or pending requests are not active working tasks
+      if (t.status === 'COMPLETED' || t.status === 'REJECTED' || t.status === 'REQUESTED' || (t as any).status === 'CANCELLED') return false;
 
       const techName = (tech.name || '').toLowerCase();
       const assignedTo = (t.assignedTo || '').toLowerCase();
@@ -3542,15 +3570,15 @@ export default function App() {
     });
 
     const activeTask = techTasks.find(t => t.status === 'RUNNING') || 
-      techTasks.find(t => t.status === 'PENDING' || t.status === 'REQUESTED' || t.status === 'DELAYED' || t.status === 'HOLD') || 
-      techTasks[0];
+      techTasks.find(t => t.status === 'DELAYED' || t.status === 'HOLD') || 
+      techTasks.find(t => t.status === 'PENDING' && t.requestStatus !== 'PENDING');
     
     // Check leave / shift off statuses from attendance or user record
     if (tech.status === 'ON_LEAVE') return { status: 'On Leave', color: 'text-red-400', bg: 'bg-red-400/10', task: null };
     if (tech.status === 'SHORT_LEAVE') return { status: 'Short Leave', color: 'text-amber-400', bg: 'bg-amber-400/10', task: null };
     if (tech.status === 'SHIFT_OFF') return { status: 'Shift Off', color: 'text-gray-500', bg: 'bg-gray-500/10', task: null };
 
-    // ONLY when task is assigned, show as 'Working'
+    // ONLY when task is actually assigned and active, show as 'Working'
     if (activeTask) {
       return { 
         status: 'Working', 
@@ -3666,17 +3694,23 @@ export default function App() {
                 No Number
               </div>
             )}
-            {user?.role === 'OFFICER' && statusInfo.status === 'Idle' && isAvailable && (
+            {['OFFICER', 'SUPER_ADMIN', 'HOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER'].includes(user?.role || '') && statusInfo.status === 'Free' && isAvailable && (
               <button 
                 onClick={() => {
                   setNewTask({ ...newTask, assignedTo: tech.id, workType: 'SINGLE', assignedTechnicians: [] });
                   setSelectedTechs([]);
                   setIsTaskModalOpen(true);
                 }}
-                className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 rounded-xl flex items-center justify-center gap-2 text-xs font-bold transition-all shadow-lg shadow-blue-500/20"
+                className={cn(
+                  "flex-1 py-3 rounded-xl flex items-center justify-center gap-2 text-xs font-bold transition-all shadow-lg",
+                  tech.supervisorId && tech.supervisorId !== user?.id && tech.supervisorId !== user?.employeeId
+                    ? "bg-amber-600 hover:bg-amber-700 text-white shadow-amber-500/20"
+                    : "bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20"
+                )}
+                title={tech.supervisorId && tech.supervisorId !== user?.id && tech.supervisorId !== user?.employeeId ? "Request from other team" : "Assign to own team"}
               >
                 <Plus size={14} />
-                Assign
+                {tech.supervisorId && tech.supervisorId !== user?.id && tech.supervisorId !== user?.employeeId ? 'Request Tech' : 'Assign'}
               </button>
             )}
           </div>
@@ -5183,7 +5217,19 @@ export default function App() {
             />
           )}
 
-          {/* 9. Section/Model/Dept Overview */}
+          {/* 9. Team Requests (Supervisor Approval) */}
+          {['SUPER_ADMIN', 'HOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(user?.role || '') && (
+            <SidebarItem 
+              icon={Bell} 
+              label="Team Requests" 
+              active={activeTab === 'other_team_requests'} 
+              onClick={() => setActiveTab('other_team_requests')} 
+              color="text-yellow-500"
+              count={tasks.filter(isTaskRequestedForMe).length}
+            />
+          )}
+
+          {/* 10. Section/Model/Dept Overview */}
           {['SUPER_ADMIN', 'HOD', 'IN_CHARGE', 'MODEL_MANAGER'].includes(user?.role || '') && (
             <SidebarItem 
               icon={Layers} 
@@ -5200,7 +5246,7 @@ export default function App() {
             />
           )}
 
-          {/* 10. Staff Management */}
+          {/* 11. Staff Management */}
           {(user?.role === 'SUPER_ADMIN' || user?.role === 'HOD') && (
             <SidebarItem 
               icon={Users} 
@@ -5211,7 +5257,7 @@ export default function App() {
             />
           )}
 
-          {/* 11. My Profile */}
+          {/* 12. My Profile */}
           <SidebarItem 
             icon={UserCircle} 
             label="My Profile" 
@@ -5220,7 +5266,7 @@ export default function App() {
             color="text-gray-400"
           />
 
-          {/* 12. Themes */}
+          {/* 13. Themes */}
           <SidebarItem 
             icon={Palette} 
             label="Themes" 
@@ -5229,7 +5275,7 @@ export default function App() {
             color="text-pink-500"
           />
 
-          {/* 13. Change Password */}
+          {/* 14. Change Password */}
           <SidebarItem 
             icon={Lock} 
             label="Change Password" 
@@ -5238,7 +5284,7 @@ export default function App() {
             color="text-amber-500"
           />
 
-          {/* 14. Backup & Restore */}
+          {/* 15. Backup & Restore */}
           {['SUPER_ADMIN', 'HOD', 'IN_CHARGE', 'MODEL_MANAGER', 'OFFICER', 'ENGINEER'].includes(user?.role || '') && (
             <SidebarItem 
               icon={Database} 
@@ -5249,7 +5295,7 @@ export default function App() {
             />
           )}
 
-          {/* 15. Security Center (Super Admin Only) */}
+          {/* 16. Security Center (Super Admin Only) */}
           {user?.role === 'SUPER_ADMIN' && (
             <SidebarItem 
               icon={Shield} 
@@ -5258,18 +5304,6 @@ export default function App() {
               onClick={() => setActiveTab('activity_logs')} 
               color="text-red-600"
               count={suspiciousLogins.length}
-            />
-          )}
-
-          {/* Other Team Requests (Supervisor Approval) */}
-          {['SUPER_ADMIN', 'HOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(user?.role || '') && (
-            <SidebarItem 
-              icon={Bell} 
-              label="Team Requests" 
-              active={activeTab === 'other_team_requests'} 
-              onClick={() => setActiveTab('other_team_requests')} 
-              color="text-yellow-500"
-              count={tasks.filter(t => t.status === 'REQUESTED' && staffList.find(s => s.name === t.assignedTo || s.employeeId === t.assignedTo)?.supervisorId === user?.id).length}
             />
           )}
         </nav>
@@ -6282,100 +6316,178 @@ export default function App() {
 
           {activeTab === 'other_team_requests' && (
             <div className="space-y-8">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                  <h1 className="text-4xl font-bold mb-2">Other Team Requests</h1>
-                  <p className="text-gray-400">Approve or reject technician requests from other teams</p>
+                  <h1 className="text-4xl font-bold mb-2">Team Requests & Approvals</h1>
+                  <p className="text-gray-400">Review technician requests from other officers. Approving immediately starts the task and sets technicians to Working for the requested hours.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="px-3 py-1 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-bold rounded-full">
+                    {tasks.filter(isTaskRequestedForMe).length} Pending Approval
+                  </span>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-6">
-                {tasks.filter(t => t.status === 'REQUESTED' && staffList.find(s => s.name === t.assignedTo || s.employeeId === t.assignedTo)?.supervisorId === user?.id).length === 0 ? (
-                  <GlassCard className="p-12 text-center">
-                    <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-6">
-                      <Bell size={40} className="text-gray-600" />
-                    </div>
-                    <h3 className="text-xl font-bold mb-2">No Pending Requests</h3>
-                    <p className="text-gray-400">You don't have any technician requests from other teams at the moment.</p>
-                  </GlassCard>
-                ) : (
-                  tasks.filter(t => t.status === 'REQUESTED' && staffList.find(s => s.name === t.assignedTo || s.employeeId === t.assignedTo)?.supervisorId === user?.id).map((task, idx) => {
-                    const requester = staffList.find(s => s.employeeId === task.createdBy);
-                    return (
-                      <GlassCard key={task.id} delay={idx * 0.1} className="p-6">
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-2">
-                              <span className="px-3 py-1 bg-blue-500/10 text-blue-400 text-xs font-bold rounded-full uppercase tracking-wider">
-                                {task.model}
-                              </span>
-                              <span className="text-gray-500 text-xs">{new Date(task.createdAt).toLocaleString()}</span>
-                              <span className={cn(
-                                "px-2 py-0.5 rounded text-[10px] font-bold uppercase",
-                                task.urgency === 'MOST_URGENT' ? "bg-red-500/20 text-red-500" :
-                                task.urgency === 'URGENT' ? "bg-amber-500/20 text-amber-500" :
-                                "bg-blue-500/20 text-blue-500"
-                              )}>
-                                {task.urgency}
-                              </span>
+              {/* Incoming Requests Section */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-gray-400">
+                  <Bell size={16} className="text-amber-400" />
+                  <span>Incoming Technician Requests Awaiting Your Approval</span>
+                </div>
+
+                <div className="grid grid-cols-1 gap-6">
+                  {tasks.filter(isTaskRequestedForMe).length === 0 ? (
+                    <GlassCard className="p-12 text-center">
+                      <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <CheckCircle2 size={40} className="text-emerald-500" />
+                      </div>
+                      <h3 className="text-xl font-bold mb-2">No Pending Requests</h3>
+                      <p className="text-gray-400">All technician assignment requests for your team have been processed.</p>
+                    </GlassCard>
+                  ) : (
+                    tasks.filter(isTaskRequestedForMe).map((task, idx) => {
+                      const requester = staffList.find(s => s.employeeId === task.createdBy || s.id === task.createdBy);
+                      
+                      // Identify requested technician(s)
+                      let techDisplay = task.assignedTo;
+                      if (task.workType === 'TEAM' && Array.isArray(task.assignedTechnicians) && task.assignedTechnicians.length > 0) {
+                        techDisplay = task.assignedTechnicians.map((t: any) => t.name || t.employeeId).join(', ');
+                      } else {
+                        const tObj = staffList.find(s => s.id === task.assignedTo || s.employeeId === task.assignedTo);
+                        if (tObj) techDisplay = `${tObj.name} (${tObj.employeeId})`;
+                      }
+
+                      return (
+                        <GlassCard key={task.id} delay={idx * 0.05} className="p-6 border-l-4 border-amber-500">
+                          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                            <div className="flex-1 space-y-3">
+                              <div className="flex items-center gap-3">
+                                <span className="px-3 py-1 bg-blue-500/10 text-blue-400 text-xs font-bold rounded-full uppercase tracking-wider">
+                                  {task.model}
+                                </span>
+                                <span className="text-gray-500 text-xs">{new Date(task.createdAt).toLocaleString()}</span>
+                                <span className={cn(
+                                  "px-2 py-0.5 rounded text-[10px] font-bold uppercase",
+                                  task.urgency === 'MOST_URGENT' ? "bg-red-500/20 text-red-500" :
+                                  task.urgency === 'URGENT' ? "bg-amber-500/20 text-amber-500" :
+                                  "bg-blue-500/20 text-blue-500"
+                                )}>
+                                  {task.urgency}
+                                </span>
+                                <span className="px-2 py-0.5 bg-amber-500/20 text-amber-400 text-[10px] font-bold uppercase rounded">
+                                  {task.workType === 'TEAM' ? 'Team Work' : 'Single Work'}
+                                </span>
+                              </div>
+
+                              <h3 className="text-2xl font-bold text-white">{task.title}</h3>
+                              <p className="text-gray-300 text-sm">{task.details}</p>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 pt-2">
+                                <div className="bg-white/5 p-3 rounded-xl border border-white/5">
+                                  <p className="text-[10px] text-gray-400 uppercase tracking-wider">Requested By</p>
+                                  <p className="text-sm font-semibold text-white truncate">{requester?.name || task.createdBy}</p>
+                                  <p className="text-[10px] text-blue-400">{requester?.role?.replace('_', ' ') || 'Officer'}</p>
+                                </div>
+                                <div className="bg-white/5 p-3 rounded-xl border border-white/5">
+                                  <p className="text-[10px] text-gray-400 uppercase tracking-wider">Requested Technician(s)</p>
+                                  <p className="text-sm font-semibold text-amber-400 truncate">{techDisplay}</p>
+                                  <p className="text-[10px] text-gray-400">From Your Team</p>
+                                </div>
+                                <div className="bg-white/5 p-3 rounded-xl border border-white/5">
+                                  <p className="text-[10px] text-gray-400 uppercase tracking-wider">Requested Duration</p>
+                                  <p className="text-sm font-semibold text-green-400">
+                                    {task.estimatedDuration ? `${task.estimatedDuration} Mins (${(Number(task.estimatedDuration) / 60).toFixed(1)} Hrs)` : 'Full Shift'}
+                                  </p>
+                                  <p className="text-[10px] text-gray-400">Working Period</p>
+                                </div>
+                                <div className="bg-white/5 p-3 rounded-xl border border-white/5">
+                                  <p className="text-[10px] text-gray-400 uppercase tracking-wider">Deadline</p>
+                                  <p className="text-sm font-black text-red-400">
+                                    {new Date(task.deadline).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                  </p>
+                                  <p className="text-[10px] text-gray-400">Points: {task.points || 1}</p>
+                                </div>
+                              </div>
                             </div>
-                            <h3 className="text-xl font-bold mb-2">{task.title}</h3>
-                            <p className="text-gray-400 text-sm mb-4 line-clamp-2">{task.details}</p>
-                            <div className="flex flex-wrap gap-4 text-sm">
-                              <div className="flex items-center gap-2 text-gray-400">
-                                <UserCircle size={16} />
-                                <span>Requested By: <span className="text-white font-medium">{requester?.name || task.createdBy}</span></span>
-                              </div>
-                              <div className="flex items-center gap-2 text-gray-400">
-                                <Wrench size={16} />
-                                <span>Technician: <span className="text-white font-medium">{task.assignedTo}</span></span>
-                              </div>
-                              <div className="flex items-center gap-2 text-gray-400">
-                                <Calendar size={16} />
-                                <span>Deadline: <span className="text-red-500 font-black">{new Date(task.deadline).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span></span>
-                              </div>
-                              <div className="flex items-center gap-2 text-gray-400">
-                                <Star size={16} />
-                                <span>Points: <span className="text-white font-medium">{task.points || 0}</span></span>
-                              </div>
+
+                            <div className="flex flex-row lg:flex-col items-center gap-3 min-w-[140px]">
+                              <button 
+                                onClick={() => handleApproveRequest(task.id)}
+                                className="w-full px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 text-sm"
+                              >
+                                <CheckCircle2 size={18} />
+                                Approve & Start
+                              </button>
+                              <button 
+                                onClick={() => {
+                                  setRejectTaskId(task.id);
+                                  setRejectRemarks('');
+                                  setIsRejectModalOpen(true);
+                                }}
+                                className="w-full px-5 py-2.5 bg-red-600/20 hover:bg-red-600/30 text-red-400 font-bold rounded-xl border border-red-600/30 transition-all flex items-center justify-center gap-2 text-sm"
+                              >
+                                <X size={18} />
+                                Reject
+                              </button>
+                              <button 
+                                onClick={() => {
+                                  setSelectedTask(task);
+                                  setIsTaskDetailsModalOpen(true);
+                                }}
+                                className="w-full px-5 py-2 bg-white/5 hover:bg-white/10 text-gray-300 font-medium rounded-xl transition-all flex items-center justify-center gap-2 text-xs border border-white/10"
+                              >
+                                <Eye size={16} />
+                                View Details
+                              </button>
                             </div>
                           </div>
-                          <div className="flex items-center gap-3">
-                            <button 
-                              onClick={() => {
-                                setSelectedTask(task);
-                                setIsTaskDetailsModalOpen(true);
-                              }}
-                              className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white font-bold rounded-xl transition-all flex items-center gap-2 border border-white/10"
-                            >
-                              <Eye size={18} />
-                              View
-                            </button>
-                            <button 
-                              onClick={() => handleApproveRequest(task.id)}
-                              className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-green-500/20 flex items-center gap-2"
-                            >
-                              <CheckCircle2 size={18} />
-                              Approve
-                            </button>
-                            <button 
-                              onClick={() => {
-                                setRejectTaskId(task.id);
-                                setRejectRemarks('');
-                                setIsRejectModalOpen(true);
-                              }}
-                              className="px-6 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 font-bold rounded-xl border border-red-600/30 transition-all flex items-center gap-2"
-                            >
-                              <X size={18} />
-                              Reject
-                            </button>
-                          </div>
-                        </div>
-                      </GlassCard>
-                    );
-                  })
-                )}
+                        </GlassCard>
+                      );
+                    })
+                  )}
+                </div>
               </div>
+
+              {/* Outgoing Requests (Sent by Current User) */}
+              {tasks.some(t => (t.createdBy === user?.employeeId || t.assignedBy === user?.employeeId) && (t.status === 'REQUESTED' || t.requestStatus === 'PENDING')) && (
+                <div className="space-y-4 pt-6 border-t border-white/5">
+                  <div className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-gray-400">
+                    <Clock size={16} className="text-blue-400" />
+                    <span>My Outgoing Requests Sent to Other Supervisors</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4">
+                    {tasks.filter(t => (t.createdBy === user?.employeeId || t.assignedBy === user?.employeeId) && (t.status === 'REQUESTED' || t.requestStatus === 'PENDING')).map(task => {
+                      const assignedTechObj = staffList.find(s => s.id === task.assignedTo || s.employeeId === task.assignedTo);
+                      const supervisor = staffList.find(s => s.id === assignedTechObj?.supervisorId || s.employeeId === assignedTechObj?.supervisorId);
+
+                      return (
+                        <GlassCard key={task.id} className="p-4 bg-white/5">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div>
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-xs px-2 py-0.5 bg-blue-500/10 text-blue-400 rounded font-bold">{task.model}</span>
+                                <span className="font-bold text-white text-base">{task.title}</span>
+                              </div>
+                              <p className="text-xs text-gray-400">
+                                Technician: <span className="text-white font-medium">{assignedTechObj?.name || task.assignedTo}</span> • Concern Supervisor: <span className="text-amber-400 font-medium">{supervisor?.name || 'Assigned Supervisor'}</span>
+                              </p>
+                              <p className="text-xs text-gray-400 mt-0.5">
+                                Requested Duration: <span className="text-green-400">{task.estimatedDuration ? `${task.estimatedDuration} mins` : 'N/A'}</span> • Deadline: <span className="text-red-400">{new Date(task.deadline).toLocaleDateString()}</span>
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="px-3 py-1 bg-amber-500/20 text-amber-400 text-xs font-bold rounded-full animate-pulse">
+                                Waiting for Approval
+                              </span>
+                            </div>
+                          </div>
+                        </GlassCard>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
