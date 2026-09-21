@@ -7,11 +7,13 @@ import cors from "cors";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import fs from "fs/promises";
+import syncFs from "fs";
 import XLSX from "xlsx";
 import multer from "multer";
 import type { Role, User, Task, Attendance, TaskLog, TaskStatus, ActivityLog, AdminAuditLog, UserSession, FailedLoginAttempt, LockedDevice } from './types.js';
 
 const upload = multer({ dest: 'uploads/' });
+const memoryUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
 // Extend Express Request type
 declare global {
@@ -120,12 +122,14 @@ async function startServer() {
   function recalculateAllPoints() {
     console.log("Recalculating all points and task counts from MASTER (tasks table)...");
     
-    // Create lookup maps for performance
+    // Create lookup maps for performance (by ID, employeeId, and Name)
     const userByEmpId = new Map();
     const userById = new Map();
+    const userByName = new Map();
     users.forEach(u => {
-      if (u.employeeId) userByEmpId.set(u.employeeId, u);
-      if (u.id) userById.set(u.id, u);
+      if (u.employeeId) userByEmpId.set(String(u.employeeId).toLowerCase().trim(), u);
+      if (u.id) userById.set(String(u.id).toLowerCase().trim(), u);
+      if (u.name) userByName.set(String(u.name).toLowerCase().trim(), u);
       
       // Reset first
       if (u.role === 'OFFICER') u.total_point = 0;
@@ -137,7 +141,8 @@ async function startServer() {
       if (status === 'COMPLETED') {
         // 1. Technician Task Count
         if (t.assignedTo) {
-          const tech = userByEmpId.get(t.assignedTo) || userById.get(t.assignedTo);
+          const assignedStr = String(t.assignedTo).toLowerCase().trim();
+          const tech = userByEmpId.get(assignedStr) || userById.get(assignedStr) || userByName.get(assignedStr);
           if (tech && tech.role === 'TECHNICIAN') {
             tech.completedTask = (tech.completedTask || 0) + 1;
           }
@@ -145,7 +150,8 @@ async function startServer() {
         
         if (t.assignedTechnicians && Array.isArray(t.assignedTechnicians)) {
           t.assignedTechnicians.forEach((at: any) => {
-            const tech = userByEmpId.get(at.employeeId) || userById.get(at.id);
+            const atEmp = String(at.employeeId || at.name || at.id || '').toLowerCase().trim();
+            const tech = userByEmpId.get(atEmp) || userById.get(atEmp) || userByName.get(atEmp);
             if (tech && tech.role === 'TECHNICIAN') {
               tech.completedTask = (tech.completedTask || 0) + 1;
             }
@@ -154,21 +160,34 @@ async function startServer() {
 
         // 2. Officer Points: STRICT RULE - ONLY the officer who entered the task (createdBy) gets the point!
         // In cross-team requests, the technician's supervisor must NEVER get the point.
+        // If task was entered by an Engineer or higher and assigned to an Officer, the officer gets the point.
         let officer = null;
-        const creator = userByEmpId.get(t.createdBy) || userById.get(t.createdBy);
+        const creatorStr = String(t.createdBy || '').toLowerCase().trim();
+        const creator = userByEmpId.get(creatorStr) || userById.get(creatorStr) || userByName.get(creatorStr);
+        
         if (creator && creator.role === 'OFFICER') {
           officer = creator;
         } else if (!creator || creator.role !== 'OFFICER') {
-          // If task was entered by an Engineer or higher and assigned to an Officer
           if (t.assignedTo) {
-            const assignee = userByEmpId.get(t.assignedTo) || userById.get(t.assignedTo);
+            const assignedStr = String(t.assignedTo).toLowerCase().trim();
+            const assignee = userByEmpId.get(assignedStr) || userById.get(assignedStr) || userByName.get(assignedStr);
             if (assignee && assignee.role === 'OFFICER') officer = assignee;
           }
         }
         
         if (officer) {
-          const taskPoints = Number(t.points || 0);
-          officer.total_point = (officer.total_point || 0) + taskPoints;
+          const ptMatch = pointTransactions.find(pt => pt.taskId === t.id && (pt.officerId === officer.id || pt.officerId === officer.employeeId));
+          const ptVal = ptMatch ? Number(ptMatch.pointValue || 0) : 0;
+          let taskPoints = Number(t.points !== undefined ? t.points : 0);
+          if (taskPoints === 0 && ptVal > 0) {
+            taskPoints = ptVal;
+          }
+          if (taskPoints === 0) {
+            taskPoints = t.urgency === 'MOST_URGENT' ? 3 : t.urgency === 'URGENT' ? 2 : 1;
+          }
+          t.points = taskPoints;
+          t.pointAdded = true;
+          officer.total_point = (officer.total_point || 0) + Math.max(taskPoints, ptVal);
         }
       }
     });
@@ -176,7 +195,8 @@ async function startServer() {
     // 3. Add manual adjustments from pointTransactions (to match App.tsx logic)
     pointTransactions.forEach((pt: any) => {
       if (pt.taskId === 'MANUAL_ADJUSTMENT') {
-        const officer = userById.get(pt.officerId) || userByEmpId.get(pt.officerId);
+        const ptOff = String(pt.officerId || '').toLowerCase().trim();
+        const officer = userById.get(ptOff) || userByEmpId.get(ptOff) || userByName.get(ptOff);
         if (officer) {
           officer.total_point = (officer.total_point || 0) + (pt.pointValue || 0);
         }
@@ -1128,17 +1148,78 @@ async function startServer() {
     res.json(resultTasks);
   });
 
-  app.post("/api/system/process-employees", authenticate, async (req: Request, res: Response) => {
+  app.post("/api/system/process-employees", authenticate, memoryUpload.single('file'), async (req: Request, res: Response) => {
     if (req.user.role !== 'SUPER_ADMIN') {
       return res.status(403).json({ error: "Forbidden" });
     }
     try {
-      const filePath = path.join(__dirname, "employee data.xlsx");
-      const workbook = XLSX.readFile(filePath);
+      let workbook: XLSX.WorkBook | null = null;
+
+      if (req.file && req.file.buffer && req.file.buffer.length > 0) {
+        console.log(`Processing uploaded employee excel file (${req.file.originalname}, ${req.file.buffer.length} bytes)...`);
+        workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+        // Also cache a copy in process.cwd() and dist so subsequent calls without re-upload also work
+        try {
+          syncFs.writeFileSync(path.join(process.cwd(), "employee data.xlsx"), req.file.buffer);
+          if (syncFs.existsSync(path.join(process.cwd(), "dist"))) {
+            syncFs.writeFileSync(path.join(process.cwd(), "dist", "employee data.xlsx"), req.file.buffer);
+          }
+        } catch (saveErr) {
+          console.warn("Could not write server backup of uploaded employee data.xlsx:", saveErr);
+        }
+      } else {
+        // Multi-path lookup across root, dist, and parent folders
+        const candidatePaths = [
+          path.join(process.cwd(), "employee data.xlsx"),
+          path.join(process.cwd(), "dist", "employee data.xlsx"),
+          path.join(__dirname, "employee data.xlsx"),
+          path.join(__dirname, "..", "employee data.xlsx"),
+          path.join(__dirname, "dist", "employee data.xlsx")
+        ];
+
+        let foundPath = candidatePaths.find(p => syncFs.existsSync(p));
+
+        // If not found in standard paths, perform fuzzy case-insensitive directory search
+        if (!foundPath) {
+          const searchDirs = [process.cwd(), __dirname, path.join(__dirname, "..")];
+          for (const dir of searchDirs) {
+            if (syncFs.existsSync(dir)) {
+              try {
+                const entries = syncFs.readdirSync(dir);
+                const match = entries.find(f => {
+                  const lower = f.toLowerCase();
+                  return (lower.includes("employee") && lower.endsWith(".xlsx")) ||
+                         lower.replace(/[\s_-]/g, '') === 'employeedata.xlsx';
+                });
+                if (match) {
+                  foundPath = path.join(dir, match);
+                  break;
+                }
+              } catch {
+                // ignore
+              }
+            }
+          }
+        }
+
+        if (!foundPath) {
+          return res.status(404).json({
+            error: "No 'employee data.xlsx' file found on the server. Please use the 'Upload & Sync Excel' button to upload your employee Excel file directly."
+          });
+        }
+
+        console.log(`Reading employee data from verified file path: ${foundPath}`);
+        workbook = XLSX.readFile(foundPath);
+      }
+
+      if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
+        return res.status(400).json({ error: "The Excel workbook is empty or has no sheets." });
+      }
+
       const sheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName];
       const data = XLSX.utils.sheet_to_json(worksheet);
-      console.log(`Processing ${data.length} employees from Excel. First row keys:`, data.length > 0 ? Object.keys(data[0]) : 'None');
+      console.log(`Processing ${data.length} employees from Excel. First row keys:`, data.length > 0 ? Object.keys(data[0] as object) : 'None');
 
       let createdCount = 0;
       let updatedCount = 0;
@@ -1147,12 +1228,12 @@ async function startServer() {
         // Try multiple common column names for ID and Name
         const employeeId = (row.ID || row["Employee ID"] || row.employeeId || row["HRMS ID"] || "").toString().trim();
         const name = (row.Name || row["Employee Name"] || row.name || row["Name of Employee"] || "Unknown").toString().trim();
-        const rawRole = (row.Role || row.role || row.Designation || row.designation || "TECHNICIAN").toString().trim().toUpperCase();
+        const rawRole = (row.Role || row.role || row.Designation || row.designation || "TECHNICIAN").toString().trim();
         
         // Extract additional fields
         let phone = (row.Phone || row["Phone Number"] || row.phone || row.Mobile || row.mobile || row["Mobile No"] || row["Mobile Number"] || row.Contact || row["Contact No"] || row["Phone No"] || row.Cell || row["Cell No"] || row["Cell Number"] || "").toString().trim();
         
-        // Add leading zero if missing (common Excel issue)
+        // Add leading zero if missing (common Excel numeric phone issue)
         if (phone && !phone.startsWith('0') && /^\d+$/.test(phone)) {
           phone = '0' + phone;
         }
@@ -1161,12 +1242,12 @@ async function startServer() {
         const email = (row.Email || row["Email Address"] || row.email || row["Email ID"] || row["E-mail"] || "").toString().trim();
         const department = (row.Department || row.department || row.Dept || row.dept || "RAC R&I").toString().trim();
 
-        // Map common role names to system roles
+        // Map common role names to system roles accurately
         let role: string = "TECHNICIAN";
         const upperRole = rawRole.toUpperCase();
         
         if (upperRole.includes('SUPER ADMIN') || upperRole === 'ADMIN') role = 'SUPER_ADMIN';
-        else if (upperRole.includes('HOD')) role = 'HOD';
+        else if (upperRole.includes('HOD') || upperRole.includes('CBO')) role = 'HOD';
         else if (upperRole.includes('INCHARGE') || upperRole.includes('IN-CHARGE') || upperRole === 'IN_CHARGE') role = 'IN_CHARGE';
         else if (upperRole.includes('MODEL MANAGER') || upperRole.includes('MODEL-MANAGER')) role = 'MODEL_MANAGER';
         else if (upperRole.includes('ENGINEER')) role = 'ENGINEER';
@@ -1175,9 +1256,8 @@ async function startServer() {
         else if (upperRole.includes('MANAGER')) role = 'MODEL_MANAGER';
         else if (upperRole.includes('SUPERVISOR')) role = 'IN_CHARGE';
         else {
-          // Fallback mapping based on common titles if Role column is actually a Designation column
           if (upperRole.includes('MANAGER')) role = 'MODEL_MANAGER';
-          else if (upperRole.includes('HOD')) role = 'HOD';
+          else if (upperRole.includes('HOD') || upperRole.includes('CBO')) role = 'HOD';
           else if (upperRole.includes('ENGINEER')) role = 'ENGINEER';
           else if (upperRole.includes('OFFICER')) role = 'OFFICER';
           else role = 'TECHNICIAN';
@@ -1185,19 +1265,21 @@ async function startServer() {
 
         if (!employeeId) continue;
 
-        const existingUser = users.find(u => u.employeeId.toString().toLowerCase() === employeeId.toLowerCase());
+        const existingUser = users.find(u => (u.employeeId && u.employeeId.toString().toLowerCase() === employeeId.toLowerCase()) || (u.id && u.id.toString() === employeeId.toLowerCase()));
         const hashedPassword = await bcrypt.hash(employeeId, 10);
 
         if (existingUser) {
-          // Update password to match ID as requested
-          existingUser.password = hashedPassword;
-          // Also update other fields
-          existingUser.name = name;
-          existingUser.role = role as any;
-          existingUser.phone = phone;
-          existingUser.designation = designation;
-          existingUser.email = email;
-          existingUser.department = department;
+          // Update password to match ID as requested (keep super admin safe)
+          if (existingUser.role !== 'SUPER_ADMIN') {
+            existingUser.password = hashedPassword;
+          }
+          // Also update profile details
+          if (name && name !== 'Unknown') existingUser.name = name;
+          if (role && existingUser.role !== 'SUPER_ADMIN') existingUser.role = role as any;
+          if (phone) existingUser.phone = phone;
+          if (designation) existingUser.designation = designation;
+          if (email) existingUser.email = email;
+          if (department) existingUser.department = department;
           updatedCount++;
         } else {
           users.push({
@@ -1207,21 +1289,26 @@ async function startServer() {
             role: role as any,
             password: hashedPassword,
             supervisorId: "",
+            supervisor_ids: [],
             assignedEngineers: [],
             phone,
             designation,
             email,
-            department
+            department,
+            status: 'FREE',
+            total_point: 0,
+            completedTask: 0
           });
           createdCount++;
         }
       }
 
+      rebuildTechnicianStatuses();
       await saveData();
-      res.json({ message: "Employee data processed successfully", createdCount, updatedCount });
-    } catch (err) {
+      res.json({ message: "Employee data processed successfully", createdCount, updatedCount, total: data.length });
+    } catch (err: any) {
       console.error("Error processing employee data:", err);
-      res.status(500).json({ error: "Failed to process employee data: " + err.message });
+      res.status(500).json({ error: "Failed to process employee data: " + (err.message || String(err)) });
     }
   });
 
@@ -2282,18 +2369,29 @@ async function startServer() {
         }
       }
 
-      // Point System: Add points if COMPLETED + APPROVED (or recommended)
-      const creator = users.find(u => u.employeeId === oldTask.createdBy || u.id === oldTask.createdBy);
+      // Point System: Add points if COMPLETED
+      const isNowCompleted = (updatedData.status || oldTask.status) === 'COMPLETED';
+      
+      const creatorStr = String(oldTask.createdBy || '').toLowerCase().trim();
+      const creator = users.find(u => 
+        (u.employeeId && String(u.employeeId).toLowerCase().trim() === creatorStr) || 
+        (u.id && String(u.id).toLowerCase().trim() === creatorStr) ||
+        (u.name && String(u.name).toLowerCase().trim() === creatorStr)
+      );
       const isOfficerTask = creator?.role === 'OFFICER';
-      const isEngineerTask = creator?.role === 'ENGINEER';
-      const isApproved = updatedData.requestStatus === 'APPROVED' || oldTask.requestStatus === 'APPROVED' || (!oldTask.requestStatus && oldTask.status === 'RUNNING') || oldTask.engineerApproved || updatedData.engineerApproved;
 
-      if (isOfficerTask) {
+      if (isOfficerTask && isNowCompleted) {
         // STRICT RULE: ONLY the officer who entered (createdBy) the task gets the points!
-        // In cross-team requests, the technician's supervisor must NEVER get the points.
         const officer = creator;
         if (officer && officer.role === 'OFFICER') {
-          const finalPoints = Number(updatedData.points !== undefined ? updatedData.points : (oldTask.points || 0));
+          let finalPoints = Number(updatedData.points !== undefined ? updatedData.points : (oldTask.points || 0));
+          if (finalPoints === 0) {
+            const urgency = updatedData.urgency || oldTask.urgency;
+            finalPoints = urgency === 'MOST_URGENT' ? 3 : urgency === 'URGENT' ? 2 : 1;
+          }
+          updatedData.points = finalPoints;
+          updatedData.pointAdded = true;
+
           const existingTxIndex = pointTransactions.findIndex(pt => pt.taskId === oldTask.id);
           if (existingTxIndex !== -1) {
             pointTransactions[existingTxIndex].pointValue = finalPoints;
@@ -2310,24 +2408,41 @@ async function startServer() {
               completedAt: updatedData.completedAt || new Date().toISOString()
             });
           }
-          if (finalPoints > 0) {
-            updatedData.pointAdded = true;
-          }
         }
-      } else if (!oldTask.pointAdded && isEngineerTask) {
-        // Engineer created task assigned to an Officer
-        const officer = users.find(u => (u.id === oldTask.assignedTo || u.name === oldTask.assignedTo || u.employeeId === oldTask.assignedTo) && u.role === 'OFFICER');
-        if (officer && officer.role === 'OFFICER') {
-          pointTransactions.push({
-            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-            taskId: oldTask.id,
-            officerId: officer.id,
-            engineerId: oldTask.approvedBy || oldTask.createdBy || '',
-            pointValue: updatedData.points || oldTask.points || 1,
-            taskPriority: oldTask.urgency,
-            completedAt: updatedData.completedAt || new Date().toISOString()
-          });
+      } else if (isNowCompleted) {
+        // Engineer or other role created task assigned to an Officer
+        const assignedStr = String(oldTask.assignedTo || updatedData.assignedTo || '').toLowerCase().trim();
+        const officer = users.find(u => 
+          ((u.id && String(u.id).toLowerCase().trim() === assignedStr) || 
+           (u.name && String(u.name).toLowerCase().trim() === assignedStr) || 
+           (u.employeeId && String(u.employeeId).toLowerCase().trim() === assignedStr)) && 
+          u.role === 'OFFICER'
+        );
+        if (officer) {
+          let finalPoints = Number(updatedData.points !== undefined ? updatedData.points : (oldTask.points || 0));
+          if (finalPoints === 0) {
+            const urgency = updatedData.urgency || oldTask.urgency;
+            finalPoints = urgency === 'MOST_URGENT' ? 3 : urgency === 'URGENT' ? 2 : 1;
+          }
+          updatedData.points = finalPoints;
           updatedData.pointAdded = true;
+
+          const existingTxIndex = pointTransactions.findIndex(pt => pt.taskId === oldTask.id);
+          if (existingTxIndex !== -1) {
+            pointTransactions[existingTxIndex].pointValue = finalPoints;
+            pointTransactions[existingTxIndex].officerId = officer.id;
+            pointTransactions[existingTxIndex].completedAt = updatedData.completedAt || new Date().toISOString();
+          } else {
+            pointTransactions.push({
+              id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+              taskId: oldTask.id,
+              officerId: officer.id,
+              engineerId: oldTask.approvedBy || oldTask.createdBy || '',
+              pointValue: finalPoints,
+              taskPriority: oldTask.urgency,
+              completedAt: updatedData.completedAt || new Date().toISOString()
+            });
+          }
         }
       }
       

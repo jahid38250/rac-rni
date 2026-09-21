@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "tsx server.ts",
     "start": "node dist/server.js",
-    "build": "vite build && npm run build:server",
+    "build": "vite build && npm run build:server && node -e 'const fs=require(\"fs\"); if(fs.existsSync(\"employee data.xlsx\") && fs.existsSync(\"dist\")) fs.copyFileSync(\"employee data.xlsx\", \"dist/employee data.xlsx\");'",
     "build:server": "esbuild server.ts --bundle --platform=node --format=esm --outfile=dist/server.js --packages=external",
     "preview": "vite preview",
     "clean": "rm -rf dist",

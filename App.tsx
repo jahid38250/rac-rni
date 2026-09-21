@@ -1678,25 +1678,28 @@ export default function App() {
     startDate: '',
     endDate: '',
     model: 'ALL',
-    workType: 'ALL'
+    workType: 'ALL',
+    assignedUser: 'ALL'
   });
 
   const filteredTasks = useMemo(() => {
     if (!user) return [];
     
     let baseTasks = tasks;
-    if (user.role !== 'SUPER_ADMIN' && user.role !== 'HOD') {
+    
+    // User filter / scoping:
+    // If 'ALL' is chosen: show all tasks (Task Dashboard global view)
+    // If 'MY_SCOPE' is chosen or non-admin without 'ALL': scope to user's domain
+    if (globalFilters.assignedUser === 'MY_SCOPE') {
       const currentUserData = staffList.find(u => u.id === user.id) || user;
       const myName = currentUserData.name.toLowerCase();
       const myEmpId = currentUserData.employeeId;
       const myAssignedEngs = currentUserData.assignedEngineers || [];
 
       baseTasks = tasks.filter(t => {
-        // For Model Manager: Strict model-wise isolation AND assigned engineer scope
         if (currentUserData.role === 'MODEL_MANAGER') {
           const model = t.model;
           let isModelMatch = false;
-          
           if (model === 'General Work') {
             isModelMatch = myEmpId === '41053';
           } else if (myEmpId === '38056') {
@@ -1743,27 +1746,58 @@ export default function App() {
           return isCreatorInScope || isAssignerInScope || isAssigneeInScope || isCreatedByMe || isAssignedByMe;
         }
 
-        const assignedTo = t.assignedTo.toLowerCase();
-        const isAssignedToMe = assignedTo === myName || t.assignedTo === currentUserData.id;
-        const isCreatedByMe = t.createdBy === myEmpId;
-        const isAssignedByMe = t.assignedBy === myEmpId;
+        const assignedTo = (t.assignedTo || '').toLowerCase();
+        const isAssignedToMe = assignedTo === myName || t.assignedTo === currentUserData.id || t.assignedTo === currentUserData.employeeId;
+        const isCreatedByMe = t.createdBy === myEmpId || t.createdBy === currentUserData.id;
+        const isAssignedByMe = t.assignedBy === myEmpId || t.assignedBy === currentUserData.id;
         
-        const subordinates = staffList.filter(s => s.supervisorId === currentUserData.id).map(s => s.name.toLowerCase());
+        const subordinates = staffList.filter(s => s.supervisorId === currentUserData.id || s.supervisorId === currentUserData.employeeId).map(s => (s.name || '').toLowerCase());
         const isAssignedToSubordinate = subordinates.includes(assignedTo);
         
-        const assignee = staffList.find(s => s.id === t.assignedTo || s.name.toLowerCase() === assignedTo);
+        const isTeamAssignedToSubordinate = t.workType === 'TEAM' && Array.isArray(t.assignedTechnicians) && t.assignedTechnicians.some((at: any) => {
+          const tech = staffList.find(s => s.employeeId === at.employeeId || (s.name || '').toLowerCase() === (at.name || '').toLowerCase() || s.id === at.id);
+          return tech && (tech.supervisorId === currentUserData.id || tech.supervisorId === currentUserData.employeeId);
+        });
+
+        const assignee = staffList.find(s => s.id === t.assignedTo || (s.name || '').toLowerCase() === assignedTo);
         const isAssignedToMappedUser = assignee?.assignedEngineers?.includes(myEmpId);
         const isMappedToMe = assignee && myAssignedEngs.includes(assignee.employeeId);
         
-        return isAssignedToMe || isAssignedToSubordinate || isCreatedByMe || isAssignedByMe || isAssignedToMappedUser || isMappedToMe;
+        return isAssignedToMe || isAssignedToSubordinate || isTeamAssignedToSubordinate || isCreatedByMe || isAssignedByMe || isAssignedToMappedUser || isMappedToMe;
+      });
+    } else if (globalFilters.assignedUser && globalFilters.assignedUser !== 'ALL') {
+      const targetEmp = globalFilters.assignedUser.toLowerCase();
+      const targetUser = staffList.find(s => (s.employeeId || '').toLowerCase() === targetEmp || s.id === globalFilters.assignedUser || (s.name || '').toLowerCase() === targetEmp);
+      const targetName = (targetUser?.name || '').toLowerCase();
+      const targetId = targetUser?.id || globalFilters.assignedUser;
+      const targetEmpId = (targetUser?.employeeId || '').toLowerCase();
+
+      baseTasks = tasks.filter(t => {
+        const assignedStr = (t.assignedTo || '').toLowerCase();
+        const createdStr = (t.createdBy || '').toLowerCase();
+        const assignerStr = (t.assignedBy || '').toLowerCase();
+
+        const matchesDirect = assignedStr === targetEmp || assignedStr === targetName || assignedStr === targetEmpId || t.assignedTo === targetId ||
+                              createdStr === targetEmp || createdStr === targetName || createdStr === targetEmpId || t.createdBy === targetId ||
+                              assignerStr === targetEmp || assignerStr === targetName || assignerStr === targetEmpId || t.assignedBy === targetId;
+
+        const matchesTeam = t.workType === 'TEAM' && Array.isArray(t.assignedTechnicians) && t.assignedTechnicians.some((at: any) => {
+          const atEmp = (at.employeeId || '').toLowerCase();
+          const atName = (at.name || '').toLowerCase();
+          return atEmp === targetEmp || atEmp === targetEmpId || atName === targetName || at.id === targetId;
+        });
+
+        return matchesDirect || matchesTeam;
       });
     }
 
     // Apply Global Filters
     return baseTasks.filter(t => {
       const matchesSearch = !globalFilters.search || 
-        t.title.toLowerCase().includes(globalFilters.search.toLowerCase()) ||
-        t.details.toLowerCase().includes(globalFilters.search.toLowerCase());
+        (t.title || '').toLowerCase().includes(globalFilters.search.toLowerCase()) ||
+        (t.details || '').toLowerCase().includes(globalFilters.search.toLowerCase()) ||
+        (t.taskId || '').toLowerCase().includes(globalFilters.search.toLowerCase()) ||
+        (t.model || '').toLowerCase().includes(globalFilters.search.toLowerCase());
       
       const matchesModel = globalFilters.model === 'ALL' || t.model === globalFilters.model;
       
@@ -2300,17 +2334,36 @@ export default function App() {
     }
   };
 
-  const handleProcessEmployees = async (silent = false) => {
-    console.log('handleProcessEmployees called, silent:', silent);
+  const handleProcessEmployees = async (fileOrSilent?: File | boolean) => {
+    const isFile = fileOrSilent instanceof File;
+    const silent = typeof fileOrSilent === 'boolean' ? fileOrSilent : false;
+    console.log('handleProcessEmployees called, isFile:', isFile, 'silent:', silent);
     if (!silent) setIsProcessingEmployees(true);
     try {
       const token = localStorage.getItem('token');
       if (!token) return;
       
-      const data = await fetchJson('/api/system/process-employees', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      let data: any;
+      if (isFile) {
+        const formData = new FormData();
+        formData.append('file', fileOrSilent);
+        const res = await fetch('/api/system/process-employees', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          },
+          body: formData
+        });
+        data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || 'Failed to process employee file');
+        }
+      } else {
+        data = await fetchJson('/api/system/process-employees', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+      }
       
       if (!silent) {
         toast.success(`${data.message}\nCreated: ${data.createdCount}\nUpdated: ${data.updatedCount}`);
@@ -2726,6 +2779,7 @@ export default function App() {
   const [assignDuration, setAssignDuration] = useState('60');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const panelRestoreInputRef = useRef<HTMLInputElement>(null);
+  const employeeExcelInputRef = useRef<HTMLInputElement>(null);
   const [newTask, setNewTask] = useState({
     title: '',
     model: 'Portable',
@@ -3007,7 +3061,11 @@ export default function App() {
       });
       
       const token2 = localStorage.getItem('token');
-      if (token2) await fetchTasks(token2);
+      if (token2) {
+        await fetchTasks(token2);
+        await fetchStaff(token2);
+        await fetchPoints(token2);
+      }
       setIsStatusUpdateModalOpen(false);
       setStatusUpdateTask(null);
       setStatusUpdateData({ progress: 0, status: 'RUNNING', remarks: '', actualCompletionTime: '' });
@@ -3208,8 +3266,38 @@ export default function App() {
     }
   };
 
-  const [activeTaskTab, setActiveTaskTab] = useState<'ALL' | 'PENDING' | 'RUNNING' | 'COMPLETED'>('ALL');
+  const [activeTaskTab, setActiveTaskTab] = useState<'ALL' | 'PENDING' | 'RUNNING' | 'COMPLETED' | 'Hold Task'>('ALL');
   const [taskLimit, setTaskLimit] = useState<number>(100);
+
+  const getTaskTechnicianType = (task: Task): 'Hired' | 'Own' => {
+    if (task.requestStatus === 'RECOMMENDED' || task.status === 'REQUESTED') {
+      return 'Hired';
+    }
+
+    const creatorEmpId = task.createdBy || task.assignedBy;
+    const creator = staffList.find(s => s.employeeId === creatorEmpId || s.id === creatorEmpId);
+
+    if (task.workType === 'TEAM' && Array.isArray(task.assignedTechnicians) && task.assignedTechnicians.length > 0) {
+      const hasOtherTeam = task.assignedTechnicians.some(at => {
+        const tech = staffList.find(s => s.employeeId === at.employeeId || s.name === at.name || (at as any).id === s.id);
+        if (!tech) return false;
+        if (!creator) return false;
+        return tech.supervisorId && tech.supervisorId !== creator.id && tech.supervisorId !== creator.employeeId;
+      });
+      return hasOtherTeam ? 'Hired' : 'Own';
+    }
+
+    if (task.assignedTo) {
+      const tech = staffList.find(s => s.id === task.assignedTo || s.name?.toLowerCase().trim() === task.assignedTo?.toLowerCase().trim() || s.employeeId === task.assignedTo);
+      if (tech && tech.role === 'TECHNICIAN' && creator) {
+        if (tech.supervisorId && tech.supervisorId !== creator.id && tech.supervisorId !== creator.employeeId) {
+          return 'Hired';
+        }
+      }
+    }
+
+    return 'Own';
+  };
 
   const calculateDuration = (start?: string, end?: string) => {
     if (!start || !end) return 'N/A';
@@ -5956,8 +6044,24 @@ export default function App() {
                   <option value="SINGLE">Single Work</option>
                   <option value="TEAM">Team Work</option>
                 </select>
+                <select
+                  value={globalFilters.assignedUser || 'ALL'}
+                  onChange={(e) => setGlobalFilters({...globalFilters, assignedUser: e.target.value})}
+                  className="bg-black/20 border border-white/10 rounded-xl px-4 py-2 text-sm text-white focus:outline-none"
+                  title="Filter by User / Team"
+                >
+                  <option value="ALL">All Users</option>
+                  <option value="MY_SCOPE">My Tasks & Team</option>
+                  <optgroup label="Staff Members">
+                    {staffList.map(s => (
+                      <option key={s.id} value={s.employeeId || s.id} className="bg-[#0f0f12]">
+                        {s.name} ({s.employeeId}) - {s.role}
+                      </option>
+                    ))}
+                  </optgroup>
+                </select>
                 <button 
-                  onClick={() => setGlobalFilters({ search: '', startDate: '', endDate: '', model: 'ALL', workType: 'ALL' })}
+                  onClick={() => setGlobalFilters({ search: '', startDate: '', endDate: '', model: 'ALL', workType: 'ALL', assignedUser: 'ALL' })}
                   className="p-2 text-gray-500 hover:text-red-400 transition-colors"
                   title="Clear Filters"
                 >
@@ -5965,22 +6069,29 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="flex gap-4 border-b border-white/10 pb-4">
-                {(['ALL', 'PENDING', 'RUNNING', 'COMPLETED'] as const).map((status) => (
+              <div className="w-full flex items-center gap-3 sm:gap-4 border-b border-white/10 pb-4 overflow-x-auto scrollbar-thin px-2 sm:px-4">
+                {(['ALL', 'PENDING', 'RUNNING', 'COMPLETED', 'Hold Task'] as const).map((status) => (
                   <button
                     key={status}
                     onClick={() => setActiveTaskTab(status)}
                     className={cn(
-                      "px-6 py-2 rounded-xl text-sm font-bold transition-all relative",
-                      activeTaskTab === status ? "text-blue-400" : "text-gray-500 hover:text-gray-300"
+                      "px-6 sm:px-8 py-2.5 sm:py-3 rounded-xl text-sm font-bold transition-all relative flex items-center gap-2 whitespace-nowrap",
+                      activeTaskTab === status ? "text-blue-400 bg-blue-500/10 border border-blue-500/30" : "text-gray-400 hover:text-gray-200 hover:bg-white/5 border border-transparent"
                     )}
                   >
-                    {status}
+                    <span>{status}</span>
                     {activeTaskTab === status && (
                       <motion.div layoutId="activeTaskTab" className="absolute bottom-[-17px] left-0 right-0 h-1 bg-blue-500 rounded-full" />
                     )}
-                    <span className="ml-2 px-2 py-0.5 rounded-full bg-white/5 text-[10px]">
-                      {status === 'ALL' ? filteredTasks.length : filteredTasks.filter(t => t.status === status).length}
+                    <span className={cn(
+                      "ml-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold",
+                      activeTaskTab === status ? "bg-blue-500 text-white" : "bg-white/10 text-gray-400"
+                    )}>
+                      {status === 'ALL' 
+                        ? filteredTasks.length 
+                        : status === 'Hold Task' 
+                          ? filteredTasks.filter(t => t.status === 'HOLD').length 
+                          : filteredTasks.filter(t => t.status === status).length}
                     </span>
                   </button>
                 ))}
@@ -6018,74 +6129,145 @@ export default function App() {
                 <div className="overflow-x-auto max-h-[600px] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
                   <table className="w-full text-left border-collapse">
                     <thead className="sticky top-0 bg-[#0a0a0c] z-20 shadow-sm">
-                      <tr className="border-b border-white/10 text-gray-400 text-[10px] uppercase tracking-widest">
+                      <tr className="border-b border-white/10 text-gray-400 text-[10px] uppercase tracking-widest whitespace-nowrap">
                         <th className="px-4 py-4 font-bold">Task ID</th>
                         <th className="px-4 py-4 font-bold">Title & Assigned</th>
                         <th className="px-4 py-4 font-bold">Concern</th>
                         <th className="px-4 py-4 font-bold">Model</th>
                         <th className="px-4 py-4 font-bold">Urgency</th>
                         <th className="px-4 py-4 font-bold">Points</th>
+                        <th className="px-4 py-4 font-bold">Technician Type</th>
+                        <th className="px-4 py-4 font-bold">Start Time</th>
+                        <th className="px-4 py-4 font-bold">Complete Time</th>
                         <th className="px-4 py-4 font-bold">Status</th>
                         <th className="px-4 py-4 font-bold">Progress</th>
                         <th className="px-4 py-4 font-bold">Deadline</th>
+                        <th className="px-4 py-4 font-bold text-center">Fix It</th>
                         <th className="px-4 py-4 font-bold text-right">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
                       {filteredTasks
-                        .filter(t => activeTaskTab === 'ALL' || t.status === activeTaskTab)
+                        .filter(t => activeTaskTab === 'ALL' || (activeTaskTab === 'Hold Task' ? t.status === 'HOLD' : t.status === activeTaskTab))
                         .slice(0, taskLimit)
                         .map(task => (
                         <tr key={task.id} className="hover:bg-white/5 transition-all group">
-                          <td className="px-4 py-4 text-sm font-mono text-blue-400">{task.taskId}</td>
+                          <td className="px-4 py-4 text-sm font-mono text-blue-400 font-bold whitespace-nowrap">{task.taskId}</td>
                           <td className="px-4 py-4">
-                            <p className="text-sm font-bold">{task.title}</p>
-                            <p className="text-[10px] text-gray-500 mt-1">
-                            Assigned to: {
-                              (() => {
-                                const assignee = staffList.find(s => s.id === task.assignedTo || s.name.toLowerCase() === task.assignedTo.toLowerCase());
-                                if (assignee) {
-                                  return `${assignee.name} (${assignee.employeeId})`;
+                            <p className="text-sm font-bold text-white group-hover:text-blue-400 transition-colors">{task.title}</p>
+                            <p className="text-[11px] text-gray-400 mt-1">
+                              <span className="text-gray-500">Assigned to: </span>
+                              {(() => {
+                                if (task.workType === 'TEAM' && Array.isArray(task.assignedTechnicians) && task.assignedTechnicians.length > 0) {
+                                  return (
+                                    <span className="text-blue-300 font-medium">
+                                      Team ({task.assignedTechnicians.length} techs): {task.assignedTechnicians.map(t => t.name || t.employeeId).join(', ')}
+                                    </span>
+                                  );
                                 }
-                                return task.assignedTo;
-                              })()
-                            }
+                                const assignee = staffList.find(s => s.id === task.assignedTo || s.name.toLowerCase() === (task.assignedTo || '').toLowerCase() || s.employeeId === task.assignedTo);
+                                if (assignee) {
+                                  return <span className="text-blue-300 font-medium">{assignee.name} ({assignee.employeeId})</span>;
+                                }
+                                return task.assignedTo || 'Unassigned';
+                              })()}
                             </p>
                           </td>
-                          <td className="px-4 py-4">
+                          <td className="px-4 py-4 whitespace-nowrap">
                             {(() => {
                               const officer = staffList.find(s => s.employeeId === task.assignedBy || s.id === task.assignedBy);
                               if (officer) {
                                 return <span className="text-sm text-blue-400 font-medium">{officer.name}</span>;
                               }
-                              const assignee = staffList.find(s => s.id === task.assignedTo || s.name.toLowerCase() === task.assignedTo.toLowerCase());
+                              const creator = staffList.find(s => s.employeeId === task.createdBy || s.id === task.createdBy);
+                              if (creator) {
+                                return <span className="text-sm text-blue-400 font-medium">{creator.name}</span>;
+                              }
+                              const assignee = staffList.find(s => s.id === task.assignedTo || s.name.toLowerCase() === (task.assignedTo || '').toLowerCase());
                               if (assignee?.role === 'TECHNICIAN') {
-                                const supervisor = staffList.find(s => s.id === assignee.supervisorId);
+                                const supervisor = staffList.find(s => s.id === assignee.supervisorId || s.employeeId === assignee.supervisorId);
                                 return <span className="text-sm text-blue-400 font-medium">{supervisor?.name || 'N/A'}</span>;
                               }
                               return <span className="text-sm text-gray-500">N/A</span>;
                             })()}
                           </td>
-                          <td className="px-4 py-4 text-sm">{task.model}</td>
-                          <td className="px-4 py-4">
+                          <td className="px-4 py-4 text-sm font-semibold text-gray-300 whitespace-nowrap">{task.model}</td>
+                          <td className="px-4 py-4 whitespace-nowrap">
                             <span className={cn(
-                              "text-[10px] font-bold px-2 py-1 rounded-full",
-                              task.urgency === 'MOST_URGENT' ? "bg-red-500/20 text-red-500" : 
-                              task.urgency === 'URGENT' ? "bg-amber-500/20 text-amber-500" : "bg-blue-500/20 text-blue-500"
+                              "text-[10px] font-bold px-2.5 py-1 rounded-full",
+                              task.urgency === 'MOST_URGENT' ? "bg-red-500/20 text-red-400 border border-red-500/30" : 
+                              task.urgency === 'URGENT' ? "bg-amber-500/20 text-amber-400 border border-amber-500/30" : "bg-blue-500/20 text-blue-400 border border-blue-500/30"
                             )}>
                               {task.urgency}
                             </span>
                           </td>
-                          <td className="px-4 py-4">
-                            <span className="text-sm font-bold text-blue-400">{task.points || 0}</span>
+                          <td className="px-4 py-4 whitespace-nowrap">
+                            <span className="text-sm font-black text-blue-400">{task.points || 0}</span>
                           </td>
-                          <td className="px-4 py-4">
+                          <td className="px-4 py-4 whitespace-nowrap">
+                            {getTaskTechnicianType(task) === 'Hired' ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-black uppercase tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/40">
+                                <Users size={12} className="text-purple-400" /> Hired
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                                <UserCheck size={12} className="text-emerald-400" /> Own
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-4 whitespace-nowrap">
+                            {(() => {
+                              const sTime = task.customStartTime || task.startedAt || task.createdAt;
+                              if (!sTime) return <span className="text-gray-500 text-xs">-</span>;
+                              const d = new Date(sTime);
+                              if (isNaN(d.getTime())) return <span className="text-gray-300 text-xs">{sTime}</span>;
+                              return (
+                                <div className="flex flex-col">
+                                  <span className="text-xs font-semibold text-gray-200">
+                                    {d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                  </span>
+                                  <span className="text-[11px] text-gray-400 font-mono">
+                                    {d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                                  </span>
+                                </div>
+                              );
+                            })()}
+                          </td>
+                          <td className="px-4 py-4 whitespace-nowrap">
+                            {(() => {
+                              const cTime = task.actualCompletionTime || task.completedAt;
+                              if (!cTime) {
+                                return (
+                                  <span className={cn(
+                                    "text-[11px] font-medium px-2 py-0.5 rounded whitespace-nowrap",
+                                    task.status === 'RUNNING' ? "text-amber-400 bg-amber-400/10 border border-amber-400/20" : 
+                                    task.status === 'HOLD' ? "text-red-400 bg-red-400/10 border border-red-400/20" : "text-gray-500"
+                                  )}>
+                                    {task.status === 'RUNNING' ? 'In Progress' : task.status === 'HOLD' ? 'On Hold' : '-'}
+                                  </span>
+                                );
+                              }
+                              const d = new Date(cTime);
+                              if (isNaN(d.getTime())) return <span className="text-gray-300 text-xs">{cTime}</span>;
+                              return (
+                                <div className="flex flex-col">
+                                  <span className="text-xs font-semibold text-green-400">
+                                    {d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                  </span>
+                                  <span className="text-[11px] text-green-300/80 font-mono">
+                                    {d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                                  </span>
+                                </div>
+                              );
+                            })()}
+                          </td>
+                          <td className="px-4 py-4 whitespace-nowrap">
                             <span className={cn(
-                              "text-xs px-2 py-1 rounded-full font-bold",
-                              task.status === 'RUNNING' ? "bg-amber-500/20 text-amber-500" : 
-                              task.status === 'COMPLETED' ? "bg-green-500/20 text-green-500" :
-                              task.status === 'HOLD' ? "bg-red-500/20 text-red-500" :
-                              "bg-blue-500/20 text-blue-500"
+                              "text-xs px-2.5 py-1 rounded-full font-bold inline-block",
+                              task.status === 'RUNNING' ? "bg-amber-500/20 text-amber-400 border border-amber-500/30" : 
+                              task.status === 'COMPLETED' ? "bg-green-500/20 text-green-400 border border-green-500/30" :
+                              task.status === 'HOLD' ? "bg-red-500/20 text-red-400 border border-red-500/30" :
+                              "bg-blue-500/20 text-blue-400 border border-blue-500/30"
                             )}>
                               {task.status}
                             </span>
@@ -6095,17 +6277,41 @@ export default function App() {
                               </p>
                             )}
                           </td>
-                          <td className="px-4 py-4">
+                          <td className="px-4 py-4 whitespace-nowrap">
                             <CountdownTimer task={task} />
                           </td>
-                          <td className="px-4 py-4">
+                          <td className="px-4 py-4 whitespace-nowrap">
                             <div className="flex flex-col">
-                              <span className="text-sm font-black text-red-500 uppercase tracking-tighter">
+                              <span className="text-xs font-black text-red-400 uppercase tracking-tight">
                                 {task.engineer_deadline ? new Date(task.engineer_deadline).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }) : (task.deadline ? new Date(task.deadline).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'N/A')}
                               </span>
                             </div>
                           </td>
-                          <td className="px-4 py-4 text-right">
+                          <td className="px-4 py-4 text-center whitespace-nowrap">
+                            {task.status === 'COMPLETED' ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold bg-green-500/15 text-green-400 border border-green-500/25">
+                                <CheckCircle2 size={13} /> Fixed
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  setStatusUpdateTask(task);
+                                  setStatusUpdateData({
+                                    progress: 100,
+                                    status: 'COMPLETED',
+                                    remarks: task.remarks ? `${task.remarks} - Fixed` : 'Issue resolved / Fixed',
+                                    actualCompletionTime: new Date().toISOString().slice(0, 16)
+                                  });
+                                  setIsStatusUpdateModalOpen(true);
+                                }}
+                                className="px-2.5 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 border border-amber-500/30 rounded-lg text-[11px] font-bold transition-all shadow-sm inline-flex items-center gap-1.5"
+                                title="Quick Fix / Complete this Task"
+                              >
+                                <Wrench size={13} /> Fix It
+                              </button>
+                            )}
+                          </td>
+                          <td className="px-4 py-4 text-right whitespace-nowrap">
                             <div className="flex items-center justify-end gap-2">
                               {['OFFICER', 'ENGINEER', 'IN_CHARGE', 'MODEL_MANAGER'].includes(user?.role || '') && task.status !== 'COMPLETED' && (
                                 <button 
@@ -6187,7 +6393,7 @@ export default function App() {
                               </span>
                             </div>
                           </td>
-                          <td colSpan={2} className="px-4 py-5">
+                          <td colSpan={8} className="px-4 py-5">
                              <div className="flex flex-col">
                               <span className="text-[8px] text-gray-500 uppercase font-bold">Total Tasks</span>
                               <span className="text-base font-black text-blue-400">
@@ -6195,7 +6401,6 @@ export default function App() {
                               </span>
                             </div>
                           </td>
-                          <td colSpan={2}></td>
                         </tr>
                       </tfoot>
                     )}
@@ -6291,8 +6496,24 @@ export default function App() {
                   <option value="SINGLE">Single Work</option>
                   <option value="TEAM">Team Work</option>
                 </select>
+                <select
+                  value={globalFilters.assignedUser || 'ALL'}
+                  onChange={(e) => setGlobalFilters({...globalFilters, assignedUser: e.target.value})}
+                  className="bg-black/20 border border-white/10 rounded-xl px-4 py-2 text-sm text-white focus:outline-none"
+                  title="Filter by User / Team"
+                >
+                  <option value="ALL">All Users</option>
+                  <option value="MY_SCOPE">My Tasks & Team</option>
+                  <optgroup label="Staff Members">
+                    {staffList.map(s => (
+                      <option key={s.id} value={s.employeeId || s.id} className="bg-[#0f0f12]">
+                        {s.name} ({s.employeeId}) - {s.role}
+                      </option>
+                    ))}
+                  </optgroup>
+                </select>
                 <button 
-                  onClick={() => setGlobalFilters({ search: '', startDate: '', endDate: '', model: 'ALL', workType: 'ALL' })}
+                  onClick={() => setGlobalFilters({ search: '', startDate: '', endDate: '', model: 'ALL', workType: 'ALL', assignedUser: 'ALL' })}
                   className="p-2 text-gray-500 hover:text-red-400 transition-colors"
                   title="Clear Filters"
                 >
@@ -6800,16 +7021,42 @@ export default function App() {
                         <RefreshCw size={20} />
                         Backfill Points
                       </button>
+                      <input 
+                        type="file" 
+                        ref={employeeExcelInputRef} 
+                        accept=".xlsx, .xls" 
+                        className="hidden" 
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            handleProcessEmployees(file);
+                            e.target.value = '';
+                          }
+                        }} 
+                      />
                       <button 
                         onClick={() => handleProcessEmployees()}
                         disabled={isProcessingEmployees}
                         className={cn(
-                          "bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all border border-blue-600/20",
+                          "bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 px-5 py-3 rounded-xl font-bold flex items-center gap-2 transition-all border border-blue-600/20 shadow-sm",
                           isProcessingEmployees && "opacity-50 cursor-not-allowed"
                         )}
+                        title="Sync directly from server's employee data.xlsx"
                       >
                         <FileSpreadsheet size={20} className={isProcessingEmployees ? "animate-pulse" : ""} />
                         {isProcessingEmployees ? "Processing..." : "Process Employee Data"}
+                      </button>
+                      <button 
+                        onClick={() => employeeExcelInputRef.current?.click()}
+                        disabled={isProcessingEmployees}
+                        className={cn(
+                          "bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 px-5 py-3 rounded-xl font-bold flex items-center gap-2 transition-all border border-emerald-600/20 shadow-sm",
+                          isProcessingEmployees && "opacity-50 cursor-not-allowed"
+                        )}
+                        title="Upload an updated employee data.xlsx file from your device"
+                      >
+                        <Upload size={20} />
+                        Upload Excel
                       </button>
                       <button 
                         onClick={() => fileInputRef.current?.click()}
