@@ -152,20 +152,18 @@ async function startServer() {
           });
         }
 
-        // 2. Officer Points (All Completed Tasks)
-        // Find the officer specifically. We check createdBy, assignedBy, and assignedTo.
+        // 2. Officer Points: STRICT RULE - ONLY the officer who entered the task (createdBy) gets the point!
+        // In cross-team requests, the technician's supervisor must NEVER get the point.
         let officer = null;
         const creator = userByEmpId.get(t.createdBy) || userById.get(t.createdBy);
-        if (creator && creator.role === 'OFFICER') officer = creator;
-        
-        if (!officer && t.assignedBy) {
-          const assigner = userByEmpId.get(t.assignedBy) || userById.get(t.assignedBy);
-          if (assigner && assigner.role === 'OFFICER') officer = assigner;
-        }
-        
-        if (!officer && t.assignedTo) {
-          const assignee = userByEmpId.get(t.assignedTo) || userById.get(t.assignedTo);
-          if (assignee && assignee.role === 'OFFICER') officer = assignee;
+        if (creator && creator.role === 'OFFICER') {
+          officer = creator;
+        } else if (!creator || creator.role !== 'OFFICER') {
+          // If task was entered by an Engineer or higher and assigned to an Officer
+          if (t.assignedTo) {
+            const assignee = userByEmpId.get(t.assignedTo) || userById.get(t.assignedTo);
+            if (assignee && assignee.role === 'OFFICER') officer = assignee;
+          }
         }
         
         if (officer) {
@@ -226,11 +224,11 @@ async function startServer() {
     const techName = (techUser.name || '').toLowerCase();
 
     return tasks.some((t: any) => {
-      // Completed, rejected, cancelled, or pending requests are NOT active working tasks
-      if (t.status !== 'RUNNING' && t.status !== 'DELAYED' && t.status !== 'HOLD') {
+      // Completed, rejected, cancelled, requested, or pending tasks are NOT active working tasks
+      if (t.status === 'COMPLETED' || t.status === 'REJECTED' || t.status === 'REQUESTED' || t.status === 'PENDING' || t.status === 'CANCELLED') {
         return false;
       }
-      if (t.status === 'PENDING') {
+      if (t.status !== 'RUNNING' && t.status !== 'DELAYED' && t.status !== 'HOLD') {
         return false;
       }
 
@@ -375,8 +373,10 @@ async function startServer() {
     
     // Create lookup maps for performance
     const userByEmpId = new Map();
+    const userById = new Map();
     users.forEach(u => {
       if (u.employeeId) userByEmpId.set(u.employeeId, u);
+      if (u.id) userById.set(u.id, u);
     });
 
     // Clear existing point transactions to recalculate from scratch as requested
@@ -401,10 +401,10 @@ async function startServer() {
         
         if (creator?.role === 'OFFICER') {
           assignedOfficer = creator;
-        } else if (task.assignedBy) {
-          const assigner = userByEmpId.get(task.assignedBy);
-          if (assigner?.role === 'OFFICER') {
-            assignedOfficer = assigner;
+        } else if (task.assignedTo) {
+          const assignee = userByEmpId.get(task.assignedTo) || userById.get(task.assignedTo);
+          if (assignee?.role === 'OFFICER') {
+            assignedOfficer = assignee;
           }
         }
 
@@ -2014,7 +2014,7 @@ async function startServer() {
         updatedData.startedAt = new Date().toISOString();
       }
 
-      updatedData.assignedBy = user.employeeId;
+      updatedData.assignedBy = oldTask.assignedBy || oldTask.createdBy || user.employeeId;
       updatedData.assignedTechnicians = updatedData.assignedTechnicians.map((t: any) => ({
         ...t,
         progress: t.progress || 0,
@@ -2063,7 +2063,7 @@ async function startServer() {
           updatedData.status = 'RUNNING';
           updatedData.startedAt = new Date().toISOString();
         }
-        updatedData.assignedBy = user.employeeId; 
+        updatedData.assignedBy = oldTask.assignedBy || oldTask.createdBy || user.employeeId; 
         if (!updatedData.logs) updatedData.logs = [...(oldTask.logs || [])];
         updatedData.logs.push({
           id: Date.now().toString(),
@@ -2283,18 +2283,21 @@ async function startServer() {
       }
 
       // Point System: Add points if COMPLETED + APPROVED (or recommended)
-      const creator = users.find(u => u.employeeId === oldTask.createdBy);
+      const creator = users.find(u => u.employeeId === oldTask.createdBy || u.id === oldTask.createdBy);
       const isOfficerTask = creator?.role === 'OFFICER';
       const isEngineerTask = creator?.role === 'ENGINEER';
       const isApproved = updatedData.requestStatus === 'APPROVED' || oldTask.requestStatus === 'APPROVED' || (!oldTask.requestStatus && oldTask.status === 'RUNNING') || oldTask.engineerApproved || updatedData.engineerApproved;
 
       if (isOfficerTask) {
-        const officer = users.find(u => u.employeeId === oldTask.assignedBy) || users.find(u => u.employeeId === oldTask.createdBy);
+        // STRICT RULE: ONLY the officer who entered (createdBy) the task gets the points!
+        // In cross-team requests, the technician's supervisor must NEVER get the points.
+        const officer = creator;
         if (officer && officer.role === 'OFFICER') {
           const finalPoints = Number(updatedData.points !== undefined ? updatedData.points : (oldTask.points || 0));
           const existingTxIndex = pointTransactions.findIndex(pt => pt.taskId === oldTask.id);
           if (existingTxIndex !== -1) {
             pointTransactions[existingTxIndex].pointValue = finalPoints;
+            pointTransactions[existingTxIndex].officerId = officer.id;
             pointTransactions[existingTxIndex].completedAt = updatedData.completedAt || new Date().toISOString();
           } else {
             pointTransactions.push({
@@ -2312,7 +2315,8 @@ async function startServer() {
           }
         }
       } else if (!oldTask.pointAdded && isEngineerTask) {
-        const officer = users.find(u => u.employeeId === oldTask.assignedBy) || users.find(u => u.employeeId === oldTask.createdBy);
+        // Engineer created task assigned to an Officer
+        const officer = users.find(u => (u.id === oldTask.assignedTo || u.name === oldTask.assignedTo || u.employeeId === oldTask.assignedTo) && u.role === 'OFFICER');
         if (officer && officer.role === 'OFFICER') {
           pointTransactions.push({
             id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
@@ -2321,7 +2325,7 @@ async function startServer() {
             engineerId: oldTask.approvedBy || oldTask.createdBy || '',
             pointValue: updatedData.points || oldTask.points || 1,
             taskPriority: oldTask.urgency,
-            completedAt: updatedData.completedAt
+            completedAt: updatedData.completedAt || new Date().toISOString()
           });
           updatedData.pointAdded = true;
         }

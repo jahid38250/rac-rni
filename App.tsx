@@ -1479,18 +1479,21 @@ export default function App() {
     const taskPoints = tasks.filter(t => {
       // Logic must match filteredTasks for consistency
       const assignedTo = (t.assignedTo || '').toLowerCase();
-      const isAssignedToMe = assignedTo === myName || t.assignedTo === officer.id;
-      const isCreatedByMe = t.createdBy === myEmpId;
-      const isAssignedByMe = t.assignedBy === myEmpId;
+      const isAssignedToMe = assignedTo === myName || t.assignedTo === officer.id || t.assignedTo === myEmpId;
+      const isCreatedByMe = t.createdBy === myEmpId || t.createdBy === officer.id;
       
-      const subordinates = staffList.filter(s => s.supervisorId === officer.id).map(s => s.name.toLowerCase());
-      const isAssignedToSubordinate = subordinates.includes(assignedTo);
+      const creator = staffList.find(s => s.employeeId === t.createdBy || s.id === t.createdBy);
+
+      // STRICT RULE: Points are ONLY added to the Officer who entered the task (createdBy).
+      // In cross-team requests, the technician's supervisor must NEVER get the points!
+      // If task was entered by an Engineer or higher and assigned to this Officer, the officer also gets the points.
+      let isInScope = false;
+      if (isCreatedByMe) {
+        isInScope = true;
+      } else if (isAssignedToMe && creator?.role !== 'OFFICER') {
+        isInScope = true;
+      }
       
-      const assignee = staffList.find(s => s.id === t.assignedTo || s.name.toLowerCase() === assignedTo);
-      const isAssignedToMappedUser = assignee?.assignedEngineers?.includes(myEmpId);
-      const isMappedToMe = assignee && myAssignedEngs.includes(assignee.employeeId);
-      
-      const isInScope = isAssignedToMe || isAssignedToSubordinate || isCreatedByMe || isAssignedByMe || isAssignedToMappedUser || isMappedToMe;
       const isCompleted = t.status === 'COMPLETED';
       
       if (!isInScope || !isCompleted) return false;
@@ -1510,7 +1513,7 @@ export default function App() {
     // Include manual adjustments from pointTransactions to ensure they aren't lost,
     // but the primary source is the tasks table.
     const manualPoints = pointTransactions.filter(pt => {
-      if (pt.officerId !== officerId || pt.taskId !== 'MANUAL_ADJUSTMENT') return false;
+      if ((pt.officerId !== officer.id && pt.officerId !== officer.employeeId) || pt.taskId !== 'MANUAL_ADJUSTMENT') return false;
       if (monthOnly) {
         const ptDate = new Date(pt.completedAt);
         return ptDate.getMonth() === now.getMonth() && ptDate.getFullYear() === now.getFullYear();
@@ -1528,22 +1531,21 @@ export default function App() {
 
     const myName = officer.name.toLowerCase();
     const myEmpId = officer.employeeId;
-    const myAssignedEngs = officer.assignedEngineers || [];
 
     return tasks.filter(t => {
       const assignedTo = (t.assignedTo || '').toLowerCase();
-      const isAssignedToMe = assignedTo === myName || t.assignedTo === officer.id;
-      const isCreatedByMe = t.createdBy === myEmpId;
-      const isAssignedByMe = t.assignedBy === myEmpId;
+      const isAssignedToMe = assignedTo === myName || t.assignedTo === officer.id || t.assignedTo === myEmpId;
+      const isCreatedByMe = t.createdBy === myEmpId || t.createdBy === officer.id;
       
-      const subordinates = staffList.filter(s => s.supervisorId === officer.id).map(s => s.name.toLowerCase());
-      const isAssignedToSubordinate = subordinates.includes(assignedTo);
-      
-      const assignee = staffList.find(s => s.id === t.assignedTo || s.name.toLowerCase() === assignedTo);
-      const isAssignedToMappedUser = assignee?.assignedEngineers?.includes(myEmpId);
-      const isMappedToMe = assignee && myAssignedEngs.includes(assignee.employeeId);
-      
-      const isInScope = isAssignedToMe || isAssignedToSubordinate || isCreatedByMe || isAssignedByMe || isAssignedToMappedUser || isMappedToMe;
+      const creator = staffList.find(s => s.employeeId === t.createdBy || s.id === t.createdBy);
+
+      let isInScope = false;
+      if (isCreatedByMe) {
+        isInScope = true;
+      } else if (isAssignedToMe && creator?.role !== 'OFFICER') {
+        isInScope = true;
+      }
+
       const isCompleted = t.status === 'COMPLETED';
       
       if (!isInScope || !isCompleted) return false;
@@ -3055,7 +3057,7 @@ export default function App() {
 
     if (['HOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(user?.role || '') && !editingTask) {
       // Strict Assignment Rule Validation for all hierarchical roles
-      const assignedStaff = staffList.find(s => s.id === newTask.assignedTo || s.name === newTask.assignedTo);
+      const assignedStaff = staffList.find(s => s.id === newTask.assignedTo || s.name === newTask.assignedTo || s.employeeId === newTask.assignedTo);
       if (assignedStaff) {
         const currentUserData = staffList.find(u => u.id === user?.id) || user;
         const myEmpId = currentUserData?.employeeId;
@@ -3592,8 +3594,8 @@ export default function App() {
     if (!tech) return { status: 'Free', color: 'text-emerald-400', bg: 'bg-emerald-400/10', task: null };
 
     const techTasks = tasks.filter(t => {
-      // Completed, rejected, cancelled, or pending requests are not active working tasks
-      if (t.status === 'COMPLETED' || t.status === 'REJECTED' || t.status === 'REQUESTED' || (t as any).status === 'CANCELLED') return false;
+      // Completed, rejected, cancelled, requested, or pending tasks are not active working tasks
+      if (t.status === 'COMPLETED' || t.status === 'REJECTED' || t.status === 'REQUESTED' || t.status === 'PENDING' || (t as any).status === 'CANCELLED') return false;
 
       const techName = (tech.name || '').toLowerCase();
       const assignedTo = (t.assignedTo || '').toLowerCase();
@@ -3605,9 +3607,7 @@ export default function App() {
       return false;
     });
 
-    const activeTask = techTasks.find(t => t.status === 'RUNNING') || 
-      techTasks.find(t => t.status === 'DELAYED' || t.status === 'HOLD') || 
-      techTasks.find(t => t.status === 'PENDING' && t.requestStatus !== 'PENDING');
+    const activeTask = techTasks.find(t => t.status === 'RUNNING' || t.status === 'DELAYED' || t.status === 'HOLD');
     
     // Check leave / shift off statuses from attendance or user record
     if (tech.status === 'ON_LEAVE') return { status: 'On Leave', color: 'text-red-400', bg: 'bg-red-400/10', task: null };
@@ -6877,7 +6877,7 @@ export default function App() {
                   <h2 className="text-xl font-bold mb-4 text-blue-400">My Team Technicians</h2>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {staffList.filter(s => s.supervisorId === user.id).map((staff, i) => {
-                      const isWorking = tasks.some(t => t.assignedTo === staff.name && (t.status === 'PENDING' || t.status === 'RUNNING'));
+                      const isWorking = getTechnicianStatus(staff.employeeId).status === 'Working';
                       return (
                         <GlassCard key={staff.id} className="flex flex-col items-center text-center relative group transition-all duration-300 hover:bg-white/10">
                           <div className="absolute top-4 left-4">
@@ -6901,7 +6901,7 @@ export default function App() {
                           {isWorking && (
                             <div className="w-full mt-2">
                               {tasks
-                                .filter(t => (t.assignedTo === staff.name || t.assignedTo === staff.employeeId) && (t.status === 'RUNNING' || t.status === 'PENDING'))
+                                .filter(t => (t.assignedTo === staff.name || t.assignedTo === staff.employeeId || t.assignedTo === staff.id) && (t.status === 'RUNNING' || t.status === 'DELAYED' || t.status === 'HOLD'))
                                 .map(t => (
                                   <div key={t.id} className="mb-2">
                                     <p className="text-[10px] text-blue-400 font-bold truncate mb-1">{t.title}</p>
@@ -6933,7 +6933,7 @@ export default function App() {
                   <h2 className="text-xl font-bold mt-12 mb-4 text-gray-400">Other Team Technicians</h2>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {staffList.filter(s => s.role === 'TECHNICIAN' && s.supervisorId !== user.id).map((staff, i) => {
-                      const isWorking = tasks.some(t => t.assignedTo === staff.name && (t.status === 'PENDING' || t.status === 'RUNNING'));
+                      const isWorking = getTechnicianStatus(staff.employeeId).status === 'Working';
                       return (
                         <GlassCard key={staff.id} className="flex flex-col items-center text-center relative group opacity-70 hover:opacity-100 transition-all duration-300 hover:bg-white/10">
                           <div className="absolute top-4 left-4">
