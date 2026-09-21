@@ -167,12 +167,15 @@ async function startServer() {
         
         if (creator && creator.role === 'OFFICER') {
           officer = creator;
-        } else if (!creator || creator.role !== 'OFFICER') {
-          if (t.assignedTo) {
-            const assignedStr = String(t.assignedTo).toLowerCase().trim();
-            const assignee = userByEmpId.get(assignedStr) || userById.get(assignedStr) || userByName.get(assignedStr);
-            if (assignee && assignee.role === 'OFFICER') officer = assignee;
-          }
+        } else if (t.assignedBy) {
+          const assignerStr = String(t.assignedBy || '').toLowerCase().trim();
+          const assigner = userByEmpId.get(assignerStr) || userById.get(assignerStr) || userByName.get(assignerStr);
+          if (assigner && assigner.role === 'OFFICER') officer = assigner;
+        }
+        if (!officer && t.assignedTo) {
+          const assignedStr = String(t.assignedTo).toLowerCase().trim();
+          const assignee = userByEmpId.get(assignedStr) || userById.get(assignedStr) || userByName.get(assignedStr);
+          if (assignee && assignee.role === 'OFFICER') officer = assignee;
         }
         
         if (officer) {
@@ -421,7 +424,13 @@ async function startServer() {
         
         if (creator?.role === 'OFFICER') {
           assignedOfficer = creator;
-        } else if (task.assignedTo) {
+        } else if (task.assignedBy) {
+          const assigner = userByEmpId.get(task.assignedBy) || userById.get(task.assignedBy);
+          if (assigner?.role === 'OFFICER') {
+            assignedOfficer = assigner;
+          }
+        }
+        if (!assignedOfficer && task.assignedTo) {
           const assignee = userByEmpId.get(task.assignedTo) || userById.get(task.assignedTo);
           if (assignee?.role === 'OFFICER') {
             assignedOfficer = assignee;
@@ -2378,71 +2387,55 @@ async function startServer() {
         (u.id && String(u.id).toLowerCase().trim() === creatorStr) ||
         (u.name && String(u.name).toLowerCase().trim() === creatorStr)
       );
-      const isOfficerTask = creator?.role === 'OFFICER';
 
-      if (isOfficerTask && isNowCompleted) {
-        // STRICT RULE: ONLY the officer who entered (createdBy) the task gets the points!
-        const officer = creator;
-        if (officer && officer.role === 'OFFICER') {
-          let finalPoints = Number(updatedData.points !== undefined ? updatedData.points : (oldTask.points || 0));
-          if (finalPoints === 0) {
-            const urgency = updatedData.urgency || oldTask.urgency;
-            finalPoints = urgency === 'MOST_URGENT' ? 3 : urgency === 'URGENT' ? 2 : 1;
-          }
-          updatedData.points = finalPoints;
-          updatedData.pointAdded = true;
-
-          const existingTxIndex = pointTransactions.findIndex(pt => pt.taskId === oldTask.id);
-          if (existingTxIndex !== -1) {
-            pointTransactions[existingTxIndex].pointValue = finalPoints;
-            pointTransactions[existingTxIndex].officerId = officer.id;
-            pointTransactions[existingTxIndex].completedAt = updatedData.completedAt || new Date().toISOString();
-          } else {
-            pointTransactions.push({
-              id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-              taskId: oldTask.id,
-              officerId: officer.id,
-              engineerId: oldTask.approvedBy || oldTask.recommendedBy || '',
-              pointValue: finalPoints,
-              taskPriority: oldTask.urgency,
-              completedAt: updatedData.completedAt || new Date().toISOString()
-            });
-          }
-        }
-      } else if (isNowCompleted) {
-        // Engineer or other role created task assigned to an Officer
-        const assignedStr = String(oldTask.assignedTo || updatedData.assignedTo || '').toLowerCase().trim();
-        const officer = users.find(u => 
-          ((u.id && String(u.id).toLowerCase().trim() === assignedStr) || 
-           (u.name && String(u.name).toLowerCase().trim() === assignedStr) || 
-           (u.employeeId && String(u.employeeId).toLowerCase().trim() === assignedStr)) && 
-          u.role === 'OFFICER'
+      let officer = null;
+      if (creator && creator.role === 'OFFICER') {
+        officer = creator;
+      } else {
+        const assignerStr = String(oldTask.assignedBy || updatedData.assignedBy || '').toLowerCase().trim();
+        const assigner = users.find(u => 
+          (u.employeeId && String(u.employeeId).toLowerCase().trim() === assignerStr) || 
+          (u.id && String(u.id).toLowerCase().trim() === assignerStr) ||
+          (u.name && String(u.name).toLowerCase().trim() === assignerStr)
         );
-        if (officer) {
-          let finalPoints = Number(updatedData.points !== undefined ? updatedData.points : (oldTask.points || 0));
-          if (finalPoints === 0) {
-            const urgency = updatedData.urgency || oldTask.urgency;
-            finalPoints = urgency === 'MOST_URGENT' ? 3 : urgency === 'URGENT' ? 2 : 1;
-          }
-          updatedData.points = finalPoints;
-          updatedData.pointAdded = true;
+        if (assigner && assigner.role === 'OFFICER') {
+          officer = assigner;
+        } else {
+          const assignedStr = String(oldTask.assignedTo || updatedData.assignedTo || '').toLowerCase().trim();
+          const assignee = users.find(u => 
+            ((u.id && String(u.id).toLowerCase().trim() === assignedStr) || 
+             (u.name && String(u.name).toLowerCase().trim() === assignedStr) || 
+             (u.employeeId && String(u.employeeId).toLowerCase().trim() === assignedStr)) && 
+            u.role === 'OFFICER'
+          );
+          if (assignee) officer = assignee;
+        }
+      }
 
-          const existingTxIndex = pointTransactions.findIndex(pt => pt.taskId === oldTask.id);
-          if (existingTxIndex !== -1) {
-            pointTransactions[existingTxIndex].pointValue = finalPoints;
-            pointTransactions[existingTxIndex].officerId = officer.id;
-            pointTransactions[existingTxIndex].completedAt = updatedData.completedAt || new Date().toISOString();
-          } else {
-            pointTransactions.push({
-              id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-              taskId: oldTask.id,
-              officerId: officer.id,
-              engineerId: oldTask.approvedBy || oldTask.createdBy || '',
-              pointValue: finalPoints,
-              taskPriority: oldTask.urgency,
-              completedAt: updatedData.completedAt || new Date().toISOString()
-            });
-          }
+      if (officer && isNowCompleted) {
+        let finalPoints = Number(updatedData.points !== undefined ? updatedData.points : (oldTask.points || 0));
+        if (finalPoints === 0) {
+          const urgency = updatedData.urgency || oldTask.urgency;
+          finalPoints = urgency === 'MOST_URGENT' ? 3 : urgency === 'URGENT' ? 2 : 1;
+        }
+        updatedData.points = finalPoints;
+        updatedData.pointAdded = true;
+
+        const existingTxIndex = pointTransactions.findIndex(pt => pt.taskId === oldTask.id);
+        if (existingTxIndex !== -1) {
+          pointTransactions[existingTxIndex].pointValue = finalPoints;
+          pointTransactions[existingTxIndex].officerId = officer.id;
+          pointTransactions[existingTxIndex].completedAt = updatedData.completedAt || new Date().toISOString();
+        } else {
+          pointTransactions.push({
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+            taskId: oldTask.id,
+            officerId: officer.id,
+            engineerId: oldTask.approvedBy || oldTask.recommendedBy || oldTask.createdBy || '',
+            pointValue: finalPoints,
+            taskPriority: oldTask.urgency,
+            completedAt: updatedData.completedAt || new Date().toISOString()
+          });
         }
       }
       

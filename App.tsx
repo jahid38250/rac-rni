@@ -1471,24 +1471,26 @@ export default function App() {
     const officer = staffList.find(s => s.employeeId === officerId || s.id === officerId);
     if (!officer) return 0;
 
-    const myName = officer.name.toLowerCase();
-    const myEmpId = officer.employeeId;
-    const myAssignedEngs = officer.assignedEngineers || [];
+    const myName = (officer.name || '').toLowerCase().trim();
+    const myEmpId = String(officer.employeeId || '').toLowerCase().trim();
+    const myId = String(officer.id || '').toLowerCase().trim();
 
-    // Single source of truth: tasks table (as per STRICT PROMO)
+    // Single source of truth: tasks table (as per department rules)
     const taskPoints = tasks.filter(t => {
-      // Logic must match filteredTasks for consistency
-      const assignedTo = (t.assignedTo || '').toLowerCase();
-      const isAssignedToMe = assignedTo === myName || t.assignedTo === officer.id || t.assignedTo === myEmpId;
-      const isCreatedByMe = t.createdBy === myEmpId || t.createdBy === officer.id;
+      const assignedToStr = String(t.assignedTo || '').toLowerCase().trim();
+      const createdByStr = String(t.createdBy || '').toLowerCase().trim();
+      const assignedByStr = String(t.assignedBy || '').toLowerCase().trim();
+
+      const isAssignedToMe = assignedToStr === myName || assignedToStr === myId || assignedToStr === myEmpId;
+      const isCreatedByMe = createdByStr === myEmpId || createdByStr === myId;
+      const isAssignedByMe = assignedByStr === myEmpId || assignedByStr === myId;
       
       const creator = staffList.find(s => s.employeeId === t.createdBy || s.id === t.createdBy);
 
-      // STRICT RULE: Points are ONLY added to the Officer who entered the task (createdBy).
-      // In cross-team requests, the technician's supervisor must NEVER get the points!
-      // If task was entered by an Engineer or higher and assigned to this Officer, the officer also gets the points.
       let isInScope = false;
       if (isCreatedByMe) {
+        isInScope = true;
+      } else if (isAssignedByMe) {
         isInScope = true;
       } else if (isAssignedToMe && creator?.role !== 'OFFICER') {
         isInScope = true;
@@ -1506,14 +1508,18 @@ export default function App() {
     }).reduce((sum, t) => {
       const ptMatch = pointTransactions.find(pt => pt.taskId === t.id && (pt.officerId === officer.id || pt.officerId === officer.employeeId));
       const ptVal = ptMatch ? Number(ptMatch.pointValue || 0) : 0;
-      const tVal = Number(t.points || 0);
+      let tVal = Number(t.points !== undefined ? t.points : 0);
+      if (tVal === 0 && ptVal > 0) tVal = ptVal;
+      if (tVal === 0) {
+        tVal = t.urgency === 'MOST_URGENT' ? 3 : t.urgency === 'URGENT' ? 2 : 1;
+      }
       return sum + Math.max(tVal, ptVal);
     }, 0);
 
-    // Include manual adjustments from pointTransactions to ensure they aren't lost,
-    // but the primary source is the tasks table.
+    // Include manual adjustments from pointTransactions
     const manualPoints = pointTransactions.filter(pt => {
-      if ((pt.officerId !== officer.id && pt.officerId !== officer.employeeId) || pt.taskId !== 'MANUAL_ADJUSTMENT') return false;
+      const ptOff = String(pt.officerId || '').toLowerCase().trim();
+      if ((ptOff !== myId && ptOff !== myEmpId) || pt.taskId !== 'MANUAL_ADJUSTMENT') return false;
       if (monthOnly) {
         const ptDate = new Date(pt.completedAt);
         return ptDate.getMonth() === now.getMonth() && ptDate.getFullYear() === now.getFullYear();
@@ -1521,7 +1527,9 @@ export default function App() {
       return true;
     }).reduce((sum, pt) => sum + (pt.pointValue || 0), 0);
 
-    return taskPoints + manualPoints;
+    const calculatedTotal = taskPoints + manualPoints;
+    if (monthOnly) return calculatedTotal;
+    return Math.max(calculatedTotal, Number(officer.total_point || 0));
   };
 
   const getValidOfficerTaskCount = (officerId: string, monthOnly: boolean = false) => {
@@ -1529,18 +1537,25 @@ export default function App() {
     const officer = staffList.find(s => s.employeeId === officerId || s.id === officerId);
     if (!officer) return 0;
 
-    const myName = officer.name.toLowerCase();
-    const myEmpId = officer.employeeId;
+    const myName = (officer.name || '').toLowerCase().trim();
+    const myEmpId = String(officer.employeeId || '').toLowerCase().trim();
+    const myId = String(officer.id || '').toLowerCase().trim();
 
     return tasks.filter(t => {
-      const assignedTo = (t.assignedTo || '').toLowerCase();
-      const isAssignedToMe = assignedTo === myName || t.assignedTo === officer.id || t.assignedTo === myEmpId;
-      const isCreatedByMe = t.createdBy === myEmpId || t.createdBy === officer.id;
+      const assignedToStr = String(t.assignedTo || '').toLowerCase().trim();
+      const createdByStr = String(t.createdBy || '').toLowerCase().trim();
+      const assignedByStr = String(t.assignedBy || '').toLowerCase().trim();
+
+      const isAssignedToMe = assignedToStr === myName || assignedToStr === myId || assignedToStr === myEmpId;
+      const isCreatedByMe = createdByStr === myEmpId || createdByStr === myId;
+      const isAssignedByMe = assignedByStr === myEmpId || assignedByStr === myId;
       
       const creator = staffList.find(s => s.employeeId === t.createdBy || s.id === t.createdBy);
 
       let isInScope = false;
       if (isCreatedByMe) {
+        isInScope = true;
+      } else if (isAssignedByMe) {
         isInScope = true;
       } else if (isAssignedToMe && creator?.role !== 'OFFICER') {
         isInScope = true;
@@ -2487,6 +2502,10 @@ export default function App() {
     const token = localStorage.getItem('token');
     if (token && (activeTab === 'staff' || activeTab === 'analytics' || activeTab === 'attendance' || activeTab === 'technician_monitoring')) {
       fetchStaff(token, isAnyModalOpen);
+      if (activeTab === 'analytics') {
+        fetchTasks(token);
+        fetchPoints(token);
+      }
       if (activeTab === 'attendance' || activeTab === 'technician_monitoring') {
         fetchAttendance(token);
       }
@@ -3270,33 +3289,60 @@ export default function App() {
   const [taskLimit, setTaskLimit] = useState<number>(100);
 
   const getTaskTechnicianType = (task: Task): 'Hired' | 'Own' => {
-    if (task.requestStatus === 'RECOMMENDED' || task.status === 'REQUESTED') {
-      return 'Hired';
-    }
+    // 1. Explicit cross-team logs or requested cross-team status
+    const hasCrossTeamLog = Array.isArray(task.logs) && task.logs.some(l => 
+      (l.action || '').toLowerCase().includes('cross-team')
+    );
+    const isRequestedStatus = task.status === 'REQUESTED';
 
-    const creatorEmpId = task.createdBy || task.assignedBy;
-    const creator = staffList.find(s => s.employeeId === creatorEmpId || s.id === creatorEmpId);
+    // 2. Identify the supervising Officer for this task
+    const assigner = staffList.find(s => s.employeeId === task.assignedBy || s.id === task.assignedBy);
+    const creator = staffList.find(s => s.employeeId === task.createdBy || s.id === task.createdBy);
+    
+    const taskOfficer = (assigner && assigner.role === 'OFFICER') 
+      ? assigner 
+      : ((creator && creator.role === 'OFFICER') ? creator : null);
 
+    // Helper to check if a technician belongs to the officer's own team
+    const isTechInOfficerTeam = (tech: any, officer: any): boolean => {
+      if (!tech || !officer) return false;
+      const directMatch = tech.supervisorId === officer.id || tech.supervisorId === officer.employeeId;
+      const multiMatch = Array.isArray(tech.supervisor_ids) && (
+        tech.supervisor_ids.includes(officer.id) || tech.supervisor_ids.includes(officer.employeeId)
+      );
+      return Boolean(directMatch || multiMatch);
+    };
+
+    // 3. If it's a TEAM task
     if (task.workType === 'TEAM' && Array.isArray(task.assignedTechnicians) && task.assignedTechnicians.length > 0) {
-      const hasOtherTeam = task.assignedTechnicians.some(at => {
-        const tech = staffList.find(s => s.employeeId === at.employeeId || s.name === at.name || (at as any).id === s.id);
-        if (!tech) return false;
-        if (!creator) return false;
-        return tech.supervisorId && tech.supervisorId !== creator.id && tech.supervisorId !== creator.employeeId;
-      });
-      return hasOtherTeam ? 'Hired' : 'Own';
+      if (hasCrossTeamLog || isRequestedStatus) return 'Hired';
+      if (taskOfficer) {
+        const hasCrossTech = task.assignedTechnicians.some(at => {
+          const tech = staffList.find(s => s.employeeId === at.employeeId || s.name === at.name || (at as any).id === s.id);
+          return tech && !isTechInOfficerTeam(tech, taskOfficer);
+        });
+        return hasCrossTech ? 'Hired' : 'Own';
+      }
+      return (hasCrossTeamLog || isRequestedStatus) ? 'Hired' : 'Own';
     }
 
+    // 4. If it's a SINGLE technician task
     if (task.assignedTo) {
-      const tech = staffList.find(s => s.id === task.assignedTo || s.name?.toLowerCase().trim() === task.assignedTo?.toLowerCase().trim() || s.employeeId === task.assignedTo);
-      if (tech && tech.role === 'TECHNICIAN' && creator) {
-        if (tech.supervisorId && tech.supervisorId !== creator.id && tech.supervisorId !== creator.employeeId) {
-          return 'Hired';
+      const tech = staffList.find(s => 
+        s.id === task.assignedTo || 
+        s.employeeId === task.assignedTo || 
+        (s.name && s.name.toLowerCase().trim() === task.assignedTo.toLowerCase().trim())
+      );
+
+      if (tech && tech.role === 'TECHNICIAN') {
+        if (taskOfficer) {
+          return isTechInOfficerTeam(tech, taskOfficer) ? 'Own' : 'Hired';
         }
+        return (hasCrossTeamLog || isRequestedStatus) ? 'Hired' : 'Own';
       }
     }
 
-    return 'Own';
+    return (hasCrossTeamLog || isRequestedStatus) ? 'Hired' : 'Own';
   };
 
   const calculateDuration = (start?: string, end?: string) => {
@@ -3605,18 +3651,32 @@ export default function App() {
       };
     });
 
-    const topOfficers = staffList
+    const allOfficers = staffList
       .filter(s => s.role === 'OFFICER')
       .map(s => {
+        const pts = Math.max(
+          getValidOfficerPoints(s.employeeId),
+          getValidOfficerPoints(s.id),
+          Number(s.total_point || 0)
+        );
+        const cnt = Math.max(
+          getValidOfficerTaskCount(s.employeeId),
+          getValidOfficerTaskCount(s.id)
+        );
         return {
+          id: s.id,
+          employeeId: s.employeeId,
           name: s.name,
-          points: getValidOfficerPoints(s.employeeId),
-          count: getValidOfficerTaskCount(s.employeeId)
+          designation: s.designation || 'Officer',
+          points: pts,
+          count: cnt,
+          isCurrentUser: Boolean(user && (user.id === s.id || user.employeeId === s.employeeId))
         };
       })
-      .filter(s => s.points > 0 || s.count > 0)
-      .sort((a, b) => b.points - a.points)
-      .slice(0, 10);
+      .sort((a, b) => b.points - a.points || b.count - a.count);
+
+    const chartOfficers = allOfficers.filter(s => s.points > 0).slice(0, 10);
+    const topOfficersForChart = chartOfficers.length > 0 ? chartOfficers : allOfficers.slice(0, 10);
 
     const topTechnicians = staffList
       .filter(s => s.role === 'TECHNICIAN')
@@ -3641,10 +3701,10 @@ export default function App() {
       value: filteredTasks.filter(t => t.model === m).length
     })).filter(m => m.value > 0);
 
-    return { trend, topOfficers, topTechnicians, modelDistribution };
+    return { trend, topOfficers: allOfficers, topOfficersForChart, topTechnicians, modelDistribution };
   };
 
-  const { trend, topOfficers, topTechnicians, modelDistribution } = getAnalyticsData();
+  const { trend, topOfficers, topOfficersForChart, topTechnicians, modelDistribution } = getAnalyticsData();
   
 
   const isTechnicianAvailable = (techId: string) => {
@@ -8305,12 +8365,69 @@ export default function App() {
           {activeTab === 'analytics' && (
             <div className="space-y-8 pb-12">
               <div className="flex items-center justify-between">
-                <h1 className="text-3xl font-bold">Department Analytics</h1>
-                <div className="flex items-center gap-2 text-xs text-gray-400">
-                  <Clock size={14} />
+                <div>
+                  <h1 className="text-3xl font-bold">Department Analytics</h1>
+                  <p className="text-xs text-gray-400 mt-1">Real-time performance metrics, officer points, and technician stats</p>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-gray-400 bg-white/5 px-3 py-1.5 rounded-xl border border-white/10">
+                  <Clock size={14} className="text-blue-400" />
                   <span>Last updated: {new Date().toLocaleTimeString()}</span>
                 </div>
               </div>
+
+              {/* Officer Personal Performance Banner */}
+              {user?.role === 'OFFICER' && (
+                <GlassCard className="p-5 border border-amber-500/30 bg-gradient-to-r from-amber-500/10 via-blue-500/5 to-transparent">
+                  <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400">
+                        <Award size={24} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h2 className="text-xl font-bold text-white">{user.name}</h2>
+                          <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">Officer</span>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          Employee ID: <span className="font-mono text-gray-300">{user.employeeId}</span> &bull; Performance & Points Tracking
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-6">
+                      <div className="text-center">
+                        <p className="text-[11px] uppercase tracking-wider text-gray-400 font-semibold">Your Rank</p>
+                        <p className="text-2xl font-black text-amber-400">
+                          {(() => {
+                            const rankIdx = topOfficers.findIndex(o => o.id === user.id || o.employeeId === user.employeeId);
+                            return rankIdx !== -1 ? `#${rankIdx + 1}` : 'N/A';
+                          })()}
+                        </p>
+                      </div>
+                      <div className="h-8 w-px bg-white/10" />
+                      <div className="text-center">
+                        <p className="text-[11px] uppercase tracking-wider text-gray-400 font-semibold">Total Points</p>
+                        <p className="text-2xl font-black text-amber-400">
+                          {Math.max(getValidOfficerPoints(user.employeeId), getValidOfficerPoints(user.id), Number(user.total_point || 0))}
+                        </p>
+                      </div>
+                      <div className="h-8 w-px bg-white/10" />
+                      <div className="text-center">
+                        <p className="text-[11px] uppercase tracking-wider text-gray-400 font-semibold">Completed Tasks</p>
+                        <p className="text-2xl font-black text-blue-400">
+                          {Math.max(getValidOfficerTaskCount(user.employeeId), getValidOfficerTaskCount(user.id))}
+                        </p>
+                      </div>
+                      <div className="h-8 w-px bg-white/10" />
+                      <div className="text-center">
+                        <p className="text-[11px] uppercase tracking-wider text-gray-400 font-semibold">This Month</p>
+                        <p className="text-2xl font-black text-emerald-400">
+                          {Math.max(getValidOfficerPoints(user.employeeId, true), getValidOfficerPoints(user.id, true))} pts
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </GlassCard>
+              )}
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* Task Completion Trend */}
@@ -8396,15 +8513,20 @@ export default function App() {
 
                 {/* Top Performing Officers */}
                 <GlassCard className="flex flex-col">
-                  <div className="flex items-center gap-2 mb-6">
-                    <Award className="text-amber-500" size={20} />
-                    <h3 className="text-lg font-bold">Top Performing Officers (by Points)</h3>
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-2">
+                      <Award className="text-amber-500" size={20} />
+                      <h3 className="text-lg font-bold">Officer Performance & Points</h3>
+                    </div>
+                    <span className="text-xs text-amber-400 font-mono font-bold bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20">
+                      {topOfficers.length} Officers
+                    </span>
                   </div>
                   
                   <div className="h-[300px] w-full overflow-x-auto custom-scrollbar mb-6">
                     <div className="min-w-[600px] h-full">
                       <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={topOfficers} margin={{ bottom: 60 }}>
+                        <BarChart data={topOfficersForChart} margin={{ bottom: 60 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
                           <XAxis 
                             dataKey="name" 
@@ -8441,19 +8563,43 @@ export default function App() {
                         <tr className="text-gray-500 border-b border-white/5">
                           <th className="pb-3 font-bold uppercase tracking-wider">Rank</th>
                           <th className="pb-3 font-bold uppercase tracking-wider">Officer Name</th>
+                          <th className="pb-3 font-bold uppercase tracking-wider">Employee ID</th>
                           <th className="pb-3 font-bold uppercase tracking-wider text-right">Points</th>
                           <th className="pb-3 font-bold uppercase tracking-wider text-right">Tasks</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-white/5">
-                        {topOfficers.map((off, idx) => (
-                          <tr key={off.name} className="hover:bg-white/5 transition-colors">
-                            <td className="py-3 font-mono text-gray-400">#{idx + 1}</td>
-                            <td className="py-3 font-bold">{off.name}</td>
-                            <td className="py-3 text-right text-amber-500 font-black">{off.points}</td>
-                            <td className="py-3 text-right text-gray-400">{off.count}</td>
+                        {topOfficers.map((off, idx) => {
+                          const isMe = user && (user.id === off.id || user.employeeId === off.employeeId);
+                          return (
+                            <tr key={off.id || off.name} className={cn(
+                              "transition-colors",
+                              isMe ? "bg-amber-500/15 border-l-2 border-amber-500 hover:bg-amber-500/20" : "hover:bg-white/5"
+                            )}>
+                              <td className="py-3 font-mono text-gray-400">
+                                {idx === 0 ? '🥇 #1' : idx === 1 ? '🥈 #2' : idx === 2 ? '🥉 #3' : `#${idx + 1}`}
+                              </td>
+                              <td className="py-3 font-bold flex items-center gap-2">
+                                <span className={isMe ? "text-amber-300 font-black" : "text-white"}>{off.name}</span>
+                                {isMe && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/30 text-amber-300 font-bold border border-amber-500/50">
+                                    You
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3 font-mono text-xs text-gray-400">{off.employeeId || '-'}</td>
+                              <td className="py-3 text-right text-amber-500 font-black text-base">{off.points}</td>
+                              <td className="py-3 text-right text-gray-400 font-mono">{off.count}</td>
+                            </tr>
+                          );
+                        })}
+                        {topOfficers.length === 0 && (
+                          <tr>
+                            <td colSpan={5} className="py-8 text-center text-gray-500">
+                              No officers registered in the department yet.
+                            </td>
                           </tr>
-                        ))}
+                        )}
                       </tbody>
                     </table>
                   </div>
