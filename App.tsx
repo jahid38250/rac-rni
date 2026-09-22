@@ -60,7 +60,12 @@ import {
   UserCheck,
   UserMinus,
   AlertTriangle,
-  ExternalLink
+  ExternalLink,
+  HardDrive,
+  Save,
+  FileDown,
+  Check,
+  RotateCcw
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -1252,50 +1257,67 @@ export default function App() {
   };
 
   // Helper for safe JSON fetching
-  const fetchJson = async (url: string, options: RequestInit = {}) => {
-    try {
-      const res = await fetch(url, options);
-      
-      // Handle 204 No Content success
-      if (res.status === 204) {
-        return null;
-      }
-
-      // Handle 401 Unauthorized (Invalid or expired token)
-      // Skip automatic logout for the login endpoint itself, as 401 there means "Invalid credentials"
-      if (res.status === 401 && !url.includes('/api/auth/login')) {
-        let serverError = '';
-        try {
-          const errorData = await res.clone().json();
-          serverError = errorData.error || errorData.message || '';
-        } catch (e) {
-          // Ignore if not JSON
-        }
+  const fetchJson = async (url: string, options: RequestInit = {}, retries = 2) => {
+    let lastErr: any = null;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const res = await fetch(url, options);
         
-        if (handleAuthError(res)) {
-          throw new Error(serverError || 'Session expired or invalid. Please log in again.');
+        // Handle 204 No Content success
+        if (res.status === 204) {
+          return null;
         }
-      }
 
-      const contentType = res.headers.get('content-type');
-      
-      if (!contentType || !contentType.includes('application/json')) {
-        const text = await res.text();
-        console.error(`Non-JSON response from ${url} (Status ${res.status}):`, text.slice(0, 500));
-        throw new Error(`Server returned an unexpected response format (HTML instead of JSON). Status: ${res.status}`);
-      }
+        // Handle 401 Unauthorized (Invalid or expired token)
+        // Skip automatic logout for the login endpoint itself, as 401 there means "Invalid credentials"
+        if (res.status === 401 && !url.includes('/api/auth/login')) {
+          let serverError = '';
+          try {
+            const errorData = await res.clone().json();
+            serverError = errorData.error || errorData.message || '';
+          } catch (e) {
+            // Ignore if not JSON
+          }
+          
+          if (handleAuthError(res)) {
+            throw new Error(serverError || 'Session expired or invalid. Please log in again.');
+          }
+        }
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || data.message || `Request failed with status ${res.status}`);
+        const contentType = res.headers.get('content-type');
+        
+        if (!contentType || !contentType.includes('application/json')) {
+          const text = await res.text();
+          // If server is warming up or reverse proxy returning temporary 502/503/504
+          if (attempt < retries && (res.status === 502 || res.status === 503 || res.status === 504)) {
+            await new Promise(r => setTimeout(r, 600 * (attempt + 1)));
+            continue;
+          }
+          console.error(`Non-JSON response from ${url} (Status ${res.status}):`, text.slice(0, 500));
+          throw new Error(`Server returned an unexpected response format (HTML instead of JSON). Status: ${res.status}`);
+        }
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || data.message || `Request failed with status ${res.status}`);
+        }
+        return data;
+      } catch (err: any) {
+        lastErr = err;
+        const errMsg = err?.message || String(err);
+        const isNetworkErr = err instanceof TypeError || errMsg.toLowerCase().includes('failed to fetch') || errMsg.toLowerCase().includes('networkerror');
+        const isSafeToRetry = !options.method || options.method === 'GET';
+        if (attempt < retries && (isNetworkErr || isSafeToRetry)) {
+          await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+          continue;
+        }
+        if (!url.includes('/api/auth/login')) {
+          console.error(`Fetch error for ${url}:`, err);
+        }
+        throw err;
       }
-      return data;
-    } catch (err) {
-      if (!url.includes('/api/auth/login')) {
-        console.error(`Fetch error for ${url}:`, err);
-      }
-      throw err;
     }
+    throw lastErr;
   };
 
   // Helper functions for hierarchy
@@ -1839,6 +1861,7 @@ export default function App() {
   }, [filteredTasks]);
 
   const [isProcessingEmployees, setIsProcessingEmployees] = useState(false);
+  const [isClearingTasks, setIsClearingTasks] = useState(false);
   const [editingStaff, setEditingStaff] = useState<User | null>(null);
   const [viewingStaff, setViewingStaff] = useState<User | null>(null);
   const [staffToDelete, setStaffToDelete] = useState<string | null>(null);
@@ -1869,6 +1892,7 @@ export default function App() {
         if (userObj.role === 'SUPER_ADMIN') {
           // Auto-process employees on load for Super Admin
           handleProcessEmployees(true);
+          fetchBackupSettings();
         }
         if (['SUPER_ADMIN', 'HOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(userObj.role)) {
           fetchStaff(token);
@@ -1881,6 +1905,12 @@ export default function App() {
       }
     }
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'backup_restore' && user?.role === 'SUPER_ADMIN') {
+      fetchBackupSettings();
+    }
+  }, [activeTab, user?.role]);
 
   const handleRecalculate = async () => {
     const token = localStorage.getItem('token');
@@ -2251,6 +2281,161 @@ export default function App() {
     }
   };
 
+  const fetchBackupSettings = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    setIsLoadingBackupSettings(true);
+    try {
+      const data = await fetchJson('/api/system/backup-settings', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      setBackupSettings(data);
+    } catch (err: any) {
+      console.error('Failed to load backup settings:', err);
+    } finally {
+      setIsLoadingBackupSettings(false);
+    }
+  };
+
+  const handleToggleAutoBackup = async () => {
+    const token = localStorage.getItem('token');
+    if (!token || !backupSettings) return;
+    const newStatus = !backupSettings.autoBackupEnabled;
+    try {
+      const res = await fetchJson('/api/system/backup-settings', {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ enabled: newStatus })
+      });
+      if (res.success) {
+        toast.success(newStatus ? 'Hourly auto data backup enabled!' : 'Hourly auto backup paused');
+        await fetchBackupSettings();
+      }
+    } catch (err: any) {
+      toast.error('Failed to update auto backup setting: ' + err.message);
+    }
+  };
+
+  const handleInstantBackup = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    setIsTriggeringBackup(true);
+    try {
+      const res = await fetchJson('/api/system/backup-now', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      toast.success(res.message || 'Database snapshot created successfully!');
+      await fetchBackupSettings();
+    } catch (err: any) {
+      toast.error('Failed to create backup: ' + err.message);
+    } finally {
+      setIsTriggeringBackup(false);
+    }
+  };
+
+  const handleDownloadDbFile = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/system/download-db', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Download failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `rac-ri-daily-work-db-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Live database (db.json) downloaded successfully!');
+    } catch (err: any) {
+      toast.error('Failed to download database file: ' + err.message);
+    }
+  };
+
+  const handleDownloadSnapshot = async (filename: string) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/system/backups/${encodeURIComponent(filename)}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Download failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      toast.error('Failed to download backup snapshot: ' + err.message);
+    }
+  };
+
+  const handleRestoreSnapshot = async (filename: string) => {
+    if (!window.confirm(`Are you sure you want to restore the system to snapshot "${filename}"? Current data will be replaced by the records in this backup.`)) {
+      return;
+    }
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    setIsRestoringBackupFile(filename);
+    try {
+      const res = await fetchJson('/api/system/restore-backup', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ filename })
+      });
+      toast.success(res.message || 'System restored successfully!');
+      await fetchTasks(token);
+      await fetchStaff(token);
+      await fetchAttendance(token);
+      await fetchBackupSettings();
+    } catch (err: any) {
+      toast.error('Restore failed: ' + err.message);
+    } finally {
+      setIsRestoringBackupFile(null);
+    }
+  };
+
+  const handleUploadDbFileRestore = async (file: File) => {
+    if (!window.confirm(`Are you sure you want to restore data from uploaded file "${file.name}"? This will update all tasks and system records.`)) {
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const token = localStorage.getItem('token');
+      const res = await fetchJson('/api/system/restore', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(parsed)
+      });
+      toast.success(res.message || 'Database file restored successfully!');
+      if (token) {
+        await fetchTasks(token);
+        await fetchStaff(token);
+        await fetchAttendance(token);
+        await fetchBackupSettings();
+      }
+    } catch (err: any) {
+      toast.error('Failed to restore from uploaded file: ' + err.message);
+    } finally {
+      setIsLoading(false);
+      if (dbRestoreFileInputRef.current) dbRestoreFileInputRef.current.value = '';
+    }
+  };
+
   const handlePanelRestore = async (file: File) => {
     if (!window.confirm(`Are you sure you want to restore data from ${file.name}? This will overwrite current data in your scope.`)) {
       return;
@@ -2391,6 +2576,29 @@ export default function App() {
       if (!silent) toast.error(err instanceof Error ? err.message : 'Failed to process employee data');
     } finally {
       if (!silent) setIsProcessingEmployees(false);
+    }
+  };
+
+  const handleClearTasks = async () => {
+    if (!window.confirm("Are you sure you want to clear all tasks and dummy operational data? All employee profiles, credentials, and roles will be kept intact.")) {
+      return;
+    }
+    setIsClearingTasks(true);
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      const res = await fetchJson('/api/system/clear-tasks', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      toast.success(res.message || "All dummy tasks and operational data cleared!");
+      fetchTasks(token);
+      fetchStaff(token);
+      fetchAttendance(token);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to clear tasks.");
+    } finally {
+      setIsClearingTasks(false);
     }
   };
 
@@ -2798,7 +3006,29 @@ export default function App() {
   const [assignDuration, setAssignDuration] = useState('60');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const panelRestoreInputRef = useRef<HTMLInputElement>(null);
+  const dbRestoreFileInputRef = useRef<HTMLInputElement>(null);
   const employeeExcelInputRef = useRef<HTMLInputElement>(null);
+
+  // Super Admin Hourly Auto-Backup and DB Persistence State
+  const [backupSettings, setBackupSettings] = useState<{
+    autoBackupEnabled: boolean;
+    intervalMinutes: number;
+    lastBackupTime: string | null;
+    nextBackupTime: string | null;
+    liveStats?: { tasksCount: number; usersCount: number; attendanceCount: number };
+    backups: Array<{
+      filename: string;
+      timestamp: string;
+      size: number;
+      tasksCount: number;
+      usersCount: number;
+      type: string;
+    }>;
+  } | null>(null);
+  const [isLoadingBackupSettings, setIsLoadingBackupSettings] = useState(false);
+  const [isTriggeringBackup, setIsTriggeringBackup] = useState(false);
+  const [isRestoringBackupFile, setIsRestoringBackupFile] = useState<string | null>(null);
+
   const [newTask, setNewTask] = useState({
     title: '',
     model: 'Portable',
@@ -3673,10 +3903,10 @@ export default function App() {
           isCurrentUser: Boolean(user && (user.id === s.id || user.employeeId === s.employeeId))
         };
       })
+      .filter(s => s.points > 0)
       .sort((a, b) => b.points - a.points || b.count - a.count);
 
-    const chartOfficers = allOfficers.filter(s => s.points > 0).slice(0, 10);
-    const topOfficersForChart = chartOfficers.length > 0 ? chartOfficers : allOfficers.slice(0, 10);
+    const topOfficersForChart = allOfficers.slice(0, 10);
 
     const topTechnicians = staffList
       .filter(s => s.role === 'TECHNICIAN')
@@ -7119,6 +7349,18 @@ export default function App() {
                         Upload Excel
                       </button>
                       <button 
+                        onClick={handleClearTasks}
+                        disabled={isClearingTasks}
+                        className={cn(
+                          "bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 px-5 py-3 rounded-xl font-bold flex items-center gap-2 transition-all border border-rose-600/20 shadow-sm",
+                          isClearingTasks && "opacity-50 cursor-not-allowed"
+                        )}
+                        title="Clear all dummy tasks and operational records while keeping all employee and user accounts intact"
+                      >
+                        <Trash2 size={20} className={isClearingTasks ? "animate-pulse" : ""} />
+                        {isClearingTasks ? "Clearing..." : "Clear Dummy Tasks"}
+                      </button>
+                      <button 
                         onClick={() => fileInputRef.current?.click()}
                         className="bg-white/5 hover:bg-white/10 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all border border-white/10"
                       >
@@ -7390,6 +7632,202 @@ export default function App() {
               </motion.div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* SUPER ADMIN HOURLY AUTO-BACKUP & DATABASE ENGINE */}
+                {user?.role === 'SUPER_ADMIN' && (
+                  <GlassCard className="p-6 md:p-8 md:col-span-2 border-emerald-500/40 bg-emerald-950/15">
+                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 border-b border-white/10 pb-6 mb-6">
+                      <div className="flex items-center gap-4">
+                        <div className="w-14 h-14 bg-emerald-500/20 rounded-2xl flex items-center justify-center text-emerald-400">
+                          <HardDrive size={30} />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-3">
+                            <h2 className="text-2xl font-bold">Auto Data Backup (DB File)</h2>
+                            <span className={cn(
+                              "px-3 py-0.5 rounded-full text-xs font-bold flex items-center gap-1.5",
+                              backupSettings?.autoBackupEnabled ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40" : "bg-amber-500/20 text-amber-400 border border-amber-500/40"
+                            )}>
+                              <span className={cn("w-2 h-2 rounded-full", backupSettings?.autoBackupEnabled ? "bg-emerald-400 animate-pulse" : "bg-amber-400")} />
+                              {backupSettings?.autoBackupEnabled ? "AUTO-BACKUP ACTIVE" : "PAUSED"}
+                            </span>
+                          </div>
+                          <p className="text-gray-400 text-sm mt-1">
+                            Per-hour automated snapshot of all operational data & employees directly into persistent DB files (<span className="font-mono text-emerald-400">data/db.json</span> & <span className="font-mono text-emerald-400">backups/</span>).
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Toggle Auto-Backup */}
+                      <button
+                        onClick={handleToggleAutoBackup}
+                        disabled={isLoadingBackupSettings}
+                        className={cn(
+                          "px-5 py-3 rounded-xl font-bold text-sm transition-all flex items-center gap-2.5 shadow-lg",
+                          backupSettings?.autoBackupEnabled 
+                            ? "bg-emerald-600 hover:bg-emerald-700 text-white" 
+                            : "bg-gray-700 hover:bg-gray-600 text-gray-200"
+                        )}
+                      >
+                        <Zap size={18} />
+                        {backupSettings?.autoBackupEnabled ? "Hourly Backup: ON" : "Hourly Backup: OFF"}
+                      </button>
+                    </div>
+
+                    {/* Operational Metrics & Schedule */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                      <div className="bg-white/5 rounded-xl p-4 border border-white/5">
+                        <p className="text-xs text-gray-400 font-medium">Backup Schedule</p>
+                        <p className="text-lg font-bold text-white mt-1">Every 1 Hour</p>
+                        <p className="text-[11px] text-emerald-400/80 mt-0.5">Automated Per-Hour Snapshot</p>
+                      </div>
+                      <div className="bg-white/5 rounded-xl p-4 border border-white/5">
+                        <p className="text-xs text-gray-400 font-medium">Last Saved Backup</p>
+                        <p className="text-sm font-bold text-white mt-1">
+                          {backupSettings?.lastBackupTime 
+                            ? new Date(backupSettings.lastBackupTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                            : 'Just now'}
+                        </p>
+                        <p className="text-[11px] text-gray-400 mt-0.5">
+                          {backupSettings?.lastBackupTime ? new Date(backupSettings.lastBackupTime).toLocaleDateString() : 'Auto-initialized'}
+                        </p>
+                      </div>
+                      <div className="bg-white/5 rounded-xl p-4 border border-white/5">
+                        <p className="text-xs text-gray-400 font-medium">Next Backup Due</p>
+                        <p className="text-sm font-bold text-white mt-1">
+                          {backupSettings?.nextBackupTime 
+                            ? new Date(backupSettings.nextBackupTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                            : 'Within 1 hour'}
+                        </p>
+                        <p className="text-[11px] text-gray-400 mt-0.5">Continuous auto-timer</p>
+                      </div>
+                      <div className="bg-white/5 rounded-xl p-4 border border-white/5">
+                        <p className="text-xs text-gray-400 font-medium">Live Protected Data</p>
+                        <p className="text-lg font-bold text-emerald-400 mt-1">{tasks.length} Tasks</p>
+                        <p className="text-[11px] text-gray-400 mt-0.5">{backupSettings?.liveStats?.usersCount ?? staffList.length} Users • {backupSettings?.liveStats?.attendanceCount ?? attendance.length} Attendance</p>
+                      </div>
+                    </div>
+
+                    {/* Instant Action Buttons */}
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button
+                        onClick={handleInstantBackup}
+                        disabled={isTriggeringBackup}
+                        className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold px-6 py-3 rounded-xl transition-all flex items-center gap-2 text-sm shadow-lg shadow-emerald-900/30"
+                      >
+                        <Save size={18} className={isTriggeringBackup ? "animate-spin" : ""} />
+                        {isTriggeringBackup ? "Creating Snapshot..." : "Backup Now (Instant Snapshot)"}
+                      </button>
+
+                      <button
+                        onClick={handleDownloadDbFile}
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-xl transition-all flex items-center gap-2 text-sm shadow-lg shadow-blue-900/30"
+                      >
+                        <FileDown size={18} />
+                        Download Live Database (db.json)
+                      </button>
+
+                      <input
+                        type="file"
+                        accept=".json"
+                        className="hidden"
+                        ref={dbRestoreFileInputRef}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleUploadDbFileRestore(file);
+                        }}
+                      />
+
+                      <button
+                        onClick={() => dbRestoreFileInputRef.current?.click()}
+                        className="bg-purple-600 hover:bg-purple-700 text-white font-bold px-6 py-3 rounded-xl transition-all flex items-center gap-2 text-sm shadow-lg shadow-purple-900/30"
+                      >
+                        <Upload size={18} />
+                        Upload & Restore db.json
+                      </button>
+                    </div>
+
+                    {/* Hourly Backup History Table */}
+                    <div className="mt-8 border-t border-white/10 pt-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                          <History size={18} className="text-emerald-400" />
+                          <h3 className="font-bold text-white text-base">Hourly Backup History & Snapshots</h3>
+                        </div>
+                        <button
+                          onClick={fetchBackupSettings}
+                          className="text-xs text-gray-400 hover:text-white flex items-center gap-1.5 transition-colors"
+                        >
+                          <RefreshCw size={13} className={isLoadingBackupSettings ? "animate-spin" : ""} />
+                          Refresh List
+                        </button>
+                      </div>
+
+                      {(!backupSettings?.backups || backupSettings.backups.length === 0) ? (
+                        <div className="p-6 text-center text-gray-500 text-sm bg-white/5 rounded-xl">
+                          No snapshot files created yet. An automated hourly backup runs every hour, or you can click "Backup Now" above.
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto max-h-72 overflow-y-auto rounded-xl border border-white/10">
+                          <table className="w-full text-left text-xs text-gray-300">
+                            <thead className="bg-white/10 text-gray-400 uppercase text-[10px] tracking-wider sticky top-0 backdrop-blur-md">
+                              <tr>
+                                <th className="p-3">Snapshot Timestamp</th>
+                                <th className="p-3">Type</th>
+                                <th className="p-3">Protected Records</th>
+                                <th className="p-3">File Size</th>
+                                <th className="p-3 text-right">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-white/5">
+                              {backupSettings.backups.map((b) => (
+                                <tr key={b.filename} className="hover:bg-white/5 transition-colors">
+                                  <td className="p-3 font-mono">
+                                    <div className="font-bold text-white">
+                                      {new Date(b.timestamp).toLocaleString()}
+                                    </div>
+                                    <div className="text-[10px] text-gray-500">{b.filename}</div>
+                                  </td>
+                                  <td className="p-3">
+                                    <span className={cn(
+                                      "px-2 py-0.5 rounded text-[10px] font-bold uppercase",
+                                      b.type === 'MANUAL' ? "bg-purple-500/20 text-purple-400 border border-purple-500/30" : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                                    )}>
+                                      {b.type === 'MANUAL' ? 'Manual' : 'Hourly Auto'}
+                                    </span>
+                                  </td>
+                                  <td className="p-3 text-gray-300">
+                                    <span className="font-bold text-emerald-400">{b.tasksCount}</span> tasks • <span className="font-bold text-blue-400">{b.usersCount}</span> users
+                                  </td>
+                                  <td className="p-3 font-mono text-gray-400">
+                                    {(b.size / 1024).toFixed(1)} KB
+                                  </td>
+                                  <td className="p-3 text-right space-x-2">
+                                    <button
+                                      onClick={() => handleDownloadSnapshot(b.filename)}
+                                      className="px-2.5 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors font-medium text-[11px] inline-flex items-center gap-1"
+                                      title="Download Snapshot JSON"
+                                    >
+                                      <Download size={13} /> Download
+                                    </button>
+                                    <button
+                                      onClick={() => handleRestoreSnapshot(b.filename)}
+                                      disabled={isRestoringBackupFile === b.filename}
+                                      className="px-2.5 py-1.5 bg-amber-600/80 hover:bg-amber-600 text-white rounded-lg transition-colors font-medium text-[11px] inline-flex items-center gap-1 disabled:opacity-50"
+                                      title="Restore system to this state"
+                                    >
+                                      <RotateCcw size={13} className={isRestoringBackupFile === b.filename ? "animate-spin" : ""} />
+                                      {isRestoringBackupFile === b.filename ? "Restoring..." : "Restore"}
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  </GlassCard>
+                )}
                 <GlassCard className="p-8 flex flex-col items-center text-center">
                   <div className="w-16 h-16 bg-blue-600/20 rounded-2xl flex items-center justify-center text-blue-400 mb-6">
                     <ClipboardList size={32} />
@@ -7695,15 +8133,33 @@ export default function App() {
                         <Award className="text-purple-400" /> Officer Point Rankings
                       </h2>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {staffList
-                          .filter(s => s.role === 'OFFICER')
-                          .map(s => {
-                            const points = getValidOfficerPoints(s.id);
-                            const thisMonthPoints = getValidOfficerPoints(s.id, true);
-                            return { ...s, points, thisMonthPoints };
-                          })
-                          .sort((a, b) => b.points - a.points)
-                          .map((s, idx) => (
+                        {(() => {
+                          const rankedOfficers = staffList
+                            .filter(s => s.role === 'OFFICER')
+                            .map(s => {
+                              const points = Math.max(
+                                getValidOfficerPoints(s.employeeId),
+                                getValidOfficerPoints(s.id),
+                                Number(s.total_point || 0)
+                              );
+                              const thisMonthPoints = Math.max(
+                                getValidOfficerPoints(s.employeeId, true),
+                                getValidOfficerPoints(s.id, true)
+                              );
+                              return { ...s, points, thisMonthPoints };
+                            })
+                            .filter(s => s.points > 0)
+                            .sort((a, b) => b.points - a.points);
+
+                          if (rankedOfficers.length === 0) {
+                            return (
+                              <div className="col-span-2 text-center py-6 text-gray-500 text-sm">
+                                No officers with task points recorded yet. Only officers with active points are shown.
+                              </div>
+                            );
+                          }
+
+                          return rankedOfficers.map((s, idx) => (
                             <GlassCard key={s.id} className="flex items-center justify-between p-4 border-purple-500/20">
                               <div className="flex items-center gap-3">
                                 <div className="w-8 h-8 bg-purple-600/20 text-purple-400 rounded-full flex items-center justify-center font-bold text-sm">
@@ -7719,7 +8175,8 @@ export default function App() {
                                 <p className="text-[10px] text-purple-400 font-bold">+{s.thisMonthPoints} this month</p>
                               </div>
                             </GlassCard>
-                          ))}
+                          ));
+                        })()}
                       </div>
                     </div>
                   )}
@@ -8519,43 +8976,51 @@ export default function App() {
                       <h3 className="text-lg font-bold">Officer Performance & Points</h3>
                     </div>
                     <span className="text-xs text-amber-400 font-mono font-bold bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20">
-                      {topOfficers.length} Officers
+                      {topOfficers.length} {topOfficers.length === 1 ? 'Officer' : 'Officers'}
                     </span>
                   </div>
                   
-                  <div className="h-[300px] w-full overflow-x-auto custom-scrollbar mb-6">
-                    <div className="min-w-[600px] h-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={topOfficersForChart} margin={{ bottom: 60 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
-                          <XAxis 
-                            dataKey="name" 
-                            stroke="#94a3b8" 
-                            fontSize={10} 
-                            tickLine={false} 
-                            axisLine={false} 
-                            interval={0}
-                            angle={-45}
-                            textAnchor="end"
-                            height={80}
-                          />
-                          <YAxis 
-                            stroke="#94a3b8" 
-                            fontSize={12} 
-                            tickLine={false} 
-                            axisLine={false} 
-                          />
-                          <Tooltip 
-                            cursor={{ fill: '#ffffff05' }}
-                            contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '12px', fontSize: '12px' }}
-                            itemStyle={{ color: '#fff' }}
-                            labelStyle={{ color: '#3b82f6', fontWeight: 'bold', marginBottom: '4px' }}
-                          />
-                          <Bar dataKey="points" name="Total Points" radius={[4, 4, 0, 0]} fill="#f59e0b" />
-                        </BarChart>
-                      </ResponsiveContainer>
+                  {topOfficersForChart.length > 0 ? (
+                    <div className="h-[300px] w-full overflow-x-auto custom-scrollbar mb-6">
+                      <div className="min-w-[600px] h-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={topOfficersForChart} margin={{ bottom: 60 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
+                            <XAxis 
+                              dataKey="name" 
+                              stroke="#94a3b8" 
+                              fontSize={10} 
+                              tickLine={false} 
+                              axisLine={false} 
+                              interval={0}
+                              angle={-45}
+                              textAnchor="end"
+                              height={80}
+                            />
+                            <YAxis 
+                              stroke="#94a3b8" 
+                              fontSize={12} 
+                              tickLine={false} 
+                              axisLine={false} 
+                            />
+                            <Tooltip 
+                              cursor={{ fill: '#ffffff05' }}
+                              contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '12px', fontSize: '12px' }}
+                              itemStyle={{ color: '#fff' }}
+                              labelStyle={{ color: '#3b82f6', fontWeight: 'bold', marginBottom: '4px' }}
+                            />
+                            <Bar dataKey="points" name="Total Points" radius={[4, 4, 0, 0]} fill="#f59e0b" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="h-44 flex flex-col items-center justify-center text-gray-400 text-sm border border-white/5 rounded-2xl mb-6 bg-white/[0.02]">
+                      <Award className="text-amber-500/40 mb-2" size={28} />
+                      <p className="font-semibold text-gray-300">No Task Points Recorded Yet</p>
+                      <p className="text-xs text-gray-500 mt-1">Only officers who have earned task points will be displayed here.</p>
+                    </div>
+                  )}
 
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-sm">
@@ -8596,7 +9061,7 @@ export default function App() {
                         {topOfficers.length === 0 && (
                           <tr>
                             <td colSpan={5} className="py-8 text-center text-gray-500">
-                              No officers registered in the department yet.
+                              No officers with task points recorded yet. Only officers with active points are shown.
                             </td>
                           </tr>
                         )}

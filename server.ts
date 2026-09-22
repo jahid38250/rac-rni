@@ -7,13 +7,12 @@ import cors from "cors";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import fs from "fs/promises";
-import syncFs from "fs";
+import fsSync from "fs";
 import XLSX from "xlsx";
 import multer from "multer";
 import type { Role, User, Task, Attendance, TaskLog, TaskStatus, ActivityLog, AdminAuditLog, UserSession, FailedLoginAttempt, LockedDevice } from './types.js';
 
 const upload = multer({ dest: 'uploads/' });
-const memoryUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
 // Extend Express Request type
 declare global {
@@ -27,18 +26,17 @@ declare global {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = 3000;
 const JWT_SECRET = process.env.JWT_SECRET || "enterprise-secret-key";
 
 async function startServer() {
+  console.log("Starting server initialization...");
   const app = express();
   app.use(cors());
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
   // --- Data Variables (Initialized early to avoid ReferenceError) ---
-  // Performance Boost: Data structures are optimized for fast retrieval.
-  // Index-like optimizations applied for: task.status, task.createdBy/assignedBy, and task.createdAt.
   let users: User[] = [];
   let tasks: Task[] = [];
   let attendanceRecords: Attendance[] = [];
@@ -79,28 +77,99 @@ async function startServer() {
     next();
   });
 
-  // --- Data Persistence ---
+  // --- Data Persistence Configuration ---
   const DATA_FILE = path.join(process.cwd(), "data.json");
-  const BACKUP_FILE = path.join(process.cwd(), "data", "db.json");
-  const BAK_FILE = path.join(process.cwd(), "data.json.bak");
+  const DATA_DIR = path.join(process.cwd(), "data");
+  const DB_FILE = path.join(DATA_DIR, "db.json");
+  const BACKUPS_DIR = path.join(process.cwd(), "backups");
+  const UPLOADS_DIR = path.join(process.cwd(), "uploads");
+
+  // Auto-backup configuration state
+  let autoBackupSettings = {
+    enabled: true,
+    intervalMinutes: 60,
+    lastBackupTime: null as string | null,
+    nextBackupTime: null as string | null,
+    retentionCount: 72
+  };
+
+  // Ensure necessary directories exist synchronously or on boot
+  try {
+    if (!fsSync.existsSync(DATA_DIR)) fsSync.mkdirSync(DATA_DIR, { recursive: true });
+    if (!fsSync.existsSync(BACKUPS_DIR)) fsSync.mkdirSync(BACKUPS_DIR, { recursive: true });
+    if (!fsSync.existsSync(UPLOADS_DIR)) fsSync.mkdirSync(UPLOADS_DIR, { recursive: true });
+  } catch (err) {
+    console.error("Error creating system directories:", err);
+  }
 
   async function loadData() {
-    const filesToTry = [DATA_FILE, BACKUP_FILE, BAK_FILE];
-    for (const f of filesToTry) {
-      try {
-        console.log(`Attempting to load data from: ${f}`);
-        const content = await fs.readFile(f, "utf-8");
+    let loadedContent: any = null;
+    let loadedFrom: string = '';
+
+    // 1. Attempt to load from primary DATA_FILE (data.json)
+    try {
+      if (fsSync.existsSync(DATA_FILE)) {
+        console.log(`Checking data from primary file: ${DATA_FILE}`);
+        const content = await fs.readFile(DATA_FILE, "utf-8");
         const parsed = JSON.parse(content);
-        if (parsed && Array.isArray(parsed.users) && parsed.users.length > 0) {
-          console.log(`Successfully loaded data from ${f} with ${parsed.users.length} users.`);
-          return parsed;
+        if (parsed && typeof parsed === 'object') {
+          loadedContent = parsed;
+          loadedFrom = DATA_FILE;
         }
-      } catch (err: any) {
-        console.warn(`Could not load from ${f}:`, err.message);
+      }
+    } catch (err: any) {
+      console.error(`Error reading ${DATA_FILE}:`, err.message);
+    }
+
+    // 2. Inspect DB_FILE (data/db.json). If DATA_FILE is missing, corrupt, or has 0 tasks while DB_FILE has tasks, prefer DB_FILE!
+    try {
+      if (fsSync.existsSync(DB_FILE)) {
+        console.log(`Checking data from database file: ${DB_FILE}`);
+        const dbContent = await fs.readFile(DB_FILE, "utf-8");
+        const parsedDb = JSON.parse(dbContent);
+        if (parsedDb && typeof parsedDb === 'object') {
+          const loadedTasksCount = (loadedContent && Array.isArray(loadedContent.tasks)) ? loadedContent.tasks.length : 0;
+          const dbTasksCount = Array.isArray(parsedDb.tasks) ? parsedDb.tasks.length : 0;
+          
+          if (!loadedContent || dbTasksCount > loadedTasksCount) {
+            console.log(`[DATA RECOVERY] Preferring ${DB_FILE} with ${dbTasksCount} tasks over ${loadedFrom} with ${loadedTasksCount} tasks.`);
+            loadedContent = parsedDb;
+            loadedFrom = DB_FILE;
+          }
+        }
+      }
+    } catch (err: any) {
+      console.error(`Error reading ${DB_FILE}:`, err.message);
+    }
+
+    // 3. If still empty or no tasks found, inspect recent backups in backups/
+    const currentTasksCount = (loadedContent && Array.isArray(loadedContent.tasks)) ? loadedContent.tasks.length : 0;
+    if (!loadedContent || currentTasksCount === 0) {
+      try {
+        const latestBackup = path.join(BACKUPS_DIR, 'latest-hourly-db.json');
+        if (fsSync.existsSync(latestBackup)) {
+          const content = await fs.readFile(latestBackup, "utf-8");
+          const parsed = JSON.parse(content);
+          if (parsed && Array.isArray(parsed.tasks) && parsed.tasks.length > 0) {
+            loadedContent = parsed;
+            loadedFrom = latestBackup;
+            console.log(`[AUTO-RECOVERY] Recovered ${parsed.tasks.length} tasks from ${latestBackup}!`);
+          }
+        }
+      } catch (backupErr: any) {
+        console.warn("Could not check latest backup:", backupErr.message);
       }
     }
 
-    console.warn("Using fallback data structure and loading employees from Excel...");
+    if (loadedContent) {
+      console.log(`Successfully loaded database state from ${loadedFrom} (Tasks: ${loadedContent.tasks?.length || 0}, Users: ${loadedContent.users?.length || 0})`);
+      if (loadedContent.autoBackupSettings) {
+        autoBackupSettings = { ...autoBackupSettings, ...loadedContent.autoBackupSettings };
+      }
+      return loadedContent;
+    }
+
+    console.warn("No existing data found in data.json, data/db.json, or backups. Initializing with empty state.");
     return { 
       users: [], 
       tasks: [], 
@@ -117,102 +186,140 @@ async function startServer() {
     };
   }
 
-  // --- MASTER SOURCE (EXCEL STYLE LINK SYSTEM) ---
-  // Task Management = MASTER SOURCE for all points and counts
   function recalculateAllPoints() {
-    console.log("Recalculating all points and task counts from MASTER (tasks table)...");
+    console.log("Recalculating all points and task counts...");
     
-    // Create lookup maps for performance (by ID, employeeId, and Name)
-    const userByEmpId = new Map();
-    const userById = new Map();
-    const userByName = new Map();
-    users.forEach(u => {
-      if (u.employeeId) userByEmpId.set(String(u.employeeId).toLowerCase().trim(), u);
-      if (u.id) userById.set(String(u.id).toLowerCase().trim(), u);
-      if (u.name) userByName.set(String(u.name).toLowerCase().trim(), u);
-      
-      // Reset first
-      if (u.role === 'OFFICER') u.total_point = 0;
-      if (u.role === 'TECHNICIAN') u.completedTask = 0;
+    // 1. Preserve manual adjustments
+    const manualAdjustments = pointTransactions.filter((pt: any) => pt.taskId === 'MANUAL_ADJUSTMENT');
+    
+    // 2. Reset all users
+    users.forEach((u: any) => {
+      u.total_point = 0;
+      u.completedTask = 0;
     });
 
+    // 3. Clear and rebuild task-based transactions
+    pointTransactions.length = 0;
+    pointTransactions.push(...manualAdjustments);
+
+    // Create a map for faster user lookups
+    const userMap = new Map();
+    users.forEach(u => {
+      userMap.set(u.employeeId, u);
+      userMap.set(u.id, u);
+    });
+
+    // 4. Process all tasks
     tasks.forEach((t: any) => {
       const status = (t.status || '').toUpperCase();
-      if (status === 'COMPLETED') {
-        // 1. Technician Task Count
+      const isCompleted = status === 'COMPLETED';
+      
+      // Points criteria: COMPLETED and (APPROVED or from privileged role)
+      const creator = userMap.get(t.createdBy);
+      const isApproved = t.requestStatus === 'APPROVED' || 
+                        t.requestStatus === 'RECOMMENDED' ||
+                        !t.requestStatus || 
+                        ['ENGINEER', 'SUPER_ADMIN', 'HOD'].includes(creator?.role || '');
+
+      if (isCompleted) {
+        // Technician Task Count
         if (t.assignedTo) {
-          const assignedStr = String(t.assignedTo).toLowerCase().trim();
-          const tech = userByEmpId.get(assignedStr) || userById.get(assignedStr) || userByName.get(assignedStr);
+          const tech = userMap.get(t.assignedTo);
           if (tech && tech.role === 'TECHNICIAN') {
             tech.completedTask = (tech.completedTask || 0) + 1;
+            if (isApproved) {
+              tech.total_point = (tech.total_point || 0) + (Number(t.points) || 0);
+            }
           }
         }
-        
+
         if (t.assignedTechnicians && Array.isArray(t.assignedTechnicians)) {
           t.assignedTechnicians.forEach((at: any) => {
-            const atEmp = String(at.employeeId || at.name || at.id || '').toLowerCase().trim();
-            const tech = userByEmpId.get(atEmp) || userById.get(atEmp) || userByName.get(atEmp);
+            const tech = userMap.get(at.employeeId);
             if (tech && tech.role === 'TECHNICIAN') {
               tech.completedTask = (tech.completedTask || 0) + 1;
+              if (isApproved) {
+                tech.total_point = (tech.total_point || 0) + (Number(t.points) || 0);
+              }
             }
           });
         }
 
-        // 2. Officer Points: STRICT RULE - ONLY the officer who entered the task (createdBy) gets the point!
-        // In cross-team requests, the technician's supervisor must NEVER get the point.
-        // If task was entered by an Engineer or higher and assigned to an Officer, the officer gets the point.
-        let officer = null;
-        const creatorStr = String(t.createdBy || '').toLowerCase().trim();
-        const creator = userByEmpId.get(creatorStr) || userById.get(creatorStr) || userByName.get(creatorStr);
-        
-        if (creator && creator.role === 'OFFICER') {
-          officer = creator;
-        } else if (t.assignedBy) {
-          const assignerStr = String(t.assignedBy || '').toLowerCase().trim();
-          const assigner = userByEmpId.get(assignerStr) || userById.get(assignerStr) || userByName.get(assignerStr);
-          if (assigner && assigner.role === 'OFFICER') officer = assigner;
-        }
-        if (!officer && t.assignedTo) {
-          const assignedStr = String(t.assignedTo).toLowerCase().trim();
-          const assignee = userByEmpId.get(assignedStr) || userById.get(assignedStr) || userByName.get(assignedStr);
-          if (assignee && assignee.role === 'OFFICER') officer = assignee;
-        }
-        
-        if (officer) {
-          const ptMatch = pointTransactions.find(pt => pt.taskId === t.id && (pt.officerId === officer.id || pt.officerId === officer.employeeId));
-          const ptVal = ptMatch ? Number(ptMatch.pointValue || 0) : 0;
-          let taskPoints = Number(t.points !== undefined ? t.points : 0);
-          if (taskPoints === 0 && ptVal > 0) {
-            taskPoints = ptVal;
+        // Officer Points
+        if (isApproved) {
+          let assignedOfficer = null;
+          if (creator?.role === 'OFFICER') {
+            assignedOfficer = creator;
+          } else if (t.assignedBy) {
+            const assigner = userMap.get(t.assignedBy);
+            if (assigner?.role === 'OFFICER') {
+              assignedOfficer = assigner;
+            }
           }
-          if (taskPoints === 0) {
-            taskPoints = t.urgency === 'MOST_URGENT' ? 3 : t.urgency === 'URGENT' ? 2 : 1;
+
+          if (assignedOfficer) {
+            const pointValue = Number(t.points) || 1;
+            assignedOfficer.total_point = (assignedOfficer.total_point || 0) + pointValue;
+            
+            // Add to transactions for history
+            pointTransactions.push({
+              id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+              taskId: t.id,
+              officerId: assignedOfficer.id,
+              engineerId: t.approvedBy || (creator?.role !== 'OFFICER' ? creator?.employeeId : ''),
+              pointValue: pointValue,
+              taskPriority: t.urgency,
+              completedAt: t.completedAt
+            });
           }
-          t.points = taskPoints;
-          t.pointAdded = true;
-          officer.total_point = (officer.total_point || 0) + Math.max(taskPoints, ptVal);
         }
       }
     });
 
-    // 3. Add manual adjustments from pointTransactions (to match App.tsx logic)
-    pointTransactions.forEach((pt: any) => {
-      if (pt.taskId === 'MANUAL_ADJUSTMENT') {
-        const ptOff = String(pt.officerId || '').toLowerCase().trim();
-        const officer = userById.get(ptOff) || userByEmpId.get(ptOff) || userByName.get(ptOff);
-        if (officer) {
-          officer.total_point = (officer.total_point || 0) + (pt.pointValue || 0);
-        }
+    // 5. Apply manual adjustments to user totals
+    manualAdjustments.forEach((pt: any) => {
+      const user = userMap.get(pt.officerId);
+      if (user) {
+        user.total_point = (user.total_point || 0) + (Number(pt.pointValue) || 0);
       }
     });
 
     console.log("Recalculation complete.");
   }
 
-  async function saveData(_data?: any) {
+  let isSaving = false;
+  let savePending = false;
+  let lastSaveAllowEmpty = false;
+
+  async function saveData(allowEmptyTasks = false) {
+    if (isSaving) {
+      savePending = true;
+      if (allowEmptyTasks) lastSaveAllowEmpty = true;
+      return;
+    }
+    isSaving = true;
     try {
-      rebuildTechnicianStatuses();
-      recalculateAllPoints();
+      // Safety guard against saving 0 tasks if tasks previously existed on disk
+      // unless explicitly requested by clear-tasks or restore
+      if (tasks.length === 0 && !allowEmptyTasks && !lastSaveAllowEmpty) {
+        try {
+          if (fsSync.existsSync(DATA_FILE)) {
+            const currentDisk = JSON.parse(await fs.readFile(DATA_FILE, "utf-8"));
+            if (currentDisk && Array.isArray(currentDisk.tasks) && currentDisk.tasks.length > 0) {
+              console.warn(`[SAFETY GUARD] Prevented wiping ${currentDisk.tasks.length} tasks on disk with 0 tasks in memory. Restoring tasks into memory.`);
+              for (const t of currentDisk.tasks) {
+                tasks.push(t);
+              }
+            }
+          }
+        } catch (readErr) {
+          console.warn("[SAFETY GUARD] Could not verify existing tasks on disk:", readErr);
+        }
+      }
+
+      await fs.mkdir(DATA_DIR, { recursive: true });
+      await fs.mkdir(BACKUPS_DIR, { recursive: true });
+
       const dataToSave = {
         users,
         tasks,
@@ -225,56 +332,152 @@ async function startServer() {
         adminAuditLogs,
         userSessions,
         failedLoginAttempts,
-        lockedDevices
+        lockedDevices,
+        autoBackupSettings,
+        lastSavedAt: new Date().toISOString()
       };
-      const jsonStr = JSON.stringify(dataToSave);
-      await fs.writeFile(DATA_FILE, jsonStr);
-      try {
-        await fs.writeFile(BACKUP_FILE, jsonStr);
-        await fs.writeFile(BAK_FILE, jsonStr);
-      } catch (backupErr) {
-        // Non-fatal backup warning
-      }
+
+      const jsonStr = JSON.stringify(dataToSave, null, 2);
+
+      // 1. Atomic write to DATA_FILE (data.json)
+      const tmpDataFile = DATA_FILE + ".tmp";
+      await fs.writeFile(tmpDataFile, jsonStr, "utf-8");
+      await fs.rename(tmpDataFile, DATA_FILE);
+
+      // 2. Atomic write to DB_FILE (data/db.json)
+      const tmpDbFile = DB_FILE + ".tmp";
+      await fs.writeFile(tmpDbFile, jsonStr, "utf-8");
+      await fs.rename(tmpDbFile, DB_FILE);
+
     } catch (err) {
       console.error("Error saving data:", err);
+    } finally {
+      isSaving = false;
+      if (savePending) {
+        savePending = false;
+        const allowEmpty = lastSaveAllowEmpty;
+        lastSaveAllowEmpty = false;
+        saveData(allowEmpty);
+      }
     }
   }
 
-  function isTechnicianCurrentlyWorking(techUser: any): boolean {
-    if (!techUser || techUser.role !== 'TECHNICIAN') return false;
-    const techEmpId = (techUser.employeeId || '').toString().toLowerCase();
-    const techId = (techUser.id || '').toString().toLowerCase();
-    const techName = (techUser.name || '').toLowerCase();
+  async function createHourlyBackup(isManual = false) {
+    try {
+      await fs.mkdir(BACKUPS_DIR, { recursive: true });
+      await fs.mkdir(DATA_DIR, { recursive: true });
 
-    return tasks.some((t: any) => {
-      // Completed, rejected, cancelled, requested, or pending tasks are NOT active working tasks
-      if (t.status === 'COMPLETED' || t.status === 'REJECTED' || t.status === 'REQUESTED' || t.status === 'PENDING' || t.status === 'CANCELLED') {
-        return false;
-      }
-      if (t.status !== 'RUNNING' && t.status !== 'DELAYED' && t.status !== 'HOLD') {
-        return false;
-      }
+      const now = new Date();
+      const timeStr = now.toISOString().replace(/[:.]/g, '-');
+      const filename = `db-backup-${timeStr}.json`;
+      const filepath = path.join(BACKUPS_DIR, filename);
 
-      // Check single assignment
-      if (t.assignedTo) {
-        const assigned = t.assignedTo.toString().toLowerCase();
-        if (assigned === techEmpId || assigned === techId || assigned === techName) {
-          return true;
+      const backupPayload = {
+        users,
+        tasks,
+        attendanceRecords,
+        notifications,
+        pointTransactions,
+        technicianPerformance,
+        assignmentRequests,
+        activityLogs,
+        adminAuditLogs,
+        userSessions,
+        failedLoginAttempts,
+        lockedDevices,
+        autoBackupSettings,
+        backupMeta: {
+          type: isManual ? 'MANUAL' : 'HOURLY_AUTO',
+          timestamp: now.toISOString(),
+          tasksCount: tasks.length,
+          usersCount: users.length,
+          source: 'AUTO_BACKUP_SERVICE'
         }
-      }
+      };
 
-      // Check team assignment
-      if (Array.isArray(t.assignedTechnicians)) {
-        return t.assignedTechnicians.some((at: any) => {
-          const atEmp = (at.employeeId || '').toString().toLowerCase();
-          const atId = (at.id || '').toString().toLowerCase();
-          const atName = (at.name || '').toLowerCase();
-          return atEmp === techEmpId || atId === techId || atName === techName;
-        });
-      }
+      const jsonStr = JSON.stringify(backupPayload, null, 2);
 
-      return false;
-    });
+      // 1. Write timestamped backup snapshot
+      const tmpFile = filepath + '.tmp';
+      await fs.writeFile(tmpFile, jsonStr, 'utf-8');
+      await fs.rename(tmpFile, filepath);
+
+      // 2. Update backups/latest-hourly-db.json
+      const latestPath = path.join(BACKUPS_DIR, 'latest-hourly-db.json');
+      const tmpLatest = latestPath + '.tmp';
+      await fs.writeFile(tmpLatest, jsonStr, 'utf-8');
+      await fs.rename(tmpLatest, latestPath);
+
+      // 3. Keep data/db.json in sync as well
+      const tmpDb = DB_FILE + '.tmp';
+      await fs.writeFile(tmpDb, jsonStr, 'utf-8');
+      await fs.rename(tmpDb, DB_FILE);
+
+      autoBackupSettings.lastBackupTime = now.toISOString();
+      autoBackupSettings.nextBackupTime = new Date(now.getTime() + (autoBackupSettings.intervalMinutes || 60) * 60 * 1000).toISOString();
+
+      await pruneOldBackups();
+
+      console.log(`[BACKUP SUCCESS] ${isManual ? 'Manual' : 'Hourly Auto'} Backup created: ${filename} (Tasks: ${tasks.length}, Users: ${users.length}, Size: ${Buffer.byteLength(jsonStr)} bytes)`);
+
+      return {
+        filename,
+        timestamp: now.toISOString(),
+        type: isManual ? 'MANUAL' : 'HOURLY_AUTO',
+        size: Buffer.byteLength(jsonStr),
+        tasksCount: tasks.length,
+        usersCount: users.length
+      };
+    } catch (err) {
+      console.error("[BACKUP ERROR] Failed to create backup:", err);
+      throw err;
+    }
+  }
+
+  async function pruneOldBackups() {
+    try {
+      const files = await fs.readdir(BACKUPS_DIR);
+      const backupFiles = files.filter(f => f.startsWith('db-backup-') && f.endsWith('.json'));
+      if (backupFiles.length <= autoBackupSettings.retentionCount) return;
+
+      // Sort descending (newest first)
+      backupFiles.sort().reverse();
+      const filesToDelete = backupFiles.slice(autoBackupSettings.retentionCount);
+      for (const file of filesToDelete) {
+        try {
+          await fs.unlink(path.join(BACKUPS_DIR, file));
+        } catch (e) {}
+      }
+      console.log(`[BACKUP PRUNE] Removed ${filesToDelete.length} older backups. Kept ${autoBackupSettings.retentionCount}.`);
+    } catch (err) {
+      console.error("Error pruning old backups:", err);
+    }
+  }
+
+  let autoBackupInterval: NodeJS.Timeout | null = null;
+  function startAutoBackupSchedule() {
+    if (autoBackupInterval) clearInterval(autoBackupInterval);
+
+    // Initial snapshot 5s after startup to guarantee a starting point
+    setTimeout(async () => {
+      try {
+        await createHourlyBackup(false);
+      } catch (e) {
+        console.error("Initial auto-backup snapshot failed:", e);
+      }
+    }, 5000);
+
+    const intervalMs = Math.max(5, autoBackupSettings.intervalMinutes || 60) * 60 * 1000;
+    autoBackupInterval = setInterval(async () => {
+      if (!autoBackupSettings.enabled) return;
+      try {
+        console.log(`[AUTO-BACKUP] Triggering scheduled hourly backup...`);
+        await createHourlyBackup(false);
+      } catch (err) {
+        console.error("[AUTO-BACKUP] Scheduled hourly backup error:", err);
+      }
+    }, intervalMs);
+    console.log(`[AUTO-BACKUP] Hourly auto-backup scheduler initialized (Every ${autoBackupSettings.intervalMinutes}m / 1 hour).`);
   }
 
   function rebuildTechnicianStatuses() {
@@ -282,33 +485,47 @@ async function startServer() {
     users.forEach((u: any) => {
       if (u.role === 'TECHNICIAN') {
         const techAttendance = attendanceRecords.find((a: any) => a.technicianId === u.employeeId && a.date === todayDate);
-        const hasActiveTasks = isTechnicianCurrentlyWorking(u);
+        const hasActiveTasks = tasks.some((t: any) => 
+          (t.status === 'RUNNING' || (t.status === 'PENDING' && t.requestStatus === 'RECOMMENDED')) && 
+          (
+            t.assignedTo === u.employeeId || 
+            t.assignedTo === u.id || 
+            (t.assignedTo && u.name && t.assignedTo.toLowerCase() === u.name.toLowerCase()) ||
+            (t.assignedTechnicians && t.assignedTechnicians.some((at: any) => at.employeeId === u.employeeId))
+          )
+        );
 
-        if (hasActiveTasks) {
-          u.status = 'WORKING';
-        } else if (techAttendance) {
-          if (techAttendance.status === 'LEAVE' || techAttendance.status === 'ABSENT') {
+        // Preserve leave/off statuses if they exist
+        if (techAttendance) {
+          if (techAttendance.status === 'PRESENT') {
+            u.status = hasActiveTasks ? 'WORKING' : 'FREE';
+          } else if (techAttendance.status === 'LEAVE' || techAttendance.status === 'ABSENT') {
             u.status = 'ON_LEAVE';
           } else if (techAttendance.status === 'SHORT_LEAVE') {
             u.status = 'SHORT_LEAVE';
-          } else if (techAttendance.status === 'SHIFT_A' || techAttendance.status === 'SHIFT_B') {
+          } else if (techAttendance.status === 'SHIFT_6_2' || techAttendance.status === 'SHIFT_2_6') {
             const now = new Date();
             const currentHour = now.getHours();
             let isWorkingShift = false;
-            if (techAttendance.status === 'SHIFT_A') isWorkingShift = currentHour >= 6 && currentHour < 14;
-            else if (techAttendance.status === 'SHIFT_B') isWorkingShift = currentHour >= 14 && currentHour < 22;
-            u.status = isWorkingShift ? 'FREE' : 'SHIFT_OFF';
-          } else {
-            u.status = 'FREE';
+            if (techAttendance.status === 'SHIFT_6_2') isWorkingShift = currentHour >= 6 && currentHour < 14;
+            else if (techAttendance.status === 'SHIFT_2_6') isWorkingShift = currentHour >= 14 && currentHour < 18;
+            
+            if (isWorkingShift) {
+              u.status = hasActiveTasks ? 'WORKING' : 'FREE';
+            } else {
+              u.status = 'SHIFT_OFF';
+            }
           }
         } else {
-          u.status = 'FREE';
+          // If no attendance record, base it solely on tasks
+          u.status = hasActiveTasks ? 'WORKING' : 'FREE';
         }
       }
     });
   }
 
   const initialData = await loadData();
+  console.log("Data loaded successfully.");
   if (!initialData.notifications) initialData.notifications = [];
   if (!initialData.pointTransactions) initialData.pointTransactions = [];
   if (!initialData.technicianPerformance) initialData.technicianPerformance = [];
@@ -324,7 +541,6 @@ async function startServer() {
     { employeeId: "ADMIN001", name: "Super Admin", password: "admin123", role: "SUPER_ADMIN" },
     { employeeId: "jhfboss", name: "JHF Boss", password: "jhfboss", role: "SUPER_ADMIN" },
     { employeeId: "jhfadmin@jhf.com", name: "JHF Admin", password: "3624", role: "SUPER_ADMIN" },
-    { employeeId: "38250", name: "Md. Jahid Hasan", password: "3624", role: "SUPER_ADMIN", designation: "Senior Officer", department: "RAC R&I" },
     { employeeId: "54589", name: "Md. Shofikul Islam", password: "3624", role: "IN_CHARGE", designation: "IN CHARGE", department: "Chemical & Polymer" },
     { employeeId: "58175", name: "Mohammad Alik Pramanik", password: "3624", role: "OFFICER", designation: "OFFICER" },
     { employeeId: "48566", name: "Mahmudul Hasan", password: "3624", role: "TECHNICIAN", designation: "TECHNICIAN" },
@@ -384,82 +600,47 @@ async function startServer() {
 
   // Force rebuild technician statuses on startup to recover from any broken states
   rebuildTechnicianStatuses();
-  updated = true;
+
+  // Initialize technician status if missing or needs update
+  const todayDate = new Date().toISOString().split('T')[0];
+  users.forEach((u: any) => {
+    if (u.role === 'TECHNICIAN') {
+      const techAttendance = attendanceRecords.find((a: any) => a.technicianId === u.employeeId && a.date === todayDate);
+      const hasRunningTasks = tasks.some((t: any) => 
+        t.status === 'RUNNING' && 
+        (t.assignedTo === u.employeeId || t.assignedTo === u.name || t.assignedTo === u.id || (t.assignedTechnicians && t.assignedTechnicians.some((at: any) => at.employeeId === u.employeeId)))
+      );
+
+      if (techAttendance) {
+        if (techAttendance.status === 'PRESENT') {
+          u.status = hasRunningTasks ? 'WORKING' : 'FREE';
+        } else if (techAttendance.status === 'LEAVE' || techAttendance.status === 'ABSENT') {
+          u.status = 'ON_LEAVE';
+        } else if (techAttendance.status === 'SHORT_LEAVE') {
+          u.status = 'SHORT_LEAVE';
+        } else if (techAttendance.status === 'SHIFT_6_2' || techAttendance.status === 'SHIFT_2_6') {
+          const now = new Date();
+          const currentHour = now.getHours();
+          let isWorkingShift = false;
+          if (techAttendance.status === 'SHIFT_6_2') isWorkingShift = currentHour >= 6 && currentHour < 14;
+          else if (techAttendance.status === 'SHIFT_2_6') isWorkingShift = currentHour >= 14 && currentHour < 18;
+          
+          if (isWorkingShift) {
+            u.status = hasRunningTasks ? 'WORKING' : 'FREE';
+          } else {
+            u.status = 'SHIFT_OFF';
+          }
+        }
+      } else {
+        // Default to FREE if no attendance yet, but check for running tasks
+        u.status = hasRunningTasks ? 'WORKING' : 'FREE';
+      }
+      updated = true;
+    }
+  });
 
   if (updated) {
     await saveData();
-  }
-
-  async function backfillPoints() {
-    let count = 0;
-    console.log("Starting point backfill...");
-    
-    // Create lookup maps for performance
-    const userByEmpId = new Map();
-    const userById = new Map();
-    users.forEach(u => {
-      if (u.employeeId) userByEmpId.set(u.employeeId, u);
-      if (u.id) userById.set(u.id, u);
-    });
-
-    // Clear existing point transactions to recalculate from scratch as requested
-    pointTransactions.length = 0;
-    
-    // Reset total_point for all officers before recalculating
-    users.forEach((u: any) => {
-      if (u.role === 'OFFICER') u.total_point = 0;
-    });
-    
-    tasks.forEach((task: any) => {
-      // Point should be added if task is COMPLETED AND APPROVED (or created by Engineer/Super Admin)
-      const isCompleted = task.status === 'COMPLETED';
-      const creator = userByEmpId.get(task.createdBy);
-      const isApproved = task.requestStatus === 'APPROVED' || 
-                        task.requestStatus === 'RECOMMENDED' ||
-                        !task.requestStatus || // Allow tasks without requestStatus (legacy or direct)
-                        ['ENGINEER', 'SUPER_ADMIN', 'HOD'].includes(creator?.role || '');
-
-      if (isCompleted && isApproved) {
-        let assignedOfficer = null;
-        
-        if (creator?.role === 'OFFICER') {
-          assignedOfficer = creator;
-        } else if (task.assignedBy) {
-          const assigner = userByEmpId.get(task.assignedBy) || userById.get(task.assignedBy);
-          if (assigner?.role === 'OFFICER') {
-            assignedOfficer = assigner;
-          }
-        }
-        if (!assignedOfficer && task.assignedTo) {
-          const assignee = userByEmpId.get(task.assignedTo) || userById.get(task.assignedTo);
-          if (assignee?.role === 'OFFICER') {
-            assignedOfficer = assignee;
-          }
-        }
-
-        if (assignedOfficer) {
-          const pVal = Number(task.points !== undefined ? task.points : (creator?.role !== 'OFFICER' ? 1 : 0));
-          assignedOfficer.total_point = (assignedOfficer.total_point || 0) + pVal;
-          pointTransactions.push({
-            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-            taskId: task.id,
-            officerId: assignedOfficer.id,
-            engineerId: task.approvedBy || task.recommendedBy || (creator?.role !== 'OFFICER' ? creator?.employeeId : ''),
-            pointValue: pVal,
-            taskPriority: task.urgency,
-            completedAt: task.completedAt || new Date().toISOString()
-          });
-          task.pointAdded = pVal > 0;
-          count++;
-        }
-      } else {
-        task.pointAdded = false;
-      }
-    });
-    
-    await saveData();
-    console.log(`Recalculated and backfilled ${count} task points.`);
-    return count;
   }
 
   // --- Helper Functions ---
@@ -500,14 +681,13 @@ async function startServer() {
     
     const deviceType = /Mobile|Android|iPhone/i.test(userAgent) ? 'Mobile' : 'Desktop';
     
-    // Accept deviceName, localIp and platform from body if available (sent from frontend)
+    // Accept deviceName and platform from body if available (sent from frontend)
     const deviceName = req.body?.deviceName || 'Unknown Device';
-    const localIp = req.body?.localIp || 'Unknown';
     const platform = req.body?.platform || os;
     
     const deviceHash = Buffer.from(`${ip}-${userAgent}-${deviceName}`).toString('base64');
     
-    return { ip, localIp, browser, os, deviceType, userAgent, deviceHash, deviceName, platform };
+    return { ip, browser, os, deviceType, userAgent, deviceHash, deviceName, platform };
   }
 
   async function logAdminAction(admin: any, actionType: string, details: string, targetUser?: string, targetTask?: string) {
@@ -537,53 +717,70 @@ async function startServer() {
     
     try {
       const decoded = jwt.verify(token, JWT_SECRET) as any;
+      console.log(`Authenticating user: ${decoded.employeeId || decoded.id} for ${req.method} ${req.url}`);
       
-      // Check if session is still active (if sessionId exists in token)
+      // Verify user exists in database
+      const user = users.find(u => 
+        (decoded.id && u.id === decoded.id) || 
+        (decoded.employeeId && u.employeeId && u.employeeId.toLowerCase() === decoded.employeeId.toLowerCase())
+      );
+      if (!user) {
+        return res.status(401).json({ error: "Invalid session: User no longer exists" });
+      }
+
+      // Check or recover session
       if (decoded.sessionId) {
         let session = userSessions.find(s => s.id === decoded.sessionId);
         if (!session) {
-          console.warn(`Auth failed: Session ${decoded.sessionId} not found in userSessions. Attempting recovery...`);
-          // Recovery: If token is valid and user exists, re-create the session
-          const user = users.find(u => u.id === decoded.id || u.employeeId === decoded.employeeId);
-          if (user) {
-            const clientInfo = getClientInfo(req);
-            
-            // Update decoded with latest user info to ensure req.user is accurate
-            decoded.role = user.role;
-            decoded.name = user.name;
-            decoded.employeeId = user.employeeId;
-            decoded.assignedEngineers = user.assignedEngineers || [];
-            
-            session = {
+          console.log(`Auto-recovering session ${decoded.sessionId} for user ${user.name} (${user.employeeId})`);
+          const clientInfo = getClientInfo(req);
+          session = {
+            id: decoded.sessionId,
+            userId: user.id,
+            employeeId: user.employeeId,
+            loginTime: new Date().toISOString(),
+            ipAddress: clientInfo.ip,
+            browser: clientInfo.browser,
+            os: clientInfo.os,
+            deviceHash: clientInfo.deviceHash,
+            deviceName: clientInfo.deviceName,
+            platform: clientInfo.platform,
+            active: true,
+            lastActivity: new Date().toISOString()
+          };
+          userSessions.push(session);
+
+          // Add activity log if missing
+          if (!activityLogs.some(l => l.id === decoded.sessionId)) {
+            activityLogs.push({
               id: decoded.sessionId,
-              userId: user.id || user.employeeId,
+              userId: user.id,
               employeeId: user.employeeId,
-              loginTime: new Date().toISOString(),
+              name: user.name,
+              role: user.role,
+              loginTime: session.loginTime,
               ipAddress: clientInfo.ip,
               browser: clientInfo.browser,
               os: clientInfo.os,
-              deviceHash: 'recovered',
-              active: true,
-              lastActivity: new Date().toISOString()
-            };
-            userSessions.push(session);
-            console.log(`Recovered session ${decoded.sessionId} for user ${user.name}`);
-            await saveData();
-          } else {
-            return res.status(401).json({ error: "Session expired or logged out from another device" });
+              deviceType: clientInfo.deviceType,
+              deviceName: clientInfo.deviceName,
+              platform: clientInfo.platform,
+              loginStatus: 'SUCCESS',
+              createdAt: new Date().toISOString()
+            });
           }
-        }
-        
-        if (!session.active) {
-          // Grace period: If session was deactivated very recently (e.g. within last 60 seconds)
-          // it might be due to a system restore or server restart. Reactivate it.
+          saveData().catch(err => console.error("Error saving recovered session:", err));
+        } else if (!session.active) {
+          const isExplicitLogout = (session as any).logoutReason === 'ADMIN_FORCED' || (session as any).logoutReason === 'USER_LOGOUT';
           const logoutTime = session.logoutTime ? new Date(session.logoutTime).getTime() : 0;
           const now = Date.now();
-          if (logoutTime > 0 && (now - logoutTime) < 60000) {
-            console.log(`Reactivating session ${decoded.sessionId} due to recent deactivation (Grace period)`);
+          
+          if (!isExplicitLogout || (logoutTime > 0 && (now - logoutTime) < 300000)) {
+            console.log(`Reactivating session ${decoded.sessionId} for user ${user.employeeId}`);
             session.active = true;
             session.logoutTime = undefined;
-            await saveData(); // Persist the reactivation
+            (session as any).logoutReason = undefined;
+            saveData().catch(err => console.error("Error saving reactivated session:", err));
           } else {
             console.warn(`Auth failed: Session ${decoded.sessionId} is inactive (Logout time: ${session.logoutTime})`);
             return res.status(401).json({ error: "Session expired or logged out from another device" });
@@ -592,22 +789,16 @@ async function startServer() {
         
         // Update last activity
         session.lastActivity = new Date().toISOString();
-      } else {
-        // Legacy token support: Check if user exists at least
-        const userExists = users.some(u => u.id === decoded.id || u.employeeId === decoded.employeeId);
-        if (!userExists) {
-          return res.status(401).json({ error: "Invalid session: User no longer exists" });
-        }
       }
-      
-      // Final check to verify user still exists and attach to req
-      const user = users.find(u => (u.id && u.id === decoded.id) || (u.employeeId && u.employeeId === decoded.employeeId));
-      if (!user) {
-        return res.status(401).json({ error: "Unauthorized: User no longer exists" });
-      }
-      
-      // Merge decoded info (like sessionId) with latest user data from memory
-      req.user = { ...decoded, ...user };
+
+      // Synchronize req.user with up-to-date user details
+      req.user = {
+        ...decoded,
+        id: user.id,
+        role: user.role,
+        name: user.name,
+        employeeId: user.employeeId
+      };
       next();
     } catch (err) {
       res.status(401).json({ error: "Invalid token" });
@@ -615,6 +806,14 @@ async function startServer() {
   };
 
   // --- API Routes ---
+  app.get("/api/ping", (req, res) => {
+    res.json({ status: "pong", time: new Date().toISOString() });
+  });
+
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", time: new Date().toISOString(), users: users.length });
+  });
+
   app.get("/api/test", (req, res) => {
     res.json({ status: "ok", usersCount: users.length });
   });
@@ -650,16 +849,11 @@ async function startServer() {
     if (user) {
       let isMatch = await bcrypt.compare(passwordStr, user.password);
       
-      // Fallbacks: allow employeeId as password, default '3624', or standard admin passwords
-      if (!isMatch) {
-        const isEmpIdMatch = passwordStr === user.employeeId;
-        const isDefault3624 = passwordStr === "3624";
-        const isSuperAdminPassword = (user.role === 'SUPER_ADMIN' || user.employeeId === '38250' || user.employeeId === 'ADMIN001' || user.employeeId === 'jhfboss') && 
-          (passwordStr === 'admin123' || passwordStr === 'jhfboss' || passwordStr === '38250' || passwordStr === '3624');
-
-        if (isEmpIdMatch || isDefault3624 || isSuperAdminPassword) {
-          isMatch = true;
-          user.password = await bcrypt.hash(passwordStr, 10);
+      // Fallback: if password is '3624' but doesn't match, check if it matches employeeId (old default)
+      if (!isMatch && passwordStr === "3624") {
+        isMatch = await bcrypt.compare(user.employeeId, user.password);
+        if (isMatch) {
+          user.password = await bcrypt.hash("3624", 10);
           await saveData();
         }
       }
@@ -687,7 +881,6 @@ async function startServer() {
           employeeId: user.employeeId,
           loginTime: new Date().toISOString(),
           ipAddress: clientInfo.ip,
-          localIp: clientInfo.localIp,
           browser: clientInfo.browser,
           os: clientInfo.os,
           deviceHash: clientInfo.deviceHash,
@@ -707,7 +900,6 @@ async function startServer() {
           role: user.role,
           loginTime: newSession.loginTime,
           ipAddress: clientInfo.ip,
-          localIp: clientInfo.localIp,
           browser: clientInfo.browser,
           os: clientInfo.os,
           deviceType: clientInfo.deviceType,
@@ -782,6 +974,7 @@ async function startServer() {
     if (session) {
       session.active = false;
       session.logoutTime = new Date().toISOString();
+      (session as any).logoutReason = 'USER_LOGOUT';
       
       const log = activityLogs.find(l => l.id === session.id);
       if (log) {
@@ -955,8 +1148,7 @@ async function startServer() {
   });
 
   app.get("/api/points", authenticate, async (req: Request, res: Response) => {
-    // Auto-recalculate points from DB on every request to ensure accuracy
-    await backfillPoints();
+    // Points are already recalculated on data changes
     res.json(pointTransactions);
   });
 
@@ -965,8 +1157,9 @@ async function startServer() {
     if (user.role !== 'SUPER_ADMIN' && user.role !== 'HOD') {
       return res.status(403).json({ error: "Access Denied" });
     }
-    await backfillPoints();
-    res.json({ success: true, message: "Points recalculated from DB" });
+    recalculateAllPoints();
+    await saveData();
+    res.json({ success: true, message: "Points recalculated" });
   });
 
   app.get("/api/performance", authenticate, (req: Request, res: Response) => {
@@ -1016,6 +1209,14 @@ async function startServer() {
   });
 
   // --- Security Dashboard Endpoints ---
+  app.post("/api/admin/recalculate", authenticate, async (req: Request, res: Response) => {
+    if (req.user.role !== 'SUPER_ADMIN') return res.status(403).json({ error: "Forbidden" });
+    recalculateAllPoints();
+    rebuildTechnicianStatuses();
+    await saveData();
+    res.json({ message: "Recalculation complete" });
+  });
+
   app.get("/api/admin/activity-logs", authenticate, (req: Request, res: Response) => {
     if (req.user.role !== 'SUPER_ADMIN') return res.status(403).json({ error: "Forbidden" });
     res.json(activityLogs);
@@ -1033,6 +1234,7 @@ async function startServer() {
     if (session) {
       session.active = false;
       session.logoutTime = new Date().toISOString();
+      (session as any).logoutReason = 'ADMIN_FORCED';
       const log = activityLogs.find(l => l.id === sessionId);
       if (log) {
         log.logoutTime = session.logoutTime;
@@ -1133,102 +1335,46 @@ async function startServer() {
   });
 
   app.get("/api/tasks", authenticate, (req: Request, res: Response) => {
-    const { month, year, all, limit } = req.query;
+    const { month, year, all } = req.query;
     
-    let resultTasks = [...tasks];
-
-    if (all !== 'true') {
-      const currentMonth = month ? parseInt(month as string) : new Date().getMonth() + 1;
-      const currentYear = year ? parseInt(year as string) : new Date().getFullYear();
-
-      resultTasks = resultTasks.filter((t: any) => {
-        const taskDate = new Date(t.createdAt);
-        return taskDate.getMonth() + 1 === currentMonth && taskDate.getFullYear() === currentYear;
-      });
+    if (all === 'true') {
+      return res.json(tasks);
     }
 
-    // Performance Boost: Sort by date descending (newest first)
-    resultTasks.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const currentMonth = month ? parseInt(month as string) : new Date().getMonth() + 1;
+    const currentYear = year ? parseInt(year as string) : new Date().getFullYear();
 
-    if (limit) {
-      resultTasks = resultTasks.slice(0, parseInt(limit as string));
-    }
+    const filteredTasks = tasks.filter((t: any) => {
+      const taskDate = new Date(t.createdAt);
+      const deadlineDate = t.deadline ? new Date(t.deadline) : null;
+      
+      const isCreatedInMonth = taskDate.getMonth() + 1 === currentMonth && taskDate.getFullYear() === currentYear;
+      const isDeadlineInMonth = deadlineDate && (deadlineDate.getMonth() + 1 === currentMonth && deadlineDate.getFullYear() === currentYear);
+      const isNotCompleted = t.status !== 'COMPLETED';
 
-    res.json(resultTasks);
+      return isCreatedInMonth || isDeadlineInMonth || isNotCompleted;
+    });
+
+    res.json(filteredTasks);
   });
 
-  app.post("/api/system/process-employees", authenticate, memoryUpload.single('file'), async (req: Request, res: Response) => {
+  app.post("/api/system/process-employees", authenticate, async (req: Request, res: Response) => {
     if (req.user.role !== 'SUPER_ADMIN') {
       return res.status(403).json({ error: "Forbidden" });
     }
     try {
-      let workbook: XLSX.WorkBook | null = null;
-
-      if (req.file && req.file.buffer && req.file.buffer.length > 0) {
-        console.log(`Processing uploaded employee excel file (${req.file.originalname}, ${req.file.buffer.length} bytes)...`);
-        workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
-        // Also cache a copy in process.cwd() and dist so subsequent calls without re-upload also work
-        try {
-          syncFs.writeFileSync(path.join(process.cwd(), "employee data.xlsx"), req.file.buffer);
-          if (syncFs.existsSync(path.join(process.cwd(), "dist"))) {
-            syncFs.writeFileSync(path.join(process.cwd(), "dist", "employee data.xlsx"), req.file.buffer);
-          }
-        } catch (saveErr) {
-          console.warn("Could not write server backup of uploaded employee data.xlsx:", saveErr);
-        }
-      } else {
-        // Multi-path lookup across root, dist, and parent folders
-        const candidatePaths = [
-          path.join(process.cwd(), "employee data.xlsx"),
-          path.join(process.cwd(), "dist", "employee data.xlsx"),
-          path.join(__dirname, "employee data.xlsx"),
-          path.join(__dirname, "..", "employee data.xlsx"),
-          path.join(__dirname, "dist", "employee data.xlsx")
-        ];
-
-        let foundPath = candidatePaths.find(p => syncFs.existsSync(p));
-
-        // If not found in standard paths, perform fuzzy case-insensitive directory search
-        if (!foundPath) {
-          const searchDirs = [process.cwd(), __dirname, path.join(__dirname, "..")];
-          for (const dir of searchDirs) {
-            if (syncFs.existsSync(dir)) {
-              try {
-                const entries = syncFs.readdirSync(dir);
-                const match = entries.find(f => {
-                  const lower = f.toLowerCase();
-                  return (lower.includes("employee") && lower.endsWith(".xlsx")) ||
-                         lower.replace(/[\s_-]/g, '') === 'employeedata.xlsx';
-                });
-                if (match) {
-                  foundPath = path.join(dir, match);
-                  break;
-                }
-              } catch {
-                // ignore
-              }
-            }
-          }
-        }
-
-        if (!foundPath) {
-          return res.status(404).json({
-            error: "No 'employee data.xlsx' file found on the server. Please use the 'Upload & Sync Excel' button to upload your employee Excel file directly."
-          });
-        }
-
-        console.log(`Reading employee data from verified file path: ${foundPath}`);
-        workbook = XLSX.readFile(foundPath);
+      let filePath = path.join(process.cwd(), "employee data.xlsx");
+      if (!fsSync.existsSync(filePath)) {
+        filePath = path.join(__dirname, "employee data.xlsx");
       }
-
-      if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
-        return res.status(400).json({ error: "The Excel workbook is empty or has no sheets." });
+      if (!fsSync.existsSync(filePath)) {
+        return res.status(404).json({ error: "employee data.xlsx file not found on server" });
       }
-
+      const workbook = XLSX.readFile(filePath);
       const sheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName];
       const data = XLSX.utils.sheet_to_json(worksheet);
-      console.log(`Processing ${data.length} employees from Excel. First row keys:`, data.length > 0 ? Object.keys(data[0] as object) : 'None');
+      console.log(`Processing ${data.length} employees from Excel. First row keys:`, data.length > 0 ? Object.keys(data[0]) : 'None');
 
       let createdCount = 0;
       let updatedCount = 0;
@@ -1237,12 +1383,12 @@ async function startServer() {
         // Try multiple common column names for ID and Name
         const employeeId = (row.ID || row["Employee ID"] || row.employeeId || row["HRMS ID"] || "").toString().trim();
         const name = (row.Name || row["Employee Name"] || row.name || row["Name of Employee"] || "Unknown").toString().trim();
-        const rawRole = (row.Role || row.role || row.Designation || row.designation || "TECHNICIAN").toString().trim();
+        const rawRole = (row.Role || row.role || row.Designation || row.designation || "TECHNICIAN").toString().trim().toUpperCase();
         
         // Extract additional fields
         let phone = (row.Phone || row["Phone Number"] || row.phone || row.Mobile || row.mobile || row["Mobile No"] || row["Mobile Number"] || row.Contact || row["Contact No"] || row["Phone No"] || row.Cell || row["Cell No"] || row["Cell Number"] || "").toString().trim();
         
-        // Add leading zero if missing (common Excel numeric phone issue)
+        // Add leading zero if missing (common Excel issue)
         if (phone && !phone.startsWith('0') && /^\d+$/.test(phone)) {
           phone = '0' + phone;
         }
@@ -1251,12 +1397,12 @@ async function startServer() {
         const email = (row.Email || row["Email Address"] || row.email || row["Email ID"] || row["E-mail"] || "").toString().trim();
         const department = (row.Department || row.department || row.Dept || row.dept || "RAC R&I").toString().trim();
 
-        // Map common role names to system roles accurately
+        // Map common role names to system roles
         let role: string = "TECHNICIAN";
         const upperRole = rawRole.toUpperCase();
         
         if (upperRole.includes('SUPER ADMIN') || upperRole === 'ADMIN') role = 'SUPER_ADMIN';
-        else if (upperRole.includes('HOD') || upperRole.includes('CBO')) role = 'HOD';
+        else if (upperRole.includes('HOD')) role = 'HOD';
         else if (upperRole.includes('INCHARGE') || upperRole.includes('IN-CHARGE') || upperRole === 'IN_CHARGE') role = 'IN_CHARGE';
         else if (upperRole.includes('MODEL MANAGER') || upperRole.includes('MODEL-MANAGER')) role = 'MODEL_MANAGER';
         else if (upperRole.includes('ENGINEER')) role = 'ENGINEER';
@@ -1265,8 +1411,9 @@ async function startServer() {
         else if (upperRole.includes('MANAGER')) role = 'MODEL_MANAGER';
         else if (upperRole.includes('SUPERVISOR')) role = 'IN_CHARGE';
         else {
+          // Fallback mapping based on common titles if Role column is actually a Designation column
           if (upperRole.includes('MANAGER')) role = 'MODEL_MANAGER';
-          else if (upperRole.includes('HOD') || upperRole.includes('CBO')) role = 'HOD';
+          else if (upperRole.includes('HOD')) role = 'HOD';
           else if (upperRole.includes('ENGINEER')) role = 'ENGINEER';
           else if (upperRole.includes('OFFICER')) role = 'OFFICER';
           else role = 'TECHNICIAN';
@@ -1274,21 +1421,19 @@ async function startServer() {
 
         if (!employeeId) continue;
 
-        const existingUser = users.find(u => (u.employeeId && u.employeeId.toString().toLowerCase() === employeeId.toLowerCase()) || (u.id && u.id.toString() === employeeId.toLowerCase()));
+        const existingUser = users.find(u => u.employeeId.toString().toLowerCase() === employeeId.toLowerCase());
         const hashedPassword = await bcrypt.hash(employeeId, 10);
 
         if (existingUser) {
-          // Update password to match ID as requested (keep super admin safe)
-          if (existingUser.role !== 'SUPER_ADMIN') {
-            existingUser.password = hashedPassword;
-          }
-          // Also update profile details
-          if (name && name !== 'Unknown') existingUser.name = name;
-          if (role && existingUser.role !== 'SUPER_ADMIN') existingUser.role = role as any;
-          if (phone) existingUser.phone = phone;
-          if (designation) existingUser.designation = designation;
-          if (email) existingUser.email = email;
-          if (department) existingUser.department = department;
+          // Update password to match ID as requested
+          existingUser.password = hashedPassword;
+          // Also update other fields
+          existingUser.name = name;
+          existingUser.role = role as any;
+          existingUser.phone = phone;
+          existingUser.designation = designation;
+          existingUser.email = email;
+          existingUser.department = department;
           updatedCount++;
         } else {
           users.push({
@@ -1298,26 +1443,21 @@ async function startServer() {
             role: role as any,
             password: hashedPassword,
             supervisorId: "",
-            supervisor_ids: [],
             assignedEngineers: [],
             phone,
             designation,
             email,
-            department,
-            status: 'FREE',
-            total_point: 0,
-            completedTask: 0
+            department
           });
           createdCount++;
         }
       }
 
-      rebuildTechnicianStatuses();
       await saveData();
-      res.json({ message: "Employee data processed successfully", createdCount, updatedCount, total: data.length });
-    } catch (err: any) {
+      res.json({ message: "Employee data processed successfully", createdCount, updatedCount });
+    } catch (err) {
       console.error("Error processing employee data:", err);
-      res.status(500).json({ error: "Failed to process employee data: " + (err.message || String(err)) });
+      res.status(500).json({ error: "Failed to process employee data: " + err.message });
     }
   });
 
@@ -1325,8 +1465,35 @@ async function startServer() {
     if (req.user.role !== 'SUPER_ADMIN') {
       return res.status(403).json({ error: "Forbidden" });
     }
-    const count = await backfillPoints();
-    res.json({ message: `Backfilled ${count} task points.`, count });
+    recalculateAllPoints();
+    await saveData();
+    res.json({ message: `Points recalculated and backfilled.` });
+  });
+
+  app.post("/api/system/clear-tasks", authenticate, async (req: Request, res: Response) => {
+    if (req.user.role !== 'SUPER_ADMIN') {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    tasks.length = 0;
+    attendanceRecords.length = 0;
+    pointTransactions.length = 0;
+    technicianPerformance.length = 0;
+    assignmentRequests.length = 0;
+    notifications.length = 0;
+    adminAuditLogs.length = 0;
+    
+    // Reset points and task counts on all users, keep user and employee data intact
+    users.forEach((u: any) => {
+      u.total_point = 0;
+      u.completedTask = 0;
+      if (u.role === 'TECHNICIAN') {
+        u.status = 'FREE';
+      }
+    });
+
+    await saveData(true);
+    await logAdminAction(req.user, 'CLEAR_TASKS', 'Cleared all dummy tasks and operational data, preserving employee and user records');
+    res.json({ message: "All tasks and operational data cleared successfully. All employee and user accounts preserved.", userCount: users.length });
   });
 
   app.get("/api/system/backup", authenticate, (req: Request, res: Response) => {
@@ -1334,12 +1501,174 @@ async function startServer() {
       return res.status(403).json({ error: "Forbidden" });
     }
     const backupData = {
-      users: users, // Include everything for full restore
-      tasks: tasks,
-      attendanceRecords: attendanceRecords,
+      users,
+      tasks,
+      attendanceRecords,
+      notifications,
+      pointTransactions,
+      technicianPerformance,
+      assignmentRequests,
+      activityLogs,
+      adminAuditLogs,
+      userSessions,
+      failedLoginAttempts,
+      lockedDevices,
+      autoBackupSettings,
       timestamp: new Date().toISOString()
     };
     res.json(backupData);
+  });
+
+  // --- Auto-Backup & Database Management Endpoints ---
+  app.get("/api/system/backup-settings", authenticate, async (req: Request, res: Response) => {
+    if (req.user.role !== 'SUPER_ADMIN') return res.status(403).json({ error: "Forbidden" });
+    try {
+      await fs.mkdir(BACKUPS_DIR, { recursive: true });
+      const files = await fs.readdir(BACKUPS_DIR);
+      const backupFiles = files.filter(f => f.startsWith('db-backup-') && f.endsWith('.json'));
+
+      const backupsWithMeta = await Promise.all(
+        backupFiles.sort().reverse().slice(0, 30).map(async (filename) => {
+          const filePath = path.join(BACKUPS_DIR, filename);
+          const stat = await fs.stat(filePath);
+          let tasksCount = 0;
+          let usersCount = 0;
+          let type = 'HOURLY_AUTO';
+          let timestamp = stat.mtime.toISOString();
+          try {
+            const content = await fs.readFile(filePath, 'utf-8');
+            const parsed = JSON.parse(content);
+            tasksCount = Array.isArray(parsed.tasks) ? parsed.tasks.length : 0;
+            usersCount = Array.isArray(parsed.users) ? parsed.users.length : 0;
+            if (parsed.backupMeta) {
+              type = parsed.backupMeta.type || type;
+              timestamp = parsed.backupMeta.timestamp || timestamp;
+            }
+          } catch (e) {}
+          return {
+            filename,
+            timestamp,
+            size: stat.size,
+            tasksCount,
+            usersCount,
+            type
+          };
+        })
+      );
+
+      res.json({
+        autoBackupEnabled: autoBackupSettings.enabled,
+        intervalMinutes: autoBackupSettings.intervalMinutes,
+        lastBackupTime: autoBackupSettings.lastBackupTime,
+        nextBackupTime: autoBackupSettings.nextBackupTime,
+        liveStats: {
+          tasksCount: tasks.length,
+          usersCount: users.length,
+          attendanceCount: attendanceRecords.length
+        },
+        backups: backupsWithMeta
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to fetch backup settings: " + err.message });
+    }
+  });
+
+  app.post("/api/system/backup-settings", authenticate, async (req: Request, res: Response) => {
+    if (req.user.role !== 'SUPER_ADMIN') return res.status(403).json({ error: "Forbidden" });
+    const { enabled, intervalMinutes } = req.body;
+    if (typeof enabled === 'boolean') {
+      autoBackupSettings.enabled = enabled;
+    }
+    if (typeof intervalMinutes === 'number' && intervalMinutes >= 5) {
+      autoBackupSettings.intervalMinutes = intervalMinutes;
+    }
+    startAutoBackupSchedule();
+    await saveData();
+    await logAdminAction(req.user, 'UPDATE_BACKUP_SETTINGS', `Updated auto-backup configuration: enabled=${autoBackupSettings.enabled}, interval=${autoBackupSettings.intervalMinutes}m`);
+    res.json({ success: true, settings: autoBackupSettings });
+  });
+
+  app.post("/api/system/backup-now", authenticate, async (req: Request, res: Response) => {
+    if (req.user.role !== 'SUPER_ADMIN') return res.status(403).json({ error: "Forbidden" });
+    try {
+      const backupInfo = await createHourlyBackup(true);
+      await logAdminAction(req.user, 'MANUAL_BACKUP', `Manual DB snapshot created: ${backupInfo.filename} with ${tasks.length} tasks, ${users.length} users`);
+      res.json({ message: "Database snapshot created successfully!", backup: backupInfo });
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to create database snapshot: " + err.message });
+    }
+  });
+
+  app.get("/api/system/download-db", authenticate, async (req: Request, res: Response) => {
+    if (req.user.role !== 'SUPER_ADMIN') return res.status(403).json({ error: "Forbidden" });
+    try {
+      await saveData();
+      const filePath = fsSync.existsSync(DB_FILE) ? DB_FILE : DATA_FILE;
+      res.download(filePath, `rac-ri-daily-work-db-${new Date().toISOString().slice(0, 10)}.json`);
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to download database file: " + err.message });
+    }
+  });
+
+  app.get("/api/system/backups/:filename", authenticate, (req: Request, res: Response) => {
+    if (req.user.role !== 'SUPER_ADMIN') return res.status(403).json({ error: "Forbidden" });
+    const filename = path.basename(req.params.filename);
+    const filePath = path.join(BACKUPS_DIR, filename);
+    if (!fsSync.existsSync(filePath)) {
+      return res.status(404).json({ error: "Backup snapshot file not found" });
+    }
+    res.download(filePath, filename);
+  });
+
+  app.post("/api/system/restore-backup", authenticate, async (req: Request, res: Response) => {
+    if (req.user.role !== 'SUPER_ADMIN') return res.status(403).json({ error: "Forbidden" });
+    const { filename } = req.body;
+    if (!filename) return res.status(400).json({ error: "Filename is required" });
+
+    const safeName = path.basename(filename);
+    const filePath = path.join(BACKUPS_DIR, safeName);
+    if (!fsSync.existsSync(filePath)) {
+      return res.status(404).json({ error: "Backup snapshot file not found" });
+    }
+
+    try {
+      const content = await fs.readFile(filePath, "utf-8");
+      const data = JSON.parse(content);
+      
+      const replaceArray = (target: any[], source: any) => {
+        if (Array.isArray(source)) {
+          target.length = 0;
+          for (const item of source) target.push(item);
+          return true;
+        }
+        return false;
+      };
+
+      replaceArray(users, data.users);
+      replaceArray(tasks, data.tasks);
+      replaceArray(attendanceRecords, data.attendanceRecords);
+      replaceArray(notifications, data.notifications);
+      replaceArray(pointTransactions, data.pointTransactions);
+      replaceArray(technicianPerformance, data.technicianPerformance);
+      replaceArray(assignmentRequests, data.assignmentRequests);
+      replaceArray(activityLogs, data.activityLogs);
+      replaceArray(adminAuditLogs, data.adminAuditLogs);
+      replaceArray(failedLoginAttempts, data.failedLoginAttempts);
+      replaceArray(lockedDevices, data.lockedDevices);
+
+      recalculateAllPoints();
+      rebuildTechnicianStatuses();
+      await saveData(true);
+
+      await logAdminAction(req.user, 'RESTORE_BACKUP', `Restored system from backup snapshot: ${safeName} (${tasks.length} tasks, ${users.length} users)`);
+      res.json({
+        message: `System successfully restored from ${safeName}!`,
+        tasksCount: tasks.length,
+        usersCount: users.length
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to restore backup snapshot: " + err.message });
+    }
   });
 
   app.post("/api/system/restore", authenticate, async (req: Request, res: Response) => {
@@ -1405,7 +1734,9 @@ async function startServer() {
         }
       }
 
-      await saveData();
+      recalculateAllPoints();
+      rebuildTechnicianStatuses();
+      await saveData(true);
       console.log('System fully restored successfully');
       res.json({ 
         message: "System restored successfully", 
@@ -1433,9 +1764,6 @@ async function startServer() {
     const assignedToName = req.body.assignedTo || (req.body.workType === 'TEAM' && Array.isArray(assignedTechnicians) && assignedTechnicians.length > 0 ? assignedTechnicians[0].name : '');
     const workType = req.body.workType;
     
-    // Always refresh technician statuses first so we evaluate live task state
-    rebuildTechnicianStatuses();
-
     if (user.role === 'OFFICER') {
       if (!assignedToName && workType !== 'TEAM') {
         return res.status(400).json({ error: "Task must be assigned to a Technician." });
@@ -1445,16 +1773,16 @@ async function startServer() {
         if (!targetUser || targetUser.role !== 'TECHNICIAN') {
           return res.status(403).json({ error: "Access Denied: Officers can only assign tasks to Technicians." });
         }
-        // Technician Monitoring: Only block if they have an active running task
-        if (isTechnicianCurrentlyWorking(targetUser)) {
-          return res.status(400).json({ error: `Technician ${targetUser.name} is currently WORKING on an active task. Please wait until they are FREE.` });
+        // Technician Monitoring: Cannot assign to WORKING technician
+        if (targetUser.status === 'WORKING') {
+          return res.status(400).json({ error: `Technician ${targetUser.name} is currently WORKING. Please wait until they are FREE.` });
         }
       }
       if (workType === 'TEAM' && Array.isArray(assignedTechnicians)) {
         for (const at of assignedTechnicians) {
-          const tech = users.find(u => u.employeeId === at.employeeId || u.name === at.name || u.id === at.id);
-          if (tech && isTechnicianCurrentlyWorking(tech)) {
-            return res.status(400).json({ error: `Technician ${tech.name} is currently WORKING on an active task. Please wait until they are FREE.` });
+          const tech = users.find(u => u.employeeId === at.employeeId);
+          if (tech && tech.status === 'WORKING') {
+            return res.status(400).json({ error: `Technician ${tech.name} is currently WORKING. Please wait until they are FREE.` });
           }
         }
       }
@@ -1468,7 +1796,7 @@ async function startServer() {
       return res.status(400).json({ error: "Urgent work cannot exceed 2 points." });
     }
     if (urgency === 'MOST_URGENT') {
-      if (user.role !== 'ENGINEER' && user.role !== 'SUPER_ADMIN' && user.role !== 'HOD' && user.role !== 'IN_CHARGE' && user.employeeId !== '42949') {
+      if (user.role !== 'ENGINEER' && user.role !== 'SUPER_ADMIN' && user.role !== 'HOD') {
         return res.status(403).json({ error: "Only Engineers or higher can assign Most Urgent tasks." });
       }
       if (points > 3) {
@@ -1496,14 +1824,13 @@ async function startServer() {
 
       const hasOtherTeamTech = targetTechs.some((t: any) => {
         const u = users.find(usr => usr.employeeId === (t?.employeeId || t?.name) || usr.name === (t?.name || t?.employeeId) || usr.id === (t?.id || t?.employeeId));
-        return u && u.supervisorId && u.supervisorId !== user.id && u.supervisorId !== user.employeeId;
+        return u && u.supervisorId !== user.id;
       });
 
       if (hasOtherTeamTech) {
         // STRICT FLOW: Officer -> Request -> Technician Supervisor
-        // Keep requestStatus = 'RECOMMENDED' so Officer's Engineer also sees it in Recommendation Panel
         status = "REQUESTED";
-        requestStatus = "RECOMMENDED";
+        requestStatus = "PENDING";
       } else {
         // Own Technician -> Direct Assign
         status = "RUNNING";
@@ -1515,18 +1842,18 @@ async function startServer() {
       }
       
       const hasOtherTeamTech = assignedTechnicians.some((at: any) => {
-        const tech = users.find(u => u.employeeId === at.employeeId || u.name === at.name || u.id === at.id);
-        return tech && tech.supervisorId && tech.supervisorId !== user.id && tech.supervisorId !== user.employeeId;
+        const tech = users.find(u => u.employeeId === at.employeeId);
+        return tech && tech.supervisorId !== user.id;
       });
 
-      if (hasOtherTeamTech && user.role !== 'SUPER_ADMIN') {
+      if (hasOtherTeamTech) {
         status = "REQUESTED";
         requestStatus = "PENDING";
       } else {
         status = "RUNNING";
       }
     } else if (targetUser && targetUser.role === 'TECHNICIAN') {
-      if (user.role !== 'ENGINEER' && user.role !== 'SUPER_ADMIN' && targetUser.supervisorId && targetUser.supervisorId !== user.id && targetUser.supervisorId !== user.employeeId) {
+      if (user.role !== 'ENGINEER' && targetUser.supervisorId !== user.id) {
         status = "REQUESTED";
         requestStatus = "PENDING";
       } else {
@@ -1536,7 +1863,7 @@ async function startServer() {
 
     const newTask: Task = {
       ...req.body,
-      assignedTo: targetUser?.name || assignedToName,
+      assignedTo: assignedToName,
       id: Date.now().toString(),
       taskId: `${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${new Date().getHours()}${new Date().getMinutes()}-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`,
       createdAt: new Date().toISOString(),
@@ -1544,9 +1871,9 @@ async function startServer() {
       assignedBy: user.employeeId,
       status: status,
       requestStatus: requestStatus as any,
-      startedAt: status === "RUNNING" ? (req.body.customStartTime || new Date().toISOString()) : undefined,
+      startedAt: user.role === 'OFFICER' ? new Date().toISOString() : undefined,
       progress: req.body.progress || 0,
-      points: (user.role === 'OFFICER' && user.employeeId !== '42949') ? 0 : (req.body.points || 1),
+      points: user.role === 'OFFICER' ? 0 : (req.body.points || 1),
       customStartTime: req.body.customStartTime || '',
       estimatedDuration: req.body.estimatedDuration || '',
       workType: workType || 'SINGLE',
@@ -1558,9 +1885,7 @@ async function startServer() {
       })) : undefined,
       logs: [{
         id: Date.now().toString(),
-        action: status === "REQUESTED"
-          ? `Cross-team request submitted for technician approval (${workType === 'TEAM' ? assignedTechnicians.map((t: any) => t.name).join(', ') : (targetUser?.name || assignedToName)})`
-          : (user.role === 'OFFICER' ? "Task Created (Sent for Engineer Recommendation)" : (requestStatus === "RECOMMENDED" ? "Task Created (Sent for Engineer Recommendation)" : "Task Created")),
+        action: user.role === 'OFFICER' ? "Task Created (Sent for Engineer Recommendation)" : (requestStatus === "RECOMMENDED" ? "Task Created (Sent for Engineer Recommendation)" : (status === "REQUESTED" ? "Task Requested (Cross-Team)" : "Task Created")),
         timestamp: new Date().toISOString(),
         user: user.name
       }]
@@ -1571,7 +1896,7 @@ async function startServer() {
       if (workType !== 'TEAM') {
         newTask.logs.push({
           id: (Date.now() + 1).toString(),
-          action: `Task assigned to ${targetUser?.name || assignedToName} - Started`,
+          action: `Task assigned to ${targetUser?.name} - Started`,
           timestamp: new Date().toISOString(),
           user: "System"
         });
@@ -1580,11 +1905,11 @@ async function startServer() {
 
     tasks.push(newTask);
     
-    // Update Technician Status to WORKING (only if RUNNING)
-    if (status === "RUNNING") {
+    // Update Technician Status to WORKING
+    if (status === "RUNNING" || (user.role === 'OFFICER' && status === 'PENDING' && requestStatus === 'RECOMMENDED')) {
       if (workType === 'TEAM' && Array.isArray(assignedTechnicians)) {
         assignedTechnicians.forEach((at: any) => {
-          const tech = users.find(u => u.employeeId === at.employeeId || u.name === at.name || u.id === at.id);
+          const tech = users.find(u => u.employeeId === at.employeeId);
           if (tech) tech.status = 'WORKING';
         });
       } else if (assignedToName) {
@@ -1593,39 +1918,8 @@ async function startServer() {
       }
     }
 
-    // Add notification for the concern supervisor if REQUESTED
-    if (status === 'REQUESTED') {
-      const supervisorsToNotify = new Set<string>();
-      if (workType === 'TEAM' && Array.isArray(assignedTechnicians)) {
-        assignedTechnicians.forEach((at: any) => {
-          const tech = users.find(u => u.employeeId === at.employeeId || u.name === at.name || u.id === at.id);
-          if (tech && tech.supervisorId && tech.supervisorId !== user.id && tech.supervisorId !== user.employeeId) {
-            supervisorsToNotify.add(tech.supervisorId);
-          }
-        });
-      } else if (targetUser && targetUser.supervisorId) {
-        supervisorsToNotify.add(targetUser.supervisorId);
-      }
-
-      supervisorsToNotify.forEach(supId => {
-        const supervisor = users.find(u => u.id === supId || u.employeeId === supId);
-        if (supervisor) {
-          notifications.push({
-            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-            userId: supervisor.id,
-            senderId: user.id,
-            taskId: newTask.id,
-            type: 'TEAM_REQUEST',
-            message: `Officer ${user.name} requested technician (${workType === 'TEAM' ? assignedTechnicians.map((t: any) => t.name).join(', ') : (targetUser?.name || assignedToName)}) for task: "${newTask.title}". Please approve in Team Requests.`,
-            read: false,
-            timestamp: new Date().toISOString()
-          });
-        }
-      });
-    }
-
-    // Add notification for the assignee (only if RUNNING)
-    if (assignedToName && status === 'RUNNING') {
+    // Add notification for the assignee (if not recommended)
+    if (assignedToName && status !== 'PENDING') {
       const targetUser = users.find(u => u.id === assignedToName || u.name === assignedToName || u.employeeId === assignedToName);
       if (targetUser) {
         notifications.push({
@@ -1641,8 +1935,8 @@ async function startServer() {
       }
     }
 
-    // Add notification for Engineers if created by Officer or recommended
-    if (user.role === 'OFFICER' || requestStatus === 'RECOMMENDED') {
+    // Add notification for Engineers if recommended
+    if (status === 'PENDING' && requestStatus === 'RECOMMENDED') {
       const assignedEngIds = user.assignedEngineers || [];
       assignedEngIds.forEach((engId: string) => {
         const eng = users.find(u => u.employeeId === engId);
@@ -1661,8 +1955,8 @@ async function startServer() {
       });
     }
 
-    // Add notification for team members (only if RUNNING)
-    if (workType === 'TEAM' && Array.isArray(assignedTechnicians) && status === 'RUNNING') {
+    // Add notification for team members
+    if (workType === 'TEAM' && Array.isArray(assignedTechnicians)) {
       assignedTechnicians.forEach((at: any) => {
         const targetUser = users.find(u => u.employeeId === at.employeeId);
         if (targetUser) {
@@ -1680,7 +1974,7 @@ async function startServer() {
       });
     }
 
-    rebuildTechnicianStatuses();
+    recalculateAllPoints();
     await saveData();
     res.status(201).json(newTask);
   });
@@ -1694,82 +1988,76 @@ async function startServer() {
     if (taskIndex === -1) return res.status(404).json({ error: "Task not found" });
     const task = tasks[taskIndex];
 
-    // Engineer Approval & Recommendation Logic
+    // Engineer Approval Logic
     if (user.role === 'ENGINEER') {
+      if (task.requestStatus !== 'RECOMMENDED') {
+        return res.status(400).json({ error: "This task is not in the recommendation panel." });
+      }
+      
       // Engineer must be assigned to the Officer who created the task
-      const officer = users.find(u => u.employeeId === task.createdBy || u.id === task.createdBy);
+      const officer = users.find(u => u.employeeId === task.createdBy);
       if (!officer || !(officer.assignedEngineers || []).includes(user.employeeId)) {
-        return res.status(403).json({ error: "You are not authorized to recommend/approve tasks for this Officer." });
+        return res.status(403).json({ error: "You are not authorized to approve tasks for this Officer." });
       }
 
-      const pointVal = Number(points) || task.points || 1;
-      task.points = pointVal;
+      task.points = points || task.points || 1;
       task.engineer_deadline = engineer_deadline || task.deadline;
-      task.engineerApproved = true;
-      task.recommendedBy = user.employeeId;
-      task.recommendedPoints = pointVal;
+      task.status = "RUNNING";
+      task.requestStatus = "APPROVED";
       task.approvedBy = user.employeeId;
+      task.startedAt = new Date().toISOString();
 
-      // If task is not waiting on supervisor approval (not REQUESTED), start it and set APPROVED
-      if (task.status !== 'REQUESTED') {
-        task.requestStatus = "APPROVED";
-        if (task.status === 'PENDING') {
-          task.status = "RUNNING";
-          task.startedAt = new Date().toISOString();
-        }
-      } else {
-        // Cross-team task waiting for technician supervisor approval
-        // Points are now recommended by Engineer! Keep REQUESTED until supervisor approves technician
-        task.requestStatus = "RECOMMENDED";
+      // Update Technician Status to WORKING
+      if (task.workType === 'TEAM' && Array.isArray(task.assignedTechnicians)) {
+        task.assignedTechnicians.forEach((at: any) => {
+          const tech = users.find(u => u.employeeId === at.employeeId);
+          if (tech) tech.status = 'WORKING';
+        });
+      } else if (task.assignedTo) {
+        const tech = users.find(u => u.id === task.assignedTo || u.name === task.assignedTo || u.employeeId === task.assignedTo);
+        if (tech && tech.role === 'TECHNICIAN') tech.status = 'WORKING';
       }
 
-      // Update Technician Status to WORKING if task is running
-      if (task.status === 'RUNNING') {
-        if (task.workType === 'TEAM' && Array.isArray(task.assignedTechnicians)) {
-          task.assignedTechnicians.forEach((at: any) => {
-            const tech = users.find(u => u.employeeId === at.employeeId);
-            if (tech) tech.status = 'WORKING';
-          });
-        } else if (task.assignedTo) {
-          const tech = users.find(u => u.id === task.assignedTo || u.name === task.assignedTo || u.employeeId === task.assignedTo);
-          if (tech && tech.role === 'TECHNICIAN') tech.status = 'WORKING';
-        }
-      }
-
-      if (task.workType === 'TEAM' && task.assignedTechnicians && task.status === 'RUNNING') {
+      if (task.workType === 'TEAM' && task.assignedTechnicians) {
         task.assignedTechnicians = task.assignedTechnicians.map((at: any) => ({
           ...at,
           status: 'RUNNING',
-          startedAt: at.startedAt || new Date().toISOString()
+          startedAt: new Date().toISOString()
         }));
       }
 
       task.logs.push({
         id: Date.now().toString(),
-        action: `Task Recommended by Engineer ${user.name} with ${pointVal} points`,
+        action: `Task Approved by Engineer ${user.name} with ${task.points} points`,
         timestamp: new Date().toISOString(),
         user: user.name
       });
 
-      // Point System: If task is COMPLETED, add/update points to Officer profile immediately!
-      if (task.status === 'COMPLETED' && officer) {
-        const existingTxIndex = pointTransactions.findIndex(pt => pt.taskId === task.id);
-        if (existingTxIndex !== -1) {
-          pointTransactions[existingTxIndex].pointValue = pointVal;
-          pointTransactions[existingTxIndex].engineerId = user.employeeId;
-        } else {
-          pointTransactions.push({
-            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-            taskId: task.id,
-            officerId: officer.id,
-            engineerId: user.employeeId,
-            pointValue: pointVal,
-            taskPriority: task.urgency,
-            completedAt: task.completedAt || new Date().toISOString()
-          });
-        }
+      // Point System: Point added to Officer Profile only after Task COMPLETE + Engineer APPROVE
+      // This is handled in the main update-task logic when status changes to COMPLETED.
+      // We only check here if the task was ALREADY completed before approval (rare case).
+      if ((task.status as string) === 'COMPLETED' && officer && !task.pointAdded) {
+        pointTransactions.push({
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+          taskId: task.id,
+          officerId: officer.id,
+          engineerId: user.employeeId,
+          pointValue: task.points || 0,
+          taskPriority: task.urgency,
+          completedAt: task.completedAt || new Date().toISOString()
+        });
         task.pointAdded = true;
-        officer.total_point = (officer.total_point || 0) + pointVal;
+      }
+
+      // Update Technician Status to WORKING
+      if (task.workType === 'TEAM' && task.assignedTechnicians) {
+        task.assignedTechnicians.forEach((at: any) => {
+          const tech = users.find(u => u.employeeId === at.employeeId);
+          if (tech) tech.status = 'WORKING';
+        });
+      } else if (task.assignedTo) {
+        const tech = users.find(u => u.id === task.assignedTo || u.name === task.assignedTo || u.employeeId === task.assignedTo);
+        if (tech && tech.role === 'TECHNICIAN') tech.status = 'WORKING';
       }
 
       // Notify Officer
@@ -1777,7 +2065,7 @@ async function startServer() {
         notifications.push({
           id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
           userId: officer.id,
-          message: `Engineer ${user.name} recommended your task "${task.title}" with ${pointVal} points.`,
+          message: `Engineer ${user.name} approved your task "${task.title}" and assigned ${task.points} points.`,
           read: false,
           timestamp: new Date().toISOString()
         });
@@ -1790,108 +2078,87 @@ async function startServer() {
     // Supervisor Approval Logic (Cross-Team or Officer Request)
     const targetTechnician = users.find(u => u.employeeId === task.assignedTo || u.name === task.assignedTo || u.id === task.assignedTo);
     const isTeamMemberSupervisor = task.workType === 'TEAM' && task.assignedTechnicians?.some((at: any) => {
-      const tech = users.find(u => u.employeeId === at.employeeId || u.name === at.name || u.id === at.id);
-      return tech && (tech.supervisorId === user.id || tech.supervisorId === user.employeeId);
+      const tech = users.find(u => u.employeeId === at.employeeId);
+      return tech && tech.supervisorId === user.id;
     });
 
-    const isAuthorizedSupervisor = (targetTechnician && (targetTechnician.supervisorId === user.id || targetTechnician.supervisorId === user.employeeId)) || isTeamMemberSupervisor || user.role === 'SUPER_ADMIN';
-
-    if (!isAuthorizedSupervisor && user.role !== 'ENGINEER') {
+    if ((!targetTechnician || targetTechnician.supervisorId !== user.id) && !isTeamMemberSupervisor) {
       return res.status(403).json({ error: "Only the technician's supervisor can approve this request" });
     }
 
-    const creator = users.find(u => u.employeeId === task.createdBy || u.id === task.createdBy);
-
-    // Cross-team request approved by supervisor: Start task immediately and assign technician
-    task.status = "RUNNING";
-    task.supervisorApproved = true;
-    task.supervisorApprovedBy = user.employeeId;
-    task.startedAt = task.startedAt || new Date().toISOString();
-    
-    // If created by Officer and not yet recommended by Engineer, keep requestStatus = "RECOMMENDED"
-    // so the Officer's Engineer still sees it in their Recommendation Panel!
-    if (creator?.role === 'OFFICER' && !task.engineerApproved) {
+    const creator = users.find(u => u.employeeId === task.createdBy);
+    if (creator && creator.role === 'OFFICER') {
+      // If approved by Supervisor, it goes to Engineer Recommendation Panel
       task.requestStatus = "RECOMMENDED";
-    } else {
-      task.requestStatus = "APPROVED";
-      task.approvedBy = task.approvedBy || user.employeeId;
-    }
-    
-    if (task.workType !== 'TEAM' && targetTechnician) {
-      task.assignedTo = targetTechnician.name;
-    }
-
-    if (task.workType === 'TEAM' && task.assignedTechnicians) {
-      task.assignedTechnicians = task.assignedTechnicians.map((at: any) => ({
-        ...at,
-        status: 'RUNNING',
-        startedAt: at.startedAt || new Date().toISOString()
-      }));
-    }
-
-    task.logs.push({
-      id: Date.now().toString(),
-      action: `Cross-team request APPROVED by Supervisor ${user.name}. Task is now RUNNING and technician is assigned.`,
-      timestamp: new Date().toISOString(),
-      user: user.name
-    });
-
-    // Update Technician Status to WORKING
-    if (task.workType === 'TEAM' && task.assignedTechnicians) {
-      task.assignedTechnicians.forEach((at: any) => {
-        const tech = users.find(u => u.employeeId === at.employeeId || u.name === at.name || u.id === at.id);
-        if (tech) tech.status = 'WORKING';
+      task.status = "PENDING";
+      
+      task.logs.push({
+        id: Date.now().toString(),
+        action: `Request Approved by Supervisor ${user.name} (Sent for Engineer Recommendation)`,
+        timestamp: new Date().toISOString(),
+        user: user.name
       });
-    } else if (targetTechnician) {
-      targetTechnician.status = 'WORKING';
-    }
 
-    // Notify requester (Officer / Supervisor who requested)
-    const requester = users.find(u => u.employeeId === task.assignedBy || u.employeeId === task.createdBy || u.id === task.createdBy);
-    if (requester) {
-      notifications.push({
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-        userId: requester.id,
-        senderId: user.id,
-        taskId: task.id,
-        type: 'TASK_APPROVED',
-        message: `Supervisor ${user.name} APPROVED your request for technician ${targetTechnician?.name || task.assignedTo} for task "${task.title}". The task is now RUNNING!`,
-        read: false,
-        timestamp: new Date().toISOString()
-      });
-    }
-
-    // Notify technician(s)
-    if (targetTechnician) {
-      notifications.push({
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-        userId: targetTechnician.id,
-        senderId: user.id,
-        taskId: task.id,
-        type: 'TASK_ASSIGNED',
-        message: `Supervisor ${user.name} approved your assignment to task "${task.title}". The task has started.`,
-        read: false,
-        timestamp: new Date().toISOString()
-      });
-    } else if (task.workType === 'TEAM' && task.assignedTechnicians) {
-      task.assignedTechnicians.forEach((at: any) => {
-        const tech = users.find(u => u.employeeId === at.employeeId || u.name === at.name || u.id === at.id);
-        if (tech) {
+      // Notify Engineer
+      const assignedEngineers = creator.assignedEngineers || [];
+      assignedEngineers.forEach(engId => {
+        const eng = users.find(u => u.employeeId === engId || u.id === engId);
+        if (eng) {
           notifications.push({
             id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-            userId: tech.id,
-            senderId: user.id,
-            taskId: task.id,
-            type: 'TASK_ASSIGNED',
-            message: `Supervisor ${user.name} approved your team task "${task.title}". The task has started.`,
+            userId: eng.id,
+            message: `New task recommendation request from Officer ${creator.name} (Approved by Supervisor)`,
             read: false,
             timestamp: new Date().toISOString()
           });
         }
       });
+    } else {
+      // Normal cross-team request from another supervisor/manager
+      task.status = "RUNNING";
+      task.requestStatus = "APPROVED";
+      task.startedAt = new Date().toISOString();
+      
+      if (task.workType === 'TEAM' && task.assignedTechnicians) {
+        task.assignedTechnicians = task.assignedTechnicians.map((at: any) => ({
+          ...at,
+          status: 'RUNNING',
+          startedAt: new Date().toISOString()
+        }));
+      }
+
+      task.logs.push({
+        id: Date.now().toString(),
+        action: `Request Approved by Supervisor ${user.name}`,
+        timestamp: new Date().toISOString(),
+        user: user.name
+      });
+
+      // Update Technician Status to WORKING
+      if (task.workType === 'TEAM' && task.assignedTechnicians) {
+        task.assignedTechnicians.forEach((at: any) => {
+          const tech = users.find(u => u.employeeId === at.employeeId);
+          if (tech) tech.status = 'WORKING';
+        });
+      } else if (task.assignedTo) {
+        const tech = users.find(u => u.name === task.assignedTo || u.employeeId === task.assignedTo || u.id === task.assignedTo);
+        if (tech && tech.role === 'TECHNICIAN') tech.status = 'WORKING';
+      }
     }
 
-    rebuildTechnicianStatuses();
+    // Notify requester
+    const requester = users.find(u => u.employeeId === task.assignedBy);
+    if (requester) {
+      notifications.push({
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+        userId: requester.id,
+        message: `Your request for task "${task.title}" has been APPROVED by ${user.name}`,
+        read: false,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    recalculateAllPoints();
     await saveData();
     res.json(task);
   });
@@ -1907,15 +2174,13 @@ async function startServer() {
     if (taskIndex === -1) return res.status(404).json({ error: "Task not found" });
     const task = tasks[taskIndex];
 
-    const targetTechnician = users.find(u => u.employeeId === task.assignedTo || u.name === task.assignedTo || u.id === task.assignedTo);
+    const targetTechnician = users.find(u => u.employeeId === task.assignedTo || u.name === task.assignedTo);
     const isTeamMemberSupervisor = task.workType === 'TEAM' && task.assignedTechnicians?.some((at: any) => {
-      const tech = users.find(u => u.employeeId === at.employeeId || u.name === at.name || u.id === at.id);
-      return tech && (tech.supervisorId === user.id || tech.supervisorId === user.employeeId);
+      const tech = users.find(u => u.employeeId === at.employeeId);
+      return tech && tech.supervisorId === user.id;
     });
 
-    const isAuthorizedSupervisor = (targetTechnician && (targetTechnician.supervisorId === user.id || targetTechnician.supervisorId === user.employeeId)) || isTeamMemberSupervisor || user.role === 'SUPER_ADMIN';
-
-    if (!isAuthorizedSupervisor && user.role !== 'ENGINEER') {
+    if ((!targetTechnician || targetTechnician.supervisorId !== user.id) && !isTeamMemberSupervisor) {
       return res.status(403).json({ error: "Only the technician's supervisor can reject this request" });
     }
 
@@ -1924,41 +2189,43 @@ async function startServer() {
     task.requestRemarks = remarks;
     task.logs.push({
       id: Date.now().toString(),
-      action: `Cross-team request REJECTED by Supervisor ${user.name}: ${remarks}`,
+      action: `Request Rejected by Supervisor ${user.name}: ${remarks}`,
       timestamp: new Date().toISOString(),
       user: user.name
     });
 
     // Notify requester
-    const requester = users.find(u => u.employeeId === task.assignedBy || u.employeeId === task.createdBy || u.id === task.createdBy);
+    const requester = users.find(u => u.employeeId === task.assignedBy);
     if (requester) {
       notifications.push({
         id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
         userId: requester.id,
-        senderId: user.id,
-        taskId: task.id,
-        type: 'TASK_REJECTED',
-        message: `Your request for task "${task.title}" was REJECTED by Supervisor ${user.name}. Reason: ${remarks}`,
+        message: `Your request for task "${task.title}" has been REJECTED by ${user.name}. Reason: ${remarks}`,
         read: false,
         timestamp: new Date().toISOString()
       });
     }
 
-    rebuildTechnicianStatuses();
+    recalculateAllPoints();
     await saveData();
     res.json(task);
   });
 
-  app.post("/api/user/theme", authenticate, async (req: Request, res: Response) => {
+  app.post("/api/user/theme", authenticate, upload.single('background') as any, async (req: Request, res: Response) => {
     const user = (req as any).user;
     const { theme, customBackground, removeBg } = req.body;
-    
-    // Find user by id or employeeId for robustness
-    const userIndex = users.findIndex(u => (u.id && u.id === user.id) || (u.employeeId && u.employeeId === user.employeeId));
+    const userIndex = users.findIndex(u => u.id === user.id);
     if (userIndex === -1) return res.status(404).json({ error: "User not found" });
 
     if (theme) users[userIndex].theme = theme;
-    if (customBackground) users[userIndex].customBackground = customBackground;
+    
+    if (req.file) {
+      // If a file was uploaded, use its path
+      users[userIndex].customBackground = `/uploads/${req.file.filename}`;
+    } else if (customBackground) {
+      users[userIndex].customBackground = customBackground;
+    }
+
     if (removeBg) users[userIndex].customBackground = undefined;
 
     await saveData();
@@ -2005,7 +2272,36 @@ async function startServer() {
     }
 
     // Update Technician Status based on attendance
-    rebuildTechnicianStatuses();
+    const tech = users.find(u => u.employeeId === technicianId);
+    if (tech) {
+      if (status === 'PRESENT') {
+        const hasRunningTasks = tasks.some(t => 
+          t.status === 'RUNNING' && 
+          (t.assignedTo === technicianId || (t.assignedTechnicians && t.assignedTechnicians.some((at: any) => at.employeeId === technicianId)))
+        );
+        tech.status = hasRunningTasks ? 'WORKING' : 'FREE';
+      } else if (status === 'LEAVE' || status === 'ABSENT') {
+        tech.status = 'ON_LEAVE';
+      } else if (status === 'SHORT_LEAVE') {
+        tech.status = 'SHORT_LEAVE';
+      } else if (status === 'SHIFT_6_2' || status === 'SHIFT_2_6') {
+        const now = new Date();
+        const currentHour = now.getHours();
+        let isWorkingShift = false;
+        if (status === 'SHIFT_6_2') isWorkingShift = currentHour >= 6 && currentHour < 14;
+        else if (status === 'SHIFT_2_6') isWorkingShift = currentHour >= 14 && currentHour < 18;
+        
+        if (isWorkingShift) {
+          const hasRunningTasks = tasks.some(t => 
+            t.status === 'RUNNING' && 
+            (t.assignedTo === technicianId || (t.assignedTechnicians && t.assignedTechnicians.some((at: any) => at.employeeId === technicianId)))
+          );
+          tech.status = hasRunningTasks ? 'WORKING' : 'FREE';
+        } else {
+          tech.status = 'SHIFT_OFF';
+        }
+      }
+    }
 
     await saveData();
     res.json({ success: true });
@@ -2052,12 +2348,10 @@ async function startServer() {
         }
       }
       
-      // Engineers can update points or quality if they created the task OR if created by their assigned Officer
+      // Engineers shouldn't be able to update points or quality unless they created the task
       if (req.body.points !== undefined || req.body.quality !== undefined) {
-        const creator = users.find(u => u.employeeId === oldTask.createdBy || u.id === oldTask.createdBy);
-        const isMyOfficer = creator && creator.role === 'OFFICER' && (creator.assignedEngineers || []).includes(user.employeeId);
-        if (oldTask.createdBy !== user.employeeId && !isMyOfficer && user.role !== 'SUPER_ADMIN' && user.role !== 'HOD') {
-          return res.status(403).json({ error: "Access Denied: Only the creator, assigned engineer, or admin can update points and quality." });
+        if (oldTask.createdBy !== user.employeeId && user.role !== 'SUPER_ADMIN' && user.role !== 'HOD') {
+          return res.status(403).json({ error: "Access Denied: Only the creator or admin can update points and quality." });
         }
       }
     } else if (user.role === 'OFFICER') {
@@ -2110,7 +2404,7 @@ async function startServer() {
         updatedData.startedAt = new Date().toISOString();
       }
 
-      updatedData.assignedBy = oldTask.assignedBy || oldTask.createdBy || user.employeeId;
+      updatedData.assignedBy = user.employeeId;
       updatedData.assignedTechnicians = updatedData.assignedTechnicians.map((t: any) => ({
         ...t,
         progress: t.progress || 0,
@@ -2159,7 +2453,7 @@ async function startServer() {
           updatedData.status = 'RUNNING';
           updatedData.startedAt = new Date().toISOString();
         }
-        updatedData.assignedBy = oldTask.assignedBy || oldTask.createdBy || user.employeeId; 
+        updatedData.assignedBy = user.employeeId; 
         if (!updatedData.logs) updatedData.logs = [...(oldTask.logs || [])];
         updatedData.logs.push({
           id: Date.now().toString(),
@@ -2187,88 +2481,82 @@ async function startServer() {
       // Only Supervisor can approve PENDING requests
       const targetTechnician = users.find(u => u.employeeId === oldTask.assignedTo || u.name === oldTask.assignedTo || u.id === oldTask.assignedTo);
       const isTeamMemberSupervisor = oldTask.workType === 'TEAM' && oldTask.assignedTechnicians?.some((at: any) => {
-        const tech = users.find(u => u.employeeId === at.employeeId || u.name === at.name || u.id === at.id);
-        return tech && (tech.supervisorId === user.id || tech.supervisorId === user.employeeId);
+        const tech = users.find(u => u.employeeId === at.employeeId);
+        return tech && tech.supervisorId === user.id;
       });
 
-      const isAuthorizedSupervisor = (targetTechnician && (targetTechnician.supervisorId === user.id || targetTechnician.supervisorId === user.employeeId)) || isTeamMemberSupervisor || user.role === 'SUPER_ADMIN';
-
-      if (!isAuthorizedSupervisor && user.role !== 'ENGINEER') {
+      if ((!targetTechnician || targetTechnician.supervisorId !== user.id) && !isTeamMemberSupervisor) {
         return res.status(403).json({ error: "Only the technician's supervisor can approve this request" });
       }
 
-      updatedData.status = 'RUNNING';
-      updatedData.requestStatus = 'APPROVED';
-      updatedData.approvedBy = user.employeeId;
-      updatedData.startedAt = new Date().toISOString();
-      
-      if (oldTask.workType === 'TEAM' && oldTask.assignedTechnicians) {
-        updatedData.assignedTechnicians = oldTask.assignedTechnicians.map(at => ({
-          ...at,
-          status: 'RUNNING',
-          startedAt: new Date().toISOString()
-        }));
-      } else if (targetTechnician) {
-        updatedData.assignedTo = targetTechnician.name;
-      }
-      
-      if (!updatedData.logs) updatedData.logs = [...(oldTask.logs || [])];
-      updatedData.logs.push({
-        id: Date.now().toString(),
-        action: `Cross-team request APPROVED by Supervisor ${user.name}. Task is now RUNNING and technician is assigned.`,
-        timestamp: new Date().toISOString(),
-        user: user.name
-      });
-
-      // Update Technician Status to WORKING
-      if (oldTask.workType === 'TEAM' && oldTask.assignedTechnicians) {
-        oldTask.assignedTechnicians.forEach((at: any) => {
-          const tech = users.find(u => u.employeeId === at.employeeId || u.name === at.name || u.id === at.id);
-          if (tech) tech.status = 'WORKING';
+      const creator = users.find(u => u.employeeId === oldTask.createdBy);
+      if (creator && creator.role === 'OFFICER') {
+        updatedData.requestStatus = 'RECOMMENDED';
+        updatedData.status = 'PENDING';
+        
+        if (!updatedData.logs) updatedData.logs = [...(oldTask.logs || [])];
+        updatedData.logs.push({
+          id: Date.now().toString(),
+          action: `Request Approved by Supervisor ${user.name} (Sent for Engineer Recommendation)`,
+          timestamp: new Date().toISOString(),
+          user: user.name
         });
-      } else if (targetTechnician) {
-        targetTechnician.status = 'WORKING';
-      }
 
-      // Notify requester
-      const requester = users.find(u => u.employeeId === oldTask.assignedBy || u.employeeId === oldTask.createdBy || u.id === oldTask.createdBy);
-      if (requester) {
-        notifications.push({
-          id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-          userId: requester.id,
-          senderId: user.id,
-          taskId: oldTask.id,
-          type: 'TASK_APPROVED',
-          message: `Supervisor ${user.name} APPROVED your request for technician ${targetTechnician?.name || oldTask.assignedTo} on task "${oldTask.title}". The task is now RUNNING!`,
-          read: false,
-          timestamp: new Date().toISOString()
+        // Notify Engineer
+        const assignedEngineers = creator.assignedEngineers || [];
+        assignedEngineers.forEach(engId => {
+          const eng = users.find(u => u.employeeId === engId || u.id === engId);
+          if (eng) {
+            notifications.push({
+              id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+              userId: eng.id,
+              message: `New task recommendation request from Officer ${creator.name} (Approved by Supervisor)`,
+              read: false,
+              timestamp: new Date().toISOString()
+            });
+          }
         });
-      }
+      } else {
+        updatedData.status = 'RUNNING';
+        updatedData.requestStatus = 'APPROVED';
+        updatedData.startedAt = new Date().toISOString();
+        
+        if (oldTask.workType === 'TEAM' && oldTask.assignedTechnicians) {
+          updatedData.assignedTechnicians = oldTask.assignedTechnicians.map(at => ({
+            ...at,
+            status: 'RUNNING',
+            startedAt: new Date().toISOString()
+          }));
+        }
+        
+        if (!updatedData.logs) updatedData.logs = [...(oldTask.logs || [])];
+        updatedData.logs.push({
+          id: Date.now().toString(),
+          action: `Request Approved by Supervisor ${user.name}`,
+          timestamp: new Date().toISOString(),
+          user: user.name
+        });
 
-      // Notify technician
-      if (targetTechnician) {
-        notifications.push({
-          id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-          userId: targetTechnician.id,
-          senderId: user.id,
-          taskId: oldTask.id,
-          type: 'TASK_ASSIGNED',
-          message: `Supervisor ${user.name} approved your assignment to task "${oldTask.title}". The task has started.`,
-          read: false,
-          timestamp: new Date().toISOString()
-        });
+        // Update Technician Status to WORKING
+        if (oldTask.workType === 'TEAM' && oldTask.assignedTechnicians) {
+          oldTask.assignedTechnicians.forEach((at: any) => {
+            const tech = users.find(u => u.employeeId === at.employeeId);
+            if (tech) tech.status = 'WORKING';
+          });
+        } else if (oldTask.assignedTo) {
+          const tech = users.find(u => u.name === oldTask.assignedTo || u.employeeId === oldTask.assignedTo || u.id === oldTask.assignedTo);
+          if (tech && tech.role === 'TECHNICIAN') tech.status = 'WORKING';
+        }
       }
     } else if (updatedData.requestStatus === 'REJECTED' && oldTask.requestStatus === 'PENDING') {
       // Only Supervisor can reject PENDING requests
       const targetTechnician = users.find(u => u.employeeId === oldTask.assignedTo || u.name === oldTask.assignedTo || u.id === oldTask.assignedTo);
       const isTeamMemberSupervisor = oldTask.workType === 'TEAM' && oldTask.assignedTechnicians?.some((at: any) => {
-        const tech = users.find(u => u.employeeId === at.employeeId || u.name === at.name || u.id === at.id);
-        return tech && (tech.supervisorId === user.id || tech.supervisorId === user.employeeId);
+        const tech = users.find(u => u.employeeId === at.employeeId);
+        return tech && tech.supervisorId === user.id;
       });
 
-      const isAuthorizedSupervisor = (targetTechnician && (targetTechnician.supervisorId === user.id || targetTechnician.supervisorId === user.employeeId)) || isTeamMemberSupervisor || user.role === 'SUPER_ADMIN';
-
-      if (!isAuthorizedSupervisor && user.role !== 'ENGINEER') {
+      if ((!targetTechnician || targetTechnician.supervisorId !== user.id) && !isTeamMemberSupervisor) {
         return res.status(403).json({ error: "Only the technician's supervisor can reject this request" });
       }
 
@@ -2277,25 +2565,10 @@ async function startServer() {
       if (!updatedData.logs) updatedData.logs = [...(oldTask.logs || [])];
       updatedData.logs.push({
         id: Date.now().toString(),
-        action: `Cross-team request REJECTED by Supervisor ${user.name}: ${updatedData.requestRemarks || 'No reason provided'}`,
+        action: `Request Rejected by Supervisor ${user.name}: ${updatedData.requestRemarks || 'No reason provided'}`,
         timestamp: new Date().toISOString(),
         user: user.name
       });
-
-      // Notify requester
-      const requester = users.find(u => u.employeeId === oldTask.assignedBy || u.employeeId === oldTask.createdBy || u.id === oldTask.createdBy);
-      if (requester) {
-        notifications.push({
-          id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-          userId: requester.id,
-          senderId: user.id,
-          taskId: oldTask.id,
-          type: 'TASK_REJECTED',
-          message: `Your request for task "${oldTask.title}" was REJECTED by Supervisor ${user.name}. Reason: ${updatedData.requestRemarks || 'No reason provided'}`,
-          read: false,
-          timestamp: new Date().toISOString()
-        });
-      }
     } else if (updatedData.requestStatus === 'APPROVED' && oldTask.requestStatus === 'RECOMMENDED') {
       // Only Engineer can approve RECOMMENDED requests
       const creator = users.find(u => u.employeeId === oldTask.createdBy);
@@ -2378,64 +2651,27 @@ async function startServer() {
         }
       }
 
-      // Point System: Add points if COMPLETED
-      const isNowCompleted = (updatedData.status || oldTask.status) === 'COMPLETED';
-      
-      const creatorStr = String(oldTask.createdBy || '').toLowerCase().trim();
-      const creator = users.find(u => 
-        (u.employeeId && String(u.employeeId).toLowerCase().trim() === creatorStr) || 
-        (u.id && String(u.id).toLowerCase().trim() === creatorStr) ||
-        (u.name && String(u.name).toLowerCase().trim() === creatorStr)
-      );
+      // Point System: Add points if COMPLETED + APPROVED
+      const creator = users.find(u => u.employeeId === oldTask.createdBy);
+      const isOfficerTask = creator?.role === 'OFFICER';
+      const isEngineerTask = creator?.role === 'ENGINEER';
+      const isApproved = updatedData.requestStatus === 'APPROVED' || oldTask.requestStatus === 'APPROVED' || (!oldTask.requestStatus && oldTask.status === 'RUNNING');
 
-      let officer = null;
-      if (creator && creator.role === 'OFFICER') {
-        officer = creator;
-      } else {
-        const assignerStr = String(oldTask.assignedBy || updatedData.assignedBy || '').toLowerCase().trim();
-        const assigner = users.find(u => 
-          (u.employeeId && String(u.employeeId).toLowerCase().trim() === assignerStr) || 
-          (u.id && String(u.id).toLowerCase().trim() === assignerStr) ||
-          (u.name && String(u.name).toLowerCase().trim() === assignerStr)
-        );
-        if (assigner && assigner.role === 'OFFICER') {
-          officer = assigner;
-        } else {
-          const assignedStr = String(oldTask.assignedTo || updatedData.assignedTo || '').toLowerCase().trim();
-          const assignee = users.find(u => 
-            ((u.id && String(u.id).toLowerCase().trim() === assignedStr) || 
-             (u.name && String(u.name).toLowerCase().trim() === assignedStr) || 
-             (u.employeeId && String(u.employeeId).toLowerCase().trim() === assignedStr)) && 
-            u.role === 'OFFICER'
-          );
-          if (assignee) officer = assignee;
-        }
-      }
+      // Point System: Add points if COMPLETED + APPROVED
 
-      if (officer && isNowCompleted) {
-        let finalPoints = Number(updatedData.points !== undefined ? updatedData.points : (oldTask.points || 0));
-        if (finalPoints === 0) {
-          const urgency = updatedData.urgency || oldTask.urgency;
-          finalPoints = urgency === 'MOST_URGENT' ? 3 : urgency === 'URGENT' ? 2 : 1;
-        }
-        updatedData.points = finalPoints;
-        updatedData.pointAdded = true;
-
-        const existingTxIndex = pointTransactions.findIndex(pt => pt.taskId === oldTask.id);
-        if (existingTxIndex !== -1) {
-          pointTransactions[existingTxIndex].pointValue = finalPoints;
-          pointTransactions[existingTxIndex].officerId = officer.id;
-          pointTransactions[existingTxIndex].completedAt = updatedData.completedAt || new Date().toISOString();
-        } else {
+      if (!oldTask.pointAdded && (isEngineerTask || (isOfficerTask && isApproved))) {
+        const officer = users.find(u => u.employeeId === oldTask.assignedBy) || users.find(u => u.employeeId === oldTask.createdBy);
+        if (officer && officer.role === 'OFFICER') {
           pointTransactions.push({
             id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
             taskId: oldTask.id,
             officerId: officer.id,
-            engineerId: oldTask.approvedBy || oldTask.recommendedBy || oldTask.createdBy || '',
-            pointValue: finalPoints,
+            engineerId: oldTask.approvedBy || oldTask.createdBy || '',
+            pointValue: updatedData.points || oldTask.points || 1,
             taskPriority: oldTask.urgency,
-            completedAt: updatedData.completedAt || new Date().toISOString()
+            completedAt: updatedData.completedAt
           });
+          updatedData.pointAdded = true;
         }
       }
       
@@ -2557,6 +2793,7 @@ async function startServer() {
       }
 
       tasks[index] = { ...oldTask, ...updatedData };
+      recalculateAllPoints();
       rebuildTechnicianStatuses(); // Ensure statuses are consistent after update
       await saveData();
       res.json(tasks[index]);
@@ -2590,7 +2827,7 @@ async function startServer() {
     const index = tasks.findIndex(t => t.id === id);
     if (index !== -1) {
       tasks.splice(index, 1);
-      rebuildTechnicianStatuses();
+      recalculateAllPoints();
       await saveData();
       console.log(`Task ${id} deleted successfully`);
       res.status(204).send();
@@ -2797,38 +3034,50 @@ async function startServer() {
       return res.status(404).json({ error: "Officer not found" });
     }
 
-    const oldPoints = pointTransactions
+    // Calculate current points from all sources
+    const currentPoints = pointTransactions
       .filter(pt => pt.officerId === officerId)
       .reduce((sum, pt) => sum + pt.pointValue, 0);
 
     if (actionType === 'EDIT') {
-      // Add a correction transaction
-      const adjustment = newPoints - oldPoints;
-      pointTransactions.push({
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-        taskId: 'MANUAL_ADJUSTMENT',
-        officerId: officerId,
-        engineerId: user.employeeId,
-        pointValue: adjustment,
-        taskPriority: 'REGULAR',
-        completedAt: new Date().toISOString()
-      });
-    } else if (actionType === 'RESET') {
-      // Recalculate from valid tasks: status = "completed", approved = true, task_point > 0
+      // Direct set: Calculate adjustment needed to reach newPoints
+      const adjustment = (Number(newPoints) || 0) - currentPoints;
+      
+      if (adjustment !== 0) {
+        pointTransactions.push({
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+          taskId: 'MANUAL_ADJUSTMENT',
+          officerId: officerId,
+          engineerId: user.employeeId,
+          pointValue: adjustment,
+          taskPriority: 'REGULAR',
+          completedAt: new Date().toISOString()
+        });
+      }
+    } else if (actionType === 'RESET' || actionType === 'DELETE') {
+      // Full Reset: Remove all point transactions for this officer
       for (let i = pointTransactions.length - 1; i >= 0; i--) {
-        const pt = pointTransactions[i];
-        if (pt.officerId === officerId && pt.taskId !== 'MANUAL_ADJUSTMENT') {
-          const task = tasks.find(t => t.id === pt.taskId);
-          if (!task || task.status !== 'COMPLETED' || task.requestStatus !== 'APPROVED' || (task.points || 0) <= 0) {
-            pointTransactions.splice(i, 1);
-          }
+        if (pointTransactions[i].officerId === officerId) {
+          pointTransactions.splice(i, 1);
         }
       }
+      
+      // Also mark tasks as not having points added if they were linked
+      tasks.forEach(t => {
+        const isOfficerTask = (t.createdBy === officer.employeeId || t.assignedBy === officer.employeeId);
+        if (isOfficerTask) {
+          t.pointAdded = false;
+        }
+      });
     }
 
-    await logAdminAction(user, `POINT_${actionType}`, `Admin ${user.name} ${actionType === 'EDIT' ? 'edited' : 'reset'} points for ${officer.name}. Reason: ${reason || 'Manual Override'}`, officer.id);
-    await saveData();
-    res.json({ success: true, newPoints: officer.total_point });
+      await logAdminAction(user, `POINT_${actionType}`, `Admin ${user.name} ${actionType === 'EDIT' ? 'edited' : 'reset'} points for ${officer.name}. Reason: ${reason || 'Manual Override'}`, officer.id);
+      
+      // Force recalculation before saving and returning
+      recalculateAllPoints();
+      await saveData();
+      
+      res.json({ success: true, newPoints: officer.total_point });
   });
 
   app.post("/api/admin/sync-data", authenticate, async (req: Request, res: Response) => {
@@ -2889,7 +3138,6 @@ async function startServer() {
     const task = tasks[taskIndex];
     
     tasks.splice(taskIndex, 1);
-    rebuildTechnicianStatuses();
     
     await logAdminAction(user, 'TASK_DELETED', `Deleted task ${task.title} (${task.taskId})`, undefined, id);
     await saveData();
@@ -2944,29 +3192,47 @@ async function startServer() {
   });
 
   // --- Vite Integration ---
+  app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+
   if (process.env.NODE_ENV !== "production") {
+    console.log("Starting Vite in development mode...");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
+    console.log("Starting in production mode...");
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res) => res.sendFile(path.join(distPath, "index.html")));
   }
 
-  app.listen(PORT, "0.0.0.0", async () => {
+  // --- Global Error Handler ---
+  app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+    console.error("Unhandled Error:", err);
+    res.status(500).json({ error: "Internal Server Error", message: err.message });
+  });
+
+  app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running at http://localhost:${PORT}`);
     
-    // Run heavy initialization logic AFTER server starts listening
-    // to prevent proxy timeouts during startup.
-    try {
-      await backfillPoints();
-      console.log("Startup data backfill and recalculation complete.");
-    } catch (err) {
-      console.error("Error during post-startup initialization:", err);
-    }
+    // Run initial recalculation and status rebuild after server is up
+    setTimeout(async () => {
+      console.log("Running initial data synchronization...");
+      recalculateAllPoints();
+      rebuildTechnicianStatuses();
+      await saveData();
+      console.log("Initial data synchronization completed.");
+    }, 1000);
+  });
+
+  process.on('uncaughtException', (err) => {
+    console.error('UNCAUGHT EXCEPTION:', err);
+  });
+
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error('UNHANDLED REJECTION at:', promise, 'reason:', reason);
   });
 
   // --- Session Cleanup Task ---
@@ -3022,6 +3288,9 @@ async function startServer() {
     console.log('Periodic auto-save...');
     await saveData();
   }, 300000); // Every 5 minutes
+
+  // --- Start Hourly Auto-Backup Engine ---
+  startAutoBackupSchedule();
 }
 
 startServer().catch(err => {
