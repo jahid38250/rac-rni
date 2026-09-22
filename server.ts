@@ -2818,22 +2818,49 @@ async function startServer() {
   });
 
   app.delete("/api/tasks/:id", authenticate, async (req: Request, res: Response) => {
-    console.log(`Delete task request for ID: ${req.params.id} from user: ${req.user.name} (${req.user.role})`);
-    if (req.user.role !== 'SUPER_ADMIN') {
-      console.warn(`Unauthorized delete attempt by user: ${req.user.name}`);
-      return res.status(403).json({ error: "Only Super Admin can delete tasks" });
-    }
-    const { id } = req.params;
-    const index = tasks.findIndex(t => t.id === id);
-    if (index !== -1) {
+    try {
+      const user = (req as any).user;
+      const { id } = req.params;
+      console.log(`Delete task request for ID: ${id} from user: ${user.name} (${user.role})`);
+      
+      const index = tasks.findIndex(t => t.id === id || t.taskId === id);
+      if (index === -1) {
+        console.warn(`Task ${id} not found for deletion`);
+        return res.status(404).json({ error: "Task not found" });
+      }
+
+      const task = tasks[index];
+      const isSuperAdmin = user.role === 'SUPER_ADMIN';
+      const isHod = user.role === 'HOD';
+      const isCreator = task.createdBy === user.employeeId || 
+                        task.createdBy === user.id || 
+                        task.createdBy === user.name ||
+                        task.assignedBy === user.employeeId;
+
+      if (!isSuperAdmin && !isHod && !isCreator) {
+        console.warn(`Unauthorized delete attempt by user: ${user.name}`);
+        return res.status(403).json({ error: "Access Denied: You are not authorized to delete this task" });
+      }
+
       tasks.splice(index, 1);
+
+      // Clean up point transactions associated with this task
+      for (let i = pointTransactions.length - 1; i >= 0; i--) {
+        if (pointTransactions[i].taskId === task.id || pointTransactions[i].taskId === task.taskId) {
+          pointTransactions.splice(i, 1);
+        }
+      }
+
       recalculateAllPoints();
+      rebuildTechnicianStatuses();
+
+      await logAdminAction(user, 'TASK_DELETED', `Deleted task ${task.title} (${task.taskId || task.id})`, undefined, task.id);
       await saveData();
       console.log(`Task ${id} deleted successfully`);
-      res.status(204).send();
-    } else {
-      console.warn(`Task ${id} not found for deletion`);
-      res.status(404).json({ error: "Task not found" });
+      res.json({ success: true, message: "Task deleted successfully", taskId: task.id });
+    } catch (err: any) {
+      console.error("Error deleting task:", err);
+      res.status(500).json({ error: err.message || "Failed to delete task" });
     }
   });
 
@@ -3127,21 +3154,35 @@ async function startServer() {
   });
 
   app.delete("/api/admin/tasks/:id", authenticate, async (req: Request, res: Response) => {
-    const user = (req as any).user;
-    if (user.role !== 'SUPER_ADMIN') {
-      return res.status(403).json({ error: "Only Super Admin can delete tasks" });
+    try {
+      const user = (req as any).user;
+      if (user.role !== 'SUPER_ADMIN' && user.role !== 'HOD') {
+        return res.status(403).json({ error: "Only Super Admin can delete tasks" });
+      }
+      const { id } = req.params;
+      const taskIndex = tasks.findIndex(t => t.id === id || t.taskId === id);
+      if (taskIndex === -1) return res.status(404).json({ error: "Task not found" });
+      
+      const task = tasks[taskIndex];
+      tasks.splice(taskIndex, 1);
+
+      // Clean up point transactions associated with this task
+      for (let i = pointTransactions.length - 1; i >= 0; i--) {
+        if (pointTransactions[i].taskId === task.id || pointTransactions[i].taskId === task.taskId) {
+          pointTransactions.splice(i, 1);
+        }
+      }
+
+      recalculateAllPoints();
+      rebuildTechnicianStatuses();
+      
+      await logAdminAction(user, 'TASK_DELETED', `Deleted task ${task.title} (${task.taskId || task.id})`, undefined, task.id);
+      await saveData();
+      res.json({ success: true, message: "Task deleted successfully", taskId: task.id });
+    } catch (err: any) {
+      console.error("Error in admin delete task:", err);
+      res.status(500).json({ error: err.message || "Failed to delete task" });
     }
-    const { id } = req.params;
-    const taskIndex = tasks.findIndex(t => t.id === id);
-    if (taskIndex === -1) return res.status(404).json({ error: "Task not found" });
-    
-    const task = tasks[taskIndex];
-    
-    tasks.splice(taskIndex, 1);
-    
-    await logAdminAction(user, 'TASK_DELETED', `Deleted task ${task.title} (${task.taskId})`, undefined, id);
-    await saveData();
-    res.json({ success: true });
   });
 
   app.put("/api/admin/tasks/:id/points", authenticate, async (req: Request, res: Response) => {

@@ -3472,7 +3472,7 @@ export default function App() {
   };
 
   const handleDeleteTask = async (taskId: string) => {
-    if (!window.confirm('Are you sure you want to delete this task? This will also subtract points from the officer.')) return;
+    if (!taskId) return;
     
     setIsLoading(true);
     try {
@@ -3491,18 +3491,26 @@ export default function App() {
       
       toast.success('Task deleted successfully');
       setTaskToDelete(null);
-      fetchTasks(token);
-      fetchStaff(token);
-      fetchPoints(token);
+      if (selectedTask?.id === taskId || selectedTask?.taskId === taskId) {
+        setIsTaskDetailsModalOpen(false);
+        setSelectedTask(null);
+      }
+
+      // Optimistically remove deleted task from state immediately
+      setTasks(prev => prev.filter(t => t.id !== taskId && t.taskId !== taskId));
+      
+      await fetchTasks(token);
+      await fetchStaff(token);
+      await fetchPoints(token);
       
       // Also refresh points and staff if admin
-      if (user?.role === 'SUPER_ADMIN') {
+      if (user?.role === 'SUPER_ADMIN' || user?.role === 'HOD') {
         const updatedPoints = await fetchJson('/api/points', { headers: { 'Authorization': `Bearer ${token}` } });
-        setPointTransactions(updatedPoints);
+        if (updatedPoints) setPointTransactions(updatedPoints);
         const updatedUsers = await fetchJson('/api/users', { headers: { 'Authorization': `Bearer ${token}` } });
-        setStaffList(updatedUsers);
+        if (updatedUsers) setStaffList(updatedUsers);
 
-        if (viewingStaff) {
+        if (viewingStaff && updatedUsers) {
           const updated = updatedUsers.find((u: any) => u.id === viewingStaff.id);
           if (updated) setViewingStaff(updated);
         }
@@ -4608,7 +4616,7 @@ export default function App() {
                                             <Edit2 size={12} />
                                           </button>
                                           <button 
-                                            onClick={() => handleDeleteTask(pt.taskId)}
+                                            onClick={() => setTaskToDelete(pt.taskId)}
                                             className="p-1 hover:bg-white/10 rounded text-red-400 transition-colors"
                                             title="Delete Task"
                                           >
@@ -6615,7 +6623,7 @@ export default function App() {
                                   Update Status
                                 </button>
                               )}
-                              {(['SUPER_ADMIN', 'HOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER'].includes(user?.role || '') || (user?.role === 'OFFICER' && user?.employeeId === '42949')) && (
+                              {((['SUPER_ADMIN', 'HOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(user?.role || '')) || task.createdBy === user?.employeeId || task.createdBy === user?.id) && (
                                 <>
                                   <button 
                                     onClick={() => {
@@ -6641,7 +6649,7 @@ export default function App() {
                                   >
                                     <Edit2 size={16} />
                                   </button>
-                                  {user?.role === 'SUPER_ADMIN' && (
+                                  {(user?.role === 'SUPER_ADMIN' || user?.role === 'HOD' || task.createdBy === user?.employeeId || task.createdBy === user?.id || task.createdBy === user?.name || task.assignedBy === user?.employeeId) && (
                                     <button 
                                       onClick={() => setTaskToDelete(task.id)}
                                       className="p-2 hover:bg-white/10 rounded-lg text-red-400 transition-all"
@@ -9649,6 +9657,17 @@ export default function App() {
                             className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl transition-all"
                           >
                             {selectedTask.status === 'PENDING' ? 'Start Task' : 'Complete Task'}
+                          </button>
+                        )}
+                        {(user?.role === 'SUPER_ADMIN' || user?.role === 'HOD' || selectedTask.createdBy === user?.employeeId || selectedTask.createdBy === user?.id || selectedTask.createdBy === user?.name || selectedTask.assignedBy === user?.employeeId) && (
+                          <button 
+                            onClick={() => setTaskToDelete(selectedTask.id)}
+                            disabled={isLoading}
+                            className="px-4 py-3 bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-600/30 font-bold rounded-xl transition-all flex items-center justify-center gap-2"
+                            title="Delete Task"
+                          >
+                            <Trash2 size={18} />
+                            <span>Delete</span>
                           </button>
                         )}
                       </div>
