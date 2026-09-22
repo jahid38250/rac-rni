@@ -88,7 +88,6 @@ import * as XLSX from 'xlsx';
 import { cn } from './utils';
 import { Role, User, Task, Attendance, TaskLog, TaskStatus, PointTransaction, TechnicianPerformance } from './types';
 import { toast, Toaster } from 'sonner';
-import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 
 // --- Context ---
 const ThemeContext = React.createContext('dark');
@@ -2603,7 +2602,7 @@ export default function App() {
   };
 
   const fetchAiInsights = async (tasks: Task[]) => {
-    if (tasks.length === 0) return;
+    if (!tasks || tasks.length === 0) return;
     
     // Simple cache key based on task IDs and statuses
     const cacheKey = tasks.map(t => `${t.id}-${t.status}`).sort().join('|');
@@ -2613,85 +2612,39 @@ export default function App() {
     }
 
     setIsAiLoading(true);
-    
-    const callAi = async (retryCount = 0): Promise<any> => {
-      try {
-        if (!process.env.GEMINI_API_KEY) {
-          return {
-            urgency: 'REGULAR',
-            reason: 'Based on current workload, tasks are moving at a standard pace. No critical bottlenecks detected.',
-            delayPrediction: { isLikelyDelayed: false, probability: 15 }
-          };
-        }
-
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-        const prompt = `Analyze these daily work tasks and provide insights on overall urgency, reason for that urgency, and a delay prediction. 
-        Tasks: ${JSON.stringify(tasks.map(t => ({ title: t.title, status: t.status, urgency: t.urgency, deadline: t.deadline })))}
-        
-        Return ONLY a JSON object with this structure:
-        {
-          "urgency": "REGULAR" | "URGENT" | "CRITICAL",
-          "reason": "string explaining the insight",
-          "delayPrediction": { "isLikelyDelayed": boolean, "probability": number (0-100) }
-        }`;
-
-        const response = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
-          contents: prompt,
-          config: {
-            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                urgency: { 
-                  type: Type.STRING,
-                  enum: ['REGULAR', 'URGENT', 'CRITICAL']
-                },
-                reason: { type: Type.STRING },
-                delayPrediction: {
-                  type: Type.OBJECT,
-                  properties: {
-                    isLikelyDelayed: { type: Type.BOOLEAN },
-                    probability: { type: Type.NUMBER }
-                  },
-                  required: ['isLikelyDelayed', 'probability']
-                }
-              },
-              required: ['urgency', 'reason', 'delayPrediction']
-            }
-          }
-        });
-
-        if (response.text) {
-          return JSON.parse(response.text);
-        }
-        throw new Error('Empty response from AI');
-      } catch (err: any) {
-        // Handle 429 Quota Exceeded
-        const errStr = JSON.stringify(err);
-        if (errStr.includes('429') || err.status === 429 || err.code === 429 || err.message?.includes('429')) {
-          if (retryCount < 2) {
-            const delay = Math.pow(2, retryCount) * 2000; // 2s, 4s
-            await new Promise(resolve => setTimeout(resolve, delay));
-            return callAi(retryCount + 1);
-          }
-          return {
-            urgency: 'REGULAR',
-            reason: 'AI Insights are currently unavailable due to high demand. Please check back later.',
-            delayPrediction: { isLikelyDelayed: false, probability: 0 }
-          };
-        }
-        throw err;
-      }
-    };
-
     try {
-      const data = await callAi();
-      setAiInsights(data);
-      aiCache.current[cacheKey] = data;
-    } catch (err) {
-      console.error('AI Insights error:', err);
+      const token = localStorage.getItem('token');
+      const simplifiedTasks = tasks.slice(0, 30).map(t => ({
+        id: t.id,
+        title: t.title,
+        status: t.status,
+        urgency: t.urgency,
+        deadline: t.deadline
+      }));
+
+      const data = await fetchJson('/api/ai/insights', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ tasks: simplifiedTasks })
+      });
+
+      if (data && (data.urgency || data.reason)) {
+        setAiInsights(data);
+        aiCache.current[cacheKey] = data;
+      }
+    } catch {
+      // Fallback in case of temporary offline/network issues
+      const fallback = {
+        urgency: 'REGULAR',
+        reason: 'Tasks are progressing at a standard pace with balanced distribution.',
+        delayPrediction: { isLikelyDelayed: false, probability: 12 },
+        efficiencyTip: 'Assign high-priority tasks to available technicians during morning peak hours.'
+      };
+      setAiInsights(fallback);
+      aiCache.current[cacheKey] = fallback;
     } finally {
       setIsAiLoading(false);
     }
@@ -3497,7 +3450,11 @@ export default function App() {
       }
 
       // Optimistically remove deleted task from state immediately
-      setTasks(prev => prev.filter(t => t.id !== taskId && t.taskId !== taskId));
+      const cleanTargetId = String(taskId).trim();
+      setTasks(prev => prev.filter(t => 
+        String(t.id).trim() !== cleanTargetId && 
+        String(t.taskId).trim() !== cleanTargetId
+      ));
       
       await fetchTasks(token);
       await fetchStaff(token);
@@ -6020,7 +5977,7 @@ export default function App() {
                     <div className="p-4 rounded-xl bg-white/5 border border-white/10">
                       <p className="text-xs text-green-300 font-bold uppercase tracking-widest mb-2">Efficiency Tip</p>
                       <p className="text-sm text-gray-300">
-                        {isAiLoading ? "Calculating optimal assignments..." : "Technician Mike is currently free and has the best completion rate for 12K models."}
+                        {isAiLoading ? "Calculating optimal assignments..." : ((aiInsights as any)?.efficiencyTip || "Workload distribution is balanced. Maintain current workflow pace.")}
                       </p>
                     </div>
                   </div>

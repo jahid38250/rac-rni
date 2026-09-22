@@ -16,7 +16,7 @@ const getAI = () => {
 export const analyzeTaskUrgency = async (taskDetails: string) => {
   const ai = getAI();
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: "gemini-3.8-flash",
     contents: `Analyze the following task details and determine the urgency (REGULAR, URGENT, MOST_URGENT) and provide a brief reason.
     Task Details: ${taskDetails}`,
     config: {
@@ -37,7 +37,7 @@ export const analyzeTaskUrgency = async (taskDetails: string) => {
 export const predictDelay = async (task: any) => {
   const ai = getAI();
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: "gemini-3.8-flash",
     contents: `Predict if the following task might be delayed based on its deadline and current progress.
     Task: ${JSON.stringify(task)}`,
     config: {

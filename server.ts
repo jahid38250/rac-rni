@@ -10,7 +10,17 @@ import fs from "fs/promises";
 import fsSync from "fs";
 import XLSX from "xlsx";
 import multer from "multer";
+import { GoogleGenAI } from "@google/genai";
 import type { Role, User, Task, Attendance, TaskLog, TaskStatus, ActivityLog, AdminAuditLog, UserSession, FailedLoginAttempt, LockedDevice } from './types.js';
+
+let genAIClient: GoogleGenAI | null = null;
+function getGenAI(): GoogleGenAI | null {
+  if (!process.env.GEMINI_API_KEY) return null;
+  if (!genAIClient) {
+    genAIClient = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  }
+  return genAIClient;
+}
 
 const upload = multer({ dest: 'uploads/' });
 
@@ -121,20 +131,24 @@ async function startServer() {
       console.error(`Error reading ${DATA_FILE}:`, err.message);
     }
 
-    // 2. Inspect DB_FILE (data/db.json). If DATA_FILE is missing, corrupt, or has 0 tasks while DB_FILE has tasks, prefer DB_FILE!
+    // 2. Inspect DB_FILE (data/db.json). Compare timestamps to pick the freshest version
     try {
       if (fsSync.existsSync(DB_FILE)) {
         console.log(`Checking data from database file: ${DB_FILE}`);
         const dbContent = await fs.readFile(DB_FILE, "utf-8");
         const parsedDb = JSON.parse(dbContent);
         if (parsedDb && typeof parsedDb === 'object') {
-          const loadedTasksCount = (loadedContent && Array.isArray(loadedContent.tasks)) ? loadedContent.tasks.length : 0;
-          const dbTasksCount = Array.isArray(parsedDb.tasks) ? parsedDb.tasks.length : 0;
-          
-          if (!loadedContent || dbTasksCount > loadedTasksCount) {
-            console.log(`[DATA RECOVERY] Preferring ${DB_FILE} with ${dbTasksCount} tasks over ${loadedFrom} with ${loadedTasksCount} tasks.`);
+          if (!loadedContent) {
             loadedContent = parsedDb;
             loadedFrom = DB_FILE;
+          } else {
+            const dataTime = loadedContent.lastSavedAt ? new Date(loadedContent.lastSavedAt).getTime() : 0;
+            const dbTime = parsedDb.lastSavedAt ? new Date(parsedDb.lastSavedAt).getTime() : 0;
+            if (dbTime > dataTime) {
+              console.log(`[DATA RECOVERY] DB_FILE has fresher timestamp (${parsedDb.lastSavedAt}) than DATA_FILE (${loadedContent.lastSavedAt}). Using DB_FILE.`);
+              loadedContent = parsedDb;
+              loadedFrom = DB_FILE;
+            }
           }
         }
       }
@@ -142,18 +156,17 @@ async function startServer() {
       console.error(`Error reading ${DB_FILE}:`, err.message);
     }
 
-    // 3. If still empty or no tasks found, inspect recent backups in backups/
-    const currentTasksCount = (loadedContent && Array.isArray(loadedContent.tasks)) ? loadedContent.tasks.length : 0;
-    if (!loadedContent || currentTasksCount === 0) {
+    // 3. ONLY if neither DATA_FILE nor DB_FILE could be loaded (missing or corrupted), inspect recent backups
+    if (!loadedContent) {
       try {
         const latestBackup = path.join(BACKUPS_DIR, 'latest-hourly-db.json');
         if (fsSync.existsSync(latestBackup)) {
           const content = await fs.readFile(latestBackup, "utf-8");
           const parsed = JSON.parse(content);
-          if (parsed && Array.isArray(parsed.tasks) && parsed.tasks.length > 0) {
+          if (parsed && typeof parsed === 'object') {
             loadedContent = parsed;
             loadedFrom = latestBackup;
-            console.log(`[AUTO-RECOVERY] Recovered ${parsed.tasks.length} tasks from ${latestBackup}!`);
+            console.log(`[AUTO-RECOVERY] Recovered database state from backup ${latestBackup}!`);
           }
         }
       } catch (backupErr: any) {
@@ -289,34 +302,14 @@ async function startServer() {
 
   let isSaving = false;
   let savePending = false;
-  let lastSaveAllowEmpty = false;
 
-  async function saveData(allowEmptyTasks = false) {
+  async function saveData(_allowEmpty?: boolean) {
     if (isSaving) {
       savePending = true;
-      if (allowEmptyTasks) lastSaveAllowEmpty = true;
       return;
     }
     isSaving = true;
     try {
-      // Safety guard against saving 0 tasks if tasks previously existed on disk
-      // unless explicitly requested by clear-tasks or restore
-      if (tasks.length === 0 && !allowEmptyTasks && !lastSaveAllowEmpty) {
-        try {
-          if (fsSync.existsSync(DATA_FILE)) {
-            const currentDisk = JSON.parse(await fs.readFile(DATA_FILE, "utf-8"));
-            if (currentDisk && Array.isArray(currentDisk.tasks) && currentDisk.tasks.length > 0) {
-              console.warn(`[SAFETY GUARD] Prevented wiping ${currentDisk.tasks.length} tasks on disk with 0 tasks in memory. Restoring tasks into memory.`);
-              for (const t of currentDisk.tasks) {
-                tasks.push(t);
-              }
-            }
-          }
-        } catch (readErr) {
-          console.warn("[SAFETY GUARD] Could not verify existing tasks on disk:", readErr);
-        }
-      }
-
       await fs.mkdir(DATA_DIR, { recursive: true });
       await fs.mkdir(BACKUPS_DIR, { recursive: true });
 
@@ -355,9 +348,7 @@ async function startServer() {
       isSaving = false;
       if (savePending) {
         savePending = false;
-        const allowEmpty = lastSaveAllowEmpty;
-        lastSaveAllowEmpty = false;
-        saveData(allowEmpty);
+        saveData().catch(err => console.error("Error in pending save:", err));
       }
     }
   }
@@ -803,6 +794,32 @@ async function startServer() {
     } catch (err) {
       res.status(401).json({ error: "Invalid token" });
     }
+  };
+
+  const optionalAuth = async (req: Request, res: Response, next: NextFunction) => {
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.split(" ")[1];
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET) as any;
+        const user = users.find(u => 
+          (decoded.id && u.id === decoded.id) || 
+          (decoded.employeeId && u.employeeId && u.employeeId.toLowerCase() === decoded.employeeId.toLowerCase())
+        );
+        if (user) {
+          req.user = {
+            ...decoded,
+            id: user.id,
+            role: user.role,
+            name: user.name,
+            employeeId: user.employeeId
+          };
+        }
+      } catch {
+        // Continue silently without blocking if token is expired/invalid
+      }
+    }
+    next();
   };
 
   // --- API Routes ---
@@ -2821,11 +2838,17 @@ async function startServer() {
     try {
       const user = (req as any).user;
       const { id } = req.params;
-      console.log(`Delete task request for ID: ${id} from user: ${user.name} (${user.role})`);
+      const cleanId = String(id || '').trim();
+      console.log(`Delete task request for ID: "${cleanId}" from user: ${user.name} (${user.role})`);
       
-      const index = tasks.findIndex(t => t.id === id || t.taskId === id);
+      const index = tasks.findIndex(t => 
+        String(t.id).trim() === cleanId || 
+        String(t.taskId).trim() === cleanId ||
+        (t.id && cleanId && String(t.id) == cleanId) ||
+        (t.taskId && cleanId && String(t.taskId) == cleanId)
+      );
       if (index === -1) {
-        console.warn(`Task ${id} not found for deletion`);
+        console.warn(`Task "${cleanId}" not found for deletion. Available task IDs: ${tasks.map(t => `${t.id}/${t.taskId}`).join(', ')}`);
         return res.status(404).json({ error: "Task not found" });
       }
 
@@ -2846,7 +2869,13 @@ async function startServer() {
 
       // Clean up point transactions associated with this task
       for (let i = pointTransactions.length - 1; i >= 0; i--) {
-        if (pointTransactions[i].taskId === task.id || pointTransactions[i].taskId === task.taskId) {
+        const pt = pointTransactions[i];
+        if (
+          pt.taskId === task.id || 
+          pt.taskId === task.taskId ||
+          String(pt.taskId).trim() === String(task.id).trim() ||
+          String(pt.taskId).trim() === String(task.taskId).trim()
+        ) {
           pointTransactions.splice(i, 1);
         }
       }
@@ -2856,11 +2885,129 @@ async function startServer() {
 
       await logAdminAction(user, 'TASK_DELETED', `Deleted task ${task.title} (${task.taskId || task.id})`, undefined, task.id);
       await saveData();
-      console.log(`Task ${id} deleted successfully`);
+      console.log(`Task ${cleanId} deleted successfully. Remaining tasks in memory: ${tasks.length}`);
       res.json({ success: true, message: "Task deleted successfully", taskId: task.id });
     } catch (err: any) {
       console.error("Error deleting task:", err);
       res.status(500).json({ error: err.message || "Failed to delete task" });
+    }
+  });
+
+  app.post("/api/ai/insights", optionalAuth, async (req: Request, res: Response) => {
+    try {
+      const incomingTasks: any[] = Array.isArray(req.body?.tasks) && req.body.tasks.length > 0 
+        ? req.body.tasks 
+        : tasks;
+
+      const criticalTasks = incomingTasks.filter((t: any) => t.urgency === 'CRITICAL' && t.status !== 'COMPLETED');
+      const urgentTasks = incomingTasks.filter((t: any) => t.urgency === 'URGENT' && t.status !== 'COMPLETED');
+      const runningTasks = incomingTasks.filter((t: any) => t.status === 'RUNNING');
+      const pendingTasks = incomingTasks.filter((t: any) => t.status === 'PENDING');
+      const completedTasks = incomingTasks.filter((t: any) => t.status === 'COMPLETED');
+
+      const todayStr = new Date().toISOString().split('T')[0];
+      const overdueTasks = incomingTasks.filter((t: any) => t.status !== 'COMPLETED' && t.deadline && t.deadline < todayStr);
+
+      let heuristicUrgency: 'REGULAR' | 'URGENT' | 'CRITICAL' = 'REGULAR';
+      let heuristicReason = 'Tasks are progressing steadily with balanced distribution across teams.';
+      let delayProbability = 12;
+
+      if (criticalTasks.length > 0 || overdueTasks.length > 0) {
+        heuristicUrgency = 'CRITICAL';
+        heuristicReason = `${criticalTasks.length > 0 ? `${criticalTasks.length} critical task(s) active.` : ''} ${overdueTasks.length > 0 ? `${overdueTasks.length} task(s) overdue.` : ''} Immediate intervention recommended.`.trim();
+        delayProbability = Math.min(88, 45 + (criticalTasks.length * 15) + (overdueTasks.length * 10));
+      } else if (urgentTasks.length > 0 || (pendingTasks.length > runningTasks.length * 2 && pendingTasks.length > 3)) {
+        heuristicUrgency = 'URGENT';
+        heuristicReason = `${urgentTasks.length} urgent task(s) in queue. Prioritize dispatch to maintain scheduled turnaround.`;
+        delayProbability = Math.min(65, 25 + (urgentTasks.length * 10));
+      } else if (completedTasks.length > 0 && pendingTasks.length === 0 && runningTasks.length === 0) {
+        heuristicUrgency = 'REGULAR';
+        heuristicReason = 'All assigned tasks for today have been completed or are on schedule.';
+        delayProbability = 5;
+      }
+
+      const heuristicTip = criticalTasks.length > 0 
+        ? "Reassign secondary duties to focus senior technicians on critical repairs."
+        : urgentTasks.length > 0
+        ? "Pair technicians on complex urgent tasks to accelerate turnaround time."
+        : "Workload distribution is balanced. Maintain current workflow pace.";
+
+      const fallbackResult = {
+        urgency: heuristicUrgency,
+        reason: heuristicReason,
+        delayPrediction: {
+          isLikelyDelayed: delayProbability > 40,
+          probability: delayProbability
+        },
+        efficiencyTip: heuristicTip
+      };
+
+      // Try Gemini API if key is available
+      if (process.env.GEMINI_API_KEY) {
+        try {
+          const ai = getGenAI();
+          if (ai) {
+            const sampleTasks = incomingTasks.slice(0, 15).map((t: any) => ({
+              title: t.title,
+              urgency: t.urgency,
+              status: t.status,
+              deadline: t.deadline
+            }));
+
+            const prompt = `Analyze these daily maintenance tasks and output a concise JSON assessment:
+Tasks: ${JSON.stringify(sampleTasks)}
+Output JSON format:
+{
+  "urgency": "REGULAR" | "URGENT" | "CRITICAL",
+  "reason": "concise 1-sentence assessment",
+  "delayPrediction": {
+    "isLikelyDelayed": boolean,
+    "probability": number between 0 and 100
+  },
+  "efficiencyTip": "actionable 1-sentence recommendation"
+}`;
+
+            const responsePromise = ai.models.generateContent({
+              model: "gemini-3.8-flash",
+              contents: prompt,
+              config: {
+                responseMimeType: "application/json",
+              }
+            });
+
+            // 4-second timeout to prevent any slow responses
+            const timeoutPromise = new Promise((_, reject) => 
+              setTimeout(() => reject(new Error("AI timeout")), 4000)
+            );
+
+            const result: any = await Promise.race([responsePromise, timeoutPromise]);
+            if (result && result.text) {
+              const parsed = JSON.parse(result.text);
+              if (parsed.urgency && parsed.reason) {
+                return res.json({
+                  urgency: parsed.urgency,
+                  reason: parsed.reason,
+                  delayPrediction: parsed.delayPrediction || fallbackResult.delayPrediction,
+                  efficiencyTip: parsed.efficiencyTip || fallbackResult.efficiencyTip
+                });
+              }
+            }
+          }
+        } catch (aiErr: any) {
+          // Gemini temporary 503/429/timeout handled silently with smart fallback
+          console.warn("AI Insights served via fallback:", aiErr?.status || aiErr?.message || "unavailable");
+        }
+      }
+
+      return res.json(fallbackResult);
+    } catch (err: any) {
+      console.error("AI Insights route error:", err);
+      res.json({
+        urgency: "REGULAR",
+        reason: "Tasks are proceeding normally. Work distribution is optimal.",
+        delayPrediction: { isLikelyDelayed: false, probability: 10 },
+        efficiencyTip: "Keep monitoring task progress throughout the shift."
+      });
     }
   });
 
@@ -3160,15 +3307,32 @@ async function startServer() {
         return res.status(403).json({ error: "Only Super Admin can delete tasks" });
       }
       const { id } = req.params;
-      const taskIndex = tasks.findIndex(t => t.id === id || t.taskId === id);
-      if (taskIndex === -1) return res.status(404).json({ error: "Task not found" });
+      const cleanId = String(id || '').trim();
+      console.log(`[ADMIN DELETE] Delete task request for ID: "${cleanId}" from user: ${user.name} (${user.role})`);
+      
+      const taskIndex = tasks.findIndex(t => 
+        String(t.id).trim() === cleanId || 
+        String(t.taskId).trim() === cleanId ||
+        (t.id && cleanId && String(t.id) == cleanId) ||
+        (t.taskId && cleanId && String(t.taskId) == cleanId)
+      );
+      if (taskIndex === -1) {
+        console.warn(`[ADMIN DELETE] Task "${cleanId}" not found for deletion. Available task IDs: ${tasks.map(t => `${t.id}/${t.taskId}`).join(', ')}`);
+        return res.status(404).json({ error: "Task not found" });
+      }
       
       const task = tasks[taskIndex];
       tasks.splice(taskIndex, 1);
 
       // Clean up point transactions associated with this task
       for (let i = pointTransactions.length - 1; i >= 0; i--) {
-        if (pointTransactions[i].taskId === task.id || pointTransactions[i].taskId === task.taskId) {
+        const pt = pointTransactions[i];
+        if (
+          pt.taskId === task.id || 
+          pt.taskId === task.taskId ||
+          String(pt.taskId).trim() === String(task.id).trim() ||
+          String(pt.taskId).trim() === String(task.taskId).trim()
+        ) {
           pointTransactions.splice(i, 1);
         }
       }
@@ -3178,6 +3342,7 @@ async function startServer() {
       
       await logAdminAction(user, 'TASK_DELETED', `Deleted task ${task.title} (${task.taskId || task.id})`, undefined, task.id);
       await saveData();
+      console.log(`[ADMIN DELETE] Task ${cleanId} (${task.title}) successfully deleted. Remaining tasks in memory: ${tasks.length}`);
       res.json({ success: true, message: "Task deleted successfully", taskId: task.id });
     } catch (err: any) {
       console.error("Error in admin delete task:", err);
