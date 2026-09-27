@@ -2812,6 +2812,11 @@ export default function App() {
     setUser(null);
     setTasks([]);
     setStaffList([]);
+    setPointTransactions([]);
+    setSelectedTask(null);
+    setTaskToDelete(null);
+    setEditingTask(null);
+    setStatusUpdateTask(null);
   };
 
   const [showPassword, setShowPassword] = useState(false);
@@ -3435,7 +3440,10 @@ export default function App() {
         return;
       }
       
-      const endpoint = user?.role === 'SUPER_ADMIN' ? `/api/admin/tasks/${taskId}` : `/api/tasks/${taskId}`;
+      const cleanTargetId = String(taskId).trim();
+      const endpoint = (user?.role === 'SUPER_ADMIN' || user?.role === 'HOD')
+        ? `/api/admin/tasks/${encodeURIComponent(cleanTargetId)}` 
+        : `/api/tasks/${encodeURIComponent(cleanTargetId)}`;
       
       await fetchJson(endpoint, {
         method: 'DELETE',
@@ -3444,13 +3452,12 @@ export default function App() {
       
       toast.success('Task deleted successfully');
       setTaskToDelete(null);
-      if (selectedTask?.id === taskId || selectedTask?.taskId === taskId) {
+      if (selectedTask?.id === taskId || selectedTask?.taskId === taskId || selectedTask?.id === cleanTargetId || selectedTask?.taskId === cleanTargetId) {
         setIsTaskDetailsModalOpen(false);
         setSelectedTask(null);
       }
 
       // Optimistically remove deleted task from state immediately
-      const cleanTargetId = String(taskId).trim();
       setTasks(prev => prev.filter(t => 
         String(t.id).trim() !== cleanTargetId && 
         String(t.taskId).trim() !== cleanTargetId
@@ -4572,13 +4579,15 @@ export default function App() {
                                           >
                                             <Edit2 size={12} />
                                           </button>
-                                          <button 
-                                            onClick={() => setTaskToDelete(pt.taskId)}
-                                            className="p-1 hover:bg-white/10 rounded text-red-400 transition-colors"
-                                            title="Delete Task"
-                                          >
-                                            <Trash2 size={12} />
-                                          </button>
+                                          {pt.taskId && pt.taskId !== 'MANUAL_ADJUSTMENT' && (
+                                            <button 
+                                              onClick={() => setTaskToDelete(pt.taskId)}
+                                              className="p-1 hover:bg-white/10 rounded text-red-400 transition-colors"
+                                              title="Delete Task"
+                                            >
+                                              <Trash2 size={12} />
+                                            </button>
+                                          )}
                                         </div>
                                       )}
                                     </div>

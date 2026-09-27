@@ -4,7 +4,7 @@
       "id": "1774775754483iyriq",
       "employeeId": "jhfboss",
       "name": "JHF Boss",
-      "password": "$2b$10$aJmgD4sg8OEx83mlOkaP8uGXl.AYsPo2te/SwwYQD5QGOyfV7wz8e",
+      "password": "$2b$10$10rI1koN6.IFmYIZMg6pHe8D5wk1y796hrxATVCGIvhhfmh.HW4WO",
       "role": "SUPER_ADMIN",
       "supervisorId": "",
       "assignedEngineers": [],
@@ -605,7 +605,7 @@
       "employeeId": "38250",
       "name": "Md. Jahid Hasan",
       "role": "OFFICER",
-      "password": "$2b$10$fuNhT.VXnP77wn88t7Ww0efSIeuzCbRlGPKPwBMB8/N0M7CqmWxeS",
+      "password": "$2b$10$byGvJBcN6/AULJU5ErTMNOrLrnxe4Gr/TWDPYEerjy4f/GY7OrgCa",
       "supervisorId": "1774775805465jfpyp",
       "assignedEngineers": [
         "45213",
@@ -1568,6 +1568,12 @@
     }
   ],
   "tasks": [],
+  "deletedTaskIds": [
+    "1790482055141",
+    "20260927-47-476",
+    "1790482069153",
+    "20260927-47-187"
+  ],
   "attendanceRecords": [
     {
       "id": "1790049412743b20hk",
@@ -1820,9 +1826,272 @@
       "technicianId": "42274",
       "status": "PRESENT",
       "date": "2026-09-22"
+    },
+    {
+      "id": "1790481450839g03f8",
+      "technicianId": "6810",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839pmosk",
+      "technicianId": "21527",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839r3vn2",
+      "technicianId": "30644",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839d5cqq",
+      "technicianId": "22760",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839u1bf1",
+      "technicianId": "20368",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "17904814508398mchz",
+      "technicianId": "45660",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839assr8",
+      "technicianId": "48309",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839cf9vt",
+      "technicianId": "48566",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839nxhle",
+      "technicianId": "52903",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839ujiu8",
+      "technicianId": "37413",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839frc1o",
+      "technicianId": "40664",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839wvh36",
+      "technicianId": "42234",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839hlaww",
+      "technicianId": "43081",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "17904814508394vv2l",
+      "technicianId": "44415",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839kt33i",
+      "technicianId": "56489",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "17904814508397p8oy",
+      "technicianId": "50328",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "17904814508398nen4",
+      "technicianId": "40660",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "17904814508398h6nc",
+      "technicianId": "42692",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839svfep",
+      "technicianId": "43264",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839qwtfe",
+      "technicianId": "57041",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "17904814508397i1ve",
+      "technicianId": "41904",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839pahoj",
+      "technicianId": "43249",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839g548t",
+      "technicianId": "60321",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839mtepj",
+      "technicianId": "57208",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839ei1j8",
+      "technicianId": "60578",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839ruf92",
+      "technicianId": "60586",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839h1mx5",
+      "technicianId": "60914",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839beo42",
+      "technicianId": "61071",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "179048145083901yx3",
+      "technicianId": "61650",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839k4uri",
+      "technicianId": "61674",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "17904814508398qp5c",
+      "technicianId": "62193",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839aemo7",
+      "technicianId": "62536",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839wi322",
+      "technicianId": "63089",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839hftr9",
+      "technicianId": "63107",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839jn86l",
+      "technicianId": "63137",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839jgbcy",
+      "technicianId": "63195",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839gqu3h",
+      "technicianId": "63513",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839luz6f",
+      "technicianId": "65683",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839nmlt7",
+      "technicianId": "63124",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839miyii",
+      "technicianId": "1007",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839sc2he",
+      "technicianId": "12467",
+      "status": "PRESENT",
+      "date": "2026-09-27"
+    },
+    {
+      "id": "1790481450839uhbei",
+      "technicianId": "42274",
+      "status": "PRESENT",
+      "date": "2026-09-27"
     }
   ],
-  "notifications": [],
+  "notifications": [
+    {
+      "id": "1790481712485rrprr",
+      "userId": "17747758114888pwez",
+      "senderId": "1774775754483iyriq",
+      "taskId": "1790481712484",
+      "type": "TASK_ASSIGNED",
+      "message": "SUPER_ADMIN JHF Boss assigned you a task: Test Delete Persistence Task",
+      "read": false,
+      "timestamp": "2026-09-27T04:01:52.485Z"
+    }
+  ],
   "pointTransactions": [],
   "technicianPerformance": [],
   "assignmentRequests": [],
@@ -2120,6 +2389,171 @@
       "platform": "Unknown",
       "loginStatus": "SUCCESS",
       "createdAt": "2026-09-22T11:37:58.177Z"
+    },
+    {
+      "id": "1790481450446iwoku",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "name": "JHF Boss",
+      "role": "SUPER_ADMIN",
+      "loginTime": "2026-09-27T03:57:30.449Z",
+      "ipAddress": "115.127.145.138",
+      "browser": "Chrome",
+      "os": "Windows",
+      "deviceType": "Desktop",
+      "deviceName": "Unknown-PC",
+      "platform": "Win32",
+      "loginStatus": "SUCCESS",
+      "createdAt": "2026-09-27T03:57:30.449Z",
+      "logoutTime": "2026-09-27T04:06:55.080Z",
+      "sessionDuration": "9m 24s"
+    },
+    {
+      "id": "1790481686344",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "name": "JHF Boss",
+      "role": "SUPER_ADMIN",
+      "loginTime": "2026-09-27T04:01:26.344Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceType": "Desktop",
+      "loginStatus": "FAILED",
+      "failedAttemptCount": 1,
+      "createdAt": "2026-09-27T04:01:26.344Z"
+    },
+    {
+      "id": "1790481686640",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "name": "JHF Boss",
+      "role": "SUPER_ADMIN",
+      "loginTime": "2026-09-27T04:01:26.640Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceType": "Desktop",
+      "loginStatus": "FAILED",
+      "failedAttemptCount": 2,
+      "createdAt": "2026-09-27T04:01:26.640Z"
+    },
+    {
+      "id": "1790481694716",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "name": "JHF Boss",
+      "role": "SUPER_ADMIN",
+      "loginTime": "2026-09-27T04:01:34.716Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceType": "Desktop",
+      "loginStatus": "FAILED",
+      "failedAttemptCount": 3,
+      "createdAt": "2026-09-27T04:01:34.716Z"
+    },
+    {
+      "id": "1790481712405nwk08",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "name": "JHF Boss",
+      "role": "SUPER_ADMIN",
+      "loginTime": "2026-09-27T04:01:52.406Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceType": "Desktop",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "loginStatus": "SUCCESS",
+      "createdAt": "2026-09-27T04:01:52.406Z",
+      "logoutTime": "2026-09-27T04:01:52.885Z",
+      "sessionDuration": "0m 0s"
+    },
+    {
+      "id": "1790481713117oa3xl",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "name": "JHF Boss",
+      "role": "SUPER_ADMIN",
+      "loginTime": "2026-09-27T04:01:53.118Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceType": "Desktop",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "loginStatus": "SUCCESS",
+      "createdAt": "2026-09-27T04:01:53.118Z"
+    },
+    {
+      "id": "1790482055061tsoxv",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "name": "JHF Boss",
+      "role": "SUPER_ADMIN",
+      "loginTime": "2026-09-27T04:07:35.063Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceType": "Desktop",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "loginStatus": "SUCCESS",
+      "createdAt": "2026-09-27T04:07:35.063Z",
+      "logoutTime": "2026-09-27T04:07:35.337Z",
+      "sessionDuration": "0m 0s"
+    },
+    {
+      "id": "1790482055529l2lub",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "name": "JHF Boss",
+      "role": "SUPER_ADMIN",
+      "loginTime": "2026-09-27T04:07:35.530Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceType": "Desktop",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "loginStatus": "SUCCESS",
+      "createdAt": "2026-09-27T04:07:35.530Z"
+    },
+    {
+      "id": "17904820690949iv1g",
+      "userId": "1774775807698asgwa",
+      "employeeId": "38250",
+      "name": "Md. Jahid Hasan",
+      "role": "OFFICER",
+      "loginTime": "2026-09-27T04:07:49.095Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceType": "Desktop",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "loginStatus": "SUCCESS",
+      "createdAt": "2026-09-27T04:07:49.095Z",
+      "logoutTime": "2026-09-27T04:07:49.278Z",
+      "sessionDuration": "0m 0s"
+    },
+    {
+      "id": "1790482069479b06lc",
+      "userId": "1774775807698asgwa",
+      "employeeId": "38250",
+      "name": "Md. Jahid Hasan",
+      "role": "OFFICER",
+      "loginTime": "2026-09-27T04:07:49.479Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceType": "Desktop",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "loginStatus": "SUCCESS",
+      "createdAt": "2026-09-27T04:07:49.479Z"
     }
   ],
   "adminAuditLogs": [
@@ -2171,6 +2605,36 @@
       "timestamp": "2026-09-22T11:37:58.299Z",
       "ipAddress": "0.0.0.0",
       "details": "Deleted task Test Task for Deletion (20260922-1137-517)"
+    },
+    {
+      "id": "17904817126541r0co",
+      "adminId": "1774775754483iyriq",
+      "adminName": "JHF Boss",
+      "actionType": "TASK_DELETED",
+      "targetTask": "1790481712484",
+      "timestamp": "2026-09-27T04:01:52.654Z",
+      "ipAddress": "0.0.0.0",
+      "details": "Deleted task Test Delete Persistence Task (20260927-41-158)"
+    },
+    {
+      "id": "17904820551929b3ex",
+      "adminId": "1774775754483iyriq",
+      "adminName": "JHF Boss",
+      "actionType": "TASK_DELETED",
+      "targetTask": "1790482055141",
+      "timestamp": "2026-09-27T04:07:35.192Z",
+      "ipAddress": "0.0.0.0",
+      "details": "Deleted task Mission Critical Task 999 (20260927-47-476)"
+    },
+    {
+      "id": "1790482069198n071q",
+      "adminId": "1774775807698asgwa",
+      "adminName": "Md. Jahid Hasan",
+      "actionType": "TASK_DELETED",
+      "targetTask": "1790482069153",
+      "timestamp": "2026-09-27T04:07:49.198Z",
+      "ipAddress": "0.0.0.0",
+      "details": "Deleted task Officer Test Task 555 (20260927-47-187)"
     }
   ],
   "userSessions": [
@@ -2361,16 +2825,133 @@
       "platform": "Unknown",
       "active": true,
       "lastActivity": "2026-09-22T11:37:58.299Z"
+    },
+    {
+      "id": "1790481450446iwoku",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "loginTime": "2026-09-27T03:57:30.449Z",
+      "ipAddress": "115.127.145.138",
+      "browser": "Chrome",
+      "os": "Windows",
+      "deviceHash": "MTE1LjEyNy4xNDUuMTM4LU1vemlsbGEvNS4wIChXaW5kb3dzIE5UIDEwLjA7IFdpbjY0OyB4NjQpIEFwcGxlV2ViS2l0LzUzNy4zNiAoS0hUTUwsIGxpa2UgR2Vja28pIENocm9tZS8xNTMuMC4wLjAgU2FmYXJpLzUzNy4zNi1Vbmtub3duLVBD",
+      "deviceName": "Unknown-PC",
+      "platform": "Win32",
+      "active": false,
+      "lastActivity": "2026-09-27T04:06:55.080Z",
+      "logoutTime": "2026-09-27T04:06:55.080Z",
+      "logoutReason": "USER_LOGOUT"
+    },
+    {
+      "id": "1790481712405nwk08",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "loginTime": "2026-09-27T04:01:52.406Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceHash": "MTI3LjAuMC4xLW5vZGUtVW5rbm93biBEZXZpY2U=",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "active": false,
+      "lastActivity": "2026-09-27T04:01:52.884Z",
+      "logoutTime": "2026-09-27T04:01:52.885Z",
+      "logoutReason": "USER_LOGOUT"
+    },
+    {
+      "id": "1790481713117oa3xl",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "loginTime": "2026-09-27T04:01:53.118Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceHash": "MTI3LjAuMC4xLW5vZGUtVW5rbm93biBEZXZpY2U=",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "active": true,
+      "lastActivity": "2026-09-27T04:01:53.235Z"
+    },
+    {
+      "id": "1790482055061tsoxv",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "loginTime": "2026-09-27T04:07:35.063Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceHash": "MTI3LjAuMC4xLW5vZGUtVW5rbm93biBEZXZpY2U=",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "active": false,
+      "lastActivity": "2026-09-27T04:07:35.336Z",
+      "logoutTime": "2026-09-27T04:07:35.337Z",
+      "logoutReason": "USER_LOGOUT"
+    },
+    {
+      "id": "1790482055529l2lub",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "loginTime": "2026-09-27T04:07:35.530Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceHash": "MTI3LjAuMC4xLW5vZGUtVW5rbm93biBEZXZpY2U=",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "active": true,
+      "lastActivity": "2026-09-27T04:07:35.595Z"
+    },
+    {
+      "id": "17904820690949iv1g",
+      "userId": "1774775807698asgwa",
+      "employeeId": "38250",
+      "loginTime": "2026-09-27T04:07:49.095Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceHash": "MTI3LjAuMC4xLW5vZGUtVW5rbm93biBEZXZpY2U=",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "active": false,
+      "lastActivity": "2026-09-27T04:07:49.278Z",
+      "logoutTime": "2026-09-27T04:07:49.278Z",
+      "logoutReason": "USER_LOGOUT"
+    },
+    {
+      "id": "1790482069479b06lc",
+      "userId": "1774775807698asgwa",
+      "employeeId": "38250",
+      "loginTime": "2026-09-27T04:07:49.479Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceHash": "MTI3LjAuMC4xLW5vZGUtVW5rbm93biBEZXZpY2U=",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "active": true,
+      "lastActivity": "2026-09-27T04:07:49.479Z"
     }
   ],
-  "failedLoginAttempts": [],
+  "failedLoginAttempts": [
+    {
+      "id": "1790481686344",
+      "employeeId": "jhfboss",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "timestamp": "2026-09-27T04:01:34.716Z",
+      "attemptCount": 0,
+      "isLocked": false
+    }
+  ],
   "lockedDevices": [],
   "autoBackupSettings": {
     "enabled": true,
     "intervalMinutes": 60,
-    "lastBackupTime": "2026-09-22T11:37:42.858Z",
-    "nextBackupTime": "2026-09-22T12:37:42.858Z",
+    "lastBackupTime": "2026-09-27T04:07:34.400Z",
+    "nextBackupTime": "2026-09-27T05:07:34.400Z",
     "retentionCount": 72
   },
-  "lastSavedAt": "2026-09-22T11:37:58.325Z"
+  "lastSavedAt": "2026-09-27T04:07:49.480Z"
 }

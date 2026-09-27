@@ -49,6 +49,7 @@ async function startServer() {
   // --- Data Variables (Initialized early to avoid ReferenceError) ---
   let users: User[] = [];
   let tasks: Task[] = [];
+  let deletedTaskIds: string[] = [];
   let attendanceRecords: Attendance[] = [];
   let notifications: any[] = [];
   let pointTransactions: any[] = [];
@@ -156,7 +157,25 @@ async function startServer() {
       console.error(`Error reading ${DB_FILE}:`, err.message);
     }
 
-    // 3. ONLY if neither DATA_FILE nor DB_FILE could be loaded (missing or corrupted), inspect recent backups
+    // 3. Fallback to DATA_FILE.bak if primary files could not be loaded
+    if (!loadedContent) {
+      try {
+        const bakFile = DATA_FILE + ".bak";
+        if (fsSync.existsSync(bakFile)) {
+          const content = await fs.readFile(bakFile, "utf-8");
+          const parsed = JSON.parse(content);
+          if (parsed && typeof parsed === 'object') {
+            loadedContent = parsed;
+            loadedFrom = bakFile;
+            console.log(`[AUTO-RECOVERY] Recovered database state from backup ${bakFile}!`);
+          }
+        }
+      } catch (bakErr: any) {
+        console.warn("Could not check backup file:", bakErr.message);
+      }
+    }
+
+    // 4. ONLY if neither DATA_FILE, DB_FILE, nor .bak could be loaded, inspect recent backups
     if (!loadedContent) {
       try {
         const latestBackup = path.join(BACKUPS_DIR, 'latest-hourly-db.json');
@@ -186,6 +205,7 @@ async function startServer() {
     return { 
       users: [], 
       tasks: [], 
+      deletedTaskIds: [],
       attendanceRecords: [], 
       notifications: [], 
       pointTransactions: [], 
@@ -300,15 +320,9 @@ async function startServer() {
     console.log("Recalculation complete.");
   }
 
-  let isSaving = false;
-  let savePending = false;
+  let savePromise: Promise<void> = Promise.resolve();
 
-  async function saveData(_allowEmpty?: boolean) {
-    if (isSaving) {
-      savePending = true;
-      return;
-    }
-    isSaving = true;
+  async function performDiskSave(): Promise<void> {
     try {
       await fs.mkdir(DATA_DIR, { recursive: true });
       await fs.mkdir(BACKUPS_DIR, { recursive: true });
@@ -316,6 +330,7 @@ async function startServer() {
       const dataToSave = {
         users,
         tasks,
+        deletedTaskIds,
         attendanceRecords,
         notifications,
         pointTransactions,
@@ -332,25 +347,38 @@ async function startServer() {
 
       const jsonStr = JSON.stringify(dataToSave, null, 2);
 
+      // Verify serialization integrity before touching disk
+      JSON.parse(jsonStr);
+
+      const uniqueSuffix = `${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}`;
+
       // 1. Atomic write to DATA_FILE (data.json)
-      const tmpDataFile = DATA_FILE + ".tmp";
+      const tmpDataFile = `${DATA_FILE}.${uniqueSuffix}.tmp`;
       await fs.writeFile(tmpDataFile, jsonStr, "utf-8");
       await fs.rename(tmpDataFile, DATA_FILE);
 
       // 2. Atomic write to DB_FILE (data/db.json)
-      const tmpDbFile = DB_FILE + ".tmp";
+      const tmpDbFile = `${DB_FILE}.${uniqueSuffix}.tmp`;
       await fs.writeFile(tmpDbFile, jsonStr, "utf-8");
       await fs.rename(tmpDbFile, DB_FILE);
 
+      // 3. Keep data.json.bak in sync for instant disaster recovery
+      const bakFile = DATA_FILE + ".bak";
+      const tmpBakFile = `${bakFile}.${uniqueSuffix}.tmp`;
+      await fs.writeFile(tmpBakFile, jsonStr, "utf-8");
+      await fs.rename(tmpBakFile, bakFile);
+
     } catch (err) {
-      console.error("Error saving data:", err);
-    } finally {
-      isSaving = false;
-      if (savePending) {
-        savePending = false;
-        saveData().catch(err => console.error("Error in pending save:", err));
-      }
+      console.error("[DATABASE ERROR] Failed to save data to disk:", err);
+      throw err;
     }
+  }
+
+  function saveData(_allowEmpty?: boolean): Promise<void> {
+    savePromise = savePromise.then(() => performDiskSave()).catch(err => {
+      console.error("[DATABASE ERROR] Error in sequential save queue:", err);
+    });
+    return savePromise;
   }
 
   async function createHourlyBackup(isManual = false) {
@@ -366,6 +394,7 @@ async function startServer() {
       const backupPayload = {
         users,
         tasks,
+        deletedTaskIds,
         attendanceRecords,
         notifications,
         pointTransactions,
@@ -377,6 +406,7 @@ async function startServer() {
         failedLoginAttempts,
         lockedDevices,
         autoBackupSettings,
+        lastSavedAt: now.toISOString(),
         backupMeta: {
           type: isManual ? 'MANUAL' : 'HOURLY_AUTO',
           timestamp: now.toISOString(),
@@ -387,22 +417,18 @@ async function startServer() {
       };
 
       const jsonStr = JSON.stringify(backupPayload, null, 2);
+      const uniqueSuffix = `${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}`;
 
       // 1. Write timestamped backup snapshot
-      const tmpFile = filepath + '.tmp';
+      const tmpFile = `${filepath}.${uniqueSuffix}.tmp`;
       await fs.writeFile(tmpFile, jsonStr, 'utf-8');
       await fs.rename(tmpFile, filepath);
 
       // 2. Update backups/latest-hourly-db.json
       const latestPath = path.join(BACKUPS_DIR, 'latest-hourly-db.json');
-      const tmpLatest = latestPath + '.tmp';
+      const tmpLatest = `${latestPath}.${uniqueSuffix}.tmp`;
       await fs.writeFile(tmpLatest, jsonStr, 'utf-8');
       await fs.rename(tmpLatest, latestPath);
-
-      // 3. Keep data/db.json in sync as well
-      const tmpDb = DB_FILE + '.tmp';
-      await fs.writeFile(tmpDb, jsonStr, 'utf-8');
-      await fs.rename(tmpDb, DB_FILE);
 
       autoBackupSettings.lastBackupTime = now.toISOString();
       autoBackupSettings.nextBackupTime = new Date(now.getTime() + (autoBackupSettings.intervalMinutes || 60) * 60 * 1000).toISOString();
@@ -541,7 +567,20 @@ async function startServer() {
   if (!initialData.users) initialData.users = [];
   
   users = initialData.users || [];
-  tasks = initialData.tasks || [];
+  deletedTaskIds = Array.isArray(initialData.deletedTaskIds) 
+    ? Array.from(new Set(initialData.deletedTaskIds.map((id: any) => String(id).trim()))).filter(Boolean)
+    : [];
+  
+  // Strictly filter tasks to ensure no deleted task ever resurrects
+  tasks = (initialData.tasks || []).filter((t: any) => {
+    if (!t) return false;
+    const tId = String(t.id || '').trim();
+    const tTaskId = String(t.taskId || '').trim();
+    if (tId && deletedTaskIds.includes(tId)) return false;
+    if (tTaskId && deletedTaskIds.includes(tTaskId)) return false;
+    return true;
+  });
+  
   attendanceRecords = initialData.attendanceRecords || initialData.assignments || [];
   notifications = initialData.notifications || [];
   pointTransactions = initialData.pointTransactions || [];
@@ -1491,6 +1530,10 @@ async function startServer() {
     if (req.user.role !== 'SUPER_ADMIN') {
       return res.status(403).json({ error: "Forbidden" });
     }
+    tasks.forEach((t: any) => {
+      if (t.id && !deletedTaskIds.includes(String(t.id).trim())) deletedTaskIds.push(String(t.id).trim());
+      if (t.taskId && !deletedTaskIds.includes(String(t.taskId).trim())) deletedTaskIds.push(String(t.taskId).trim());
+    });
     tasks.length = 0;
     attendanceRecords.length = 0;
     pointTransactions.length = 0;
@@ -1661,8 +1704,22 @@ async function startServer() {
         return false;
       };
 
+      if (Array.isArray(data.deletedTaskIds)) {
+        data.deletedTaskIds.forEach((id: any) => {
+          const sId = String(id).trim();
+          if (sId && !deletedTaskIds.includes(sId)) deletedTaskIds.push(sId);
+        });
+      }
+
+      const safeTasksSnapshot = (Array.isArray(data.tasks) ? data.tasks : []).filter((t: any) => {
+        if (!t) return false;
+        const tId = String(t.id || '').trim();
+        const tTaskId = String(t.taskId || '').trim();
+        return (!tId || !deletedTaskIds.includes(tId)) && (!tTaskId || !deletedTaskIds.includes(tTaskId));
+      });
+
       replaceArray(users, data.users);
-      replaceArray(tasks, data.tasks);
+      replaceArray(tasks, safeTasksSnapshot);
       replaceArray(attendanceRecords, data.attendanceRecords);
       replaceArray(notifications, data.notifications);
       replaceArray(pointTransactions, data.pointTransactions);
@@ -1716,8 +1773,22 @@ async function startServer() {
       };
 
       // Restore all major data arrays
+      if (Array.isArray(data.deletedTaskIds)) {
+        data.deletedTaskIds.forEach((id: any) => {
+          const sId = String(id).trim();
+          if (sId && !deletedTaskIds.includes(sId)) deletedTaskIds.push(sId);
+        });
+      }
+
+      const safeTasksRestore = (Array.isArray(data.tasks) ? data.tasks : []).filter((t: any) => {
+        if (!t) return false;
+        const tId = String(t.id || '').trim();
+        const tTaskId = String(t.taskId || '').trim();
+        return (!tId || !deletedTaskIds.includes(tId)) && (!tTaskId || !deletedTaskIds.includes(tTaskId));
+      });
+
       replaceArray(users, data.users);
-      replaceArray(tasks, data.tasks);
+      replaceArray(tasks, safeTasksRestore);
       replaceArray(attendanceRecords, data.attendanceRecords);
       replaceArray(notifications, data.notifications);
       replaceArray(pointTransactions, data.pointTransactions);
@@ -2838,12 +2909,15 @@ async function startServer() {
     try {
       const user = (req as any).user;
       const { id } = req.params;
-      const cleanId = String(id || '').trim();
+      const rawId = String(id || '').trim();
+      const cleanId = decodeURIComponent(rawId).trim();
       console.log(`Delete task request for ID: "${cleanId}" from user: ${user.name} (${user.role})`);
       
       const index = tasks.findIndex(t => 
         String(t.id).trim() === cleanId || 
         String(t.taskId).trim() === cleanId ||
+        String(t.id).trim() === rawId ||
+        String(t.taskId).trim() === rawId ||
         (t.id && cleanId && String(t.id) == cleanId) ||
         (t.taskId && cleanId && String(t.taskId) == cleanId)
       );
@@ -2865,18 +2939,45 @@ async function startServer() {
         return res.status(403).json({ error: "Access Denied: You are not authorized to delete this task" });
       }
 
+      const targetId = String(task.id || '').trim();
+      const targetTaskId = String(task.taskId || '').trim();
+
+      // Record in deletedTaskIds tombstone so it can NEVER resurrect
+      if (targetId && !deletedTaskIds.includes(targetId)) deletedTaskIds.push(targetId);
+      if (targetTaskId && !deletedTaskIds.includes(targetTaskId)) deletedTaskIds.push(targetTaskId);
+
+      // Remove task from memory
       tasks.splice(index, 1);
 
       // Clean up point transactions associated with this task
       for (let i = pointTransactions.length - 1; i >= 0; i--) {
         const pt = pointTransactions[i];
+        const ptTaskId = String(pt.taskId || '').trim();
         if (
-          pt.taskId === task.id || 
-          pt.taskId === task.taskId ||
-          String(pt.taskId).trim() === String(task.id).trim() ||
-          String(pt.taskId).trim() === String(task.taskId).trim()
+          ptTaskId === targetId || 
+          ptTaskId === targetTaskId ||
+          ptTaskId === cleanId ||
+          ptTaskId === rawId
         ) {
           pointTransactions.splice(i, 1);
+        }
+      }
+
+      // Clean up assignment requests associated with this task
+      for (let i = assignmentRequests.length - 1; i >= 0; i--) {
+        const ar = assignmentRequests[i];
+        const arTaskId = String(ar.taskId || '').trim();
+        if (arTaskId === targetId || arTaskId === targetTaskId || arTaskId === cleanId) {
+          assignmentRequests.splice(i, 1);
+        }
+      }
+
+      // Clean up notifications associated with this task
+      for (let i = notifications.length - 1; i >= 0; i--) {
+        const notif = notifications[i];
+        const nTaskId = String(notif.taskId || '').trim();
+        if (nTaskId === targetId || nTaskId === targetTaskId || nTaskId === cleanId) {
+          notifications.splice(i, 1);
         }
       }
 
@@ -3164,6 +3265,11 @@ Output JSON format:
       if (Array.isArray(restoredData.tasks)) {
         restoredData.tasks.forEach((restoredTask: any) => {
           if (isTaskInScope(restoredTask)) {
+            const rId = String(restoredTask.id || '').trim();
+            const rTaskId = String(restoredTask.taskId || '').trim();
+            if ((rId && deletedTaskIds.includes(rId)) || (rTaskId && deletedTaskIds.includes(rTaskId))) {
+              return;
+            }
             const index = tasks.findIndex(t => t.id === restoredTask.id);
             if (index !== -1) {
               tasks[index] = { ...tasks[index], ...restoredTask };
@@ -3307,12 +3413,15 @@ Output JSON format:
         return res.status(403).json({ error: "Only Super Admin can delete tasks" });
       }
       const { id } = req.params;
-      const cleanId = String(id || '').trim();
+      const rawId = String(id || '').trim();
+      const cleanId = decodeURIComponent(rawId).trim();
       console.log(`[ADMIN DELETE] Delete task request for ID: "${cleanId}" from user: ${user.name} (${user.role})`);
       
       const taskIndex = tasks.findIndex(t => 
         String(t.id).trim() === cleanId || 
         String(t.taskId).trim() === cleanId ||
+        String(t.id).trim() === rawId ||
+        String(t.taskId).trim() === rawId ||
         (t.id && cleanId && String(t.id) == cleanId) ||
         (t.taskId && cleanId && String(t.taskId) == cleanId)
       );
@@ -3322,18 +3431,45 @@ Output JSON format:
       }
       
       const task = tasks[taskIndex];
+      const targetId = String(task.id || '').trim();
+      const targetTaskId = String(task.taskId || '').trim();
+
+      // Record in deletedTaskIds tombstone so it can NEVER resurrect
+      if (targetId && !deletedTaskIds.includes(targetId)) deletedTaskIds.push(targetId);
+      if (targetTaskId && !deletedTaskIds.includes(targetTaskId)) deletedTaskIds.push(targetTaskId);
+
+      // Remove from tasks memory
       tasks.splice(taskIndex, 1);
 
       // Clean up point transactions associated with this task
       for (let i = pointTransactions.length - 1; i >= 0; i--) {
         const pt = pointTransactions[i];
+        const ptTaskId = String(pt.taskId || '').trim();
         if (
-          pt.taskId === task.id || 
-          pt.taskId === task.taskId ||
-          String(pt.taskId).trim() === String(task.id).trim() ||
-          String(pt.taskId).trim() === String(task.taskId).trim()
+          ptTaskId === targetId || 
+          ptTaskId === targetTaskId ||
+          ptTaskId === cleanId ||
+          ptTaskId === rawId
         ) {
           pointTransactions.splice(i, 1);
+        }
+      }
+
+      // Clean up assignment requests associated with this task
+      for (let i = assignmentRequests.length - 1; i >= 0; i--) {
+        const ar = assignmentRequests[i];
+        const arTaskId = String(ar.taskId || '').trim();
+        if (arTaskId === targetId || arTaskId === targetTaskId || arTaskId === cleanId) {
+          assignmentRequests.splice(i, 1);
+        }
+      }
+
+      // Clean up notifications associated with this task
+      for (let i = notifications.length - 1; i >= 0; i--) {
+        const notif = notifications[i];
+        const nTaskId = String(notif.taskId || '').trim();
+        if (nTaskId === targetId || nTaskId === targetTaskId || nTaskId === cleanId) {
+          notifications.splice(i, 1);
         }
       }
 
