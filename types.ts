@@ -1,6 +1,9 @@
 export type Role = 
   | 'SUPER_ADMIN' 
+  | 'CBO'
+  | 'DCBO'
   | 'HOD' 
+  | 'DHOD'
   | 'IN_CHARGE' 
   | 'MODEL_MANAGER' 
   | 'ENGINEER' 
@@ -17,8 +20,13 @@ export interface User {
   password?: string;
   role: Role;
   department?: string;
+  section?: string;
   avatar?: string;
   supervisorId?: string;
+  cboId?: string;
+  dcboId?: string;
+  hodId?: string;
+  dhodId?: string;
   supervisor_ids?: string[]; // For shifting technicians under multiple officers
   assignedEngineers?: string[]; // Array of Engineer employeeIds
   phone?: string;
@@ -86,6 +94,12 @@ export interface Task {
   recommendedPoints?: number;
   supervisorApproved?: boolean;
   supervisorApprovedBy?: string;
+  responsibleOfficerId?: string;
+  concernEngineerId?: string;
+  modelManagerId?: string;
+  inChargeId?: string;
+  dhodId?: string;
+  hodId?: string;
 }
 
 export interface Attendance {

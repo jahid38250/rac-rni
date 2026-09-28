@@ -17,7 +17,14 @@ let genAIClient: GoogleGenAI | null = null;
 function getGenAI(): GoogleGenAI | null {
   if (!process.env.GEMINI_API_KEY) return null;
   if (!genAIClient) {
-    genAIClient = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    genAIClient = new GoogleGenAI({
+      apiKey: process.env.GEMINI_API_KEY,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        }
+      }
+    });
   }
   return genAIClient;
 }
@@ -219,6 +226,78 @@ async function startServer() {
     };
   }
 
+  function parseTaskDate(dateStr?: string): Date {
+    if (!dateStr) return new Date(NaN);
+    const trimmed = String(dateStr).trim();
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(trimmed)) {
+      return new Date(`${trimmed}+06:00`);
+    }
+    return new Date(trimmed);
+  }
+
+  function parseTaskDurationMins(dur?: string): number {
+    if (!dur) return 60;
+    const str = String(dur).trim();
+    if (/^\d+$/.test(str)) return parseInt(str, 10) || 60;
+    let mins = 0;
+    const dMatch = str.match(/(\d+)\s*d/i);
+    const hMatch = str.match(/(\d+)\s*h/i);
+    const mMatch = str.match(/(\d+)\s*m/i);
+    if (dMatch) mins += parseInt(dMatch[1], 10) * 24 * 60;
+    if (hMatch) mins += parseInt(hMatch[1], 10) * 60;
+    if (mMatch) mins += parseInt(mMatch[1], 10);
+    if (mins === 0) {
+      const numMatch = str.match(/(\d+)/);
+      if (numMatch) mins = parseInt(numMatch[1], 10);
+    }
+    return mins || 60;
+  }
+
+  function computeTaskTiming(taskObj: any) {
+    const startRaw = taskObj.customStartTime || taskObj.startedAt || taskObj.createdAt;
+    const endRaw = taskObj.actualCompletionTime || taskObj.completedAt;
+    const start = parseTaskDate(startRaw);
+    const end = parseTaskDate(endRaw);
+    const estimatedMinutes = parseTaskDurationMins(taskObj.estimatedDuration);
+
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return {
+        taskTakenTime: taskObj.taskTakenTime || '0h 0m',
+        remainingTime: taskObj.remainingTime || `${Math.floor(estimatedMinutes / 60)}h ${estimatedMinutes % 60}m`,
+        overTime: taskObj.overTime || '0h 0m',
+        actualMinutes: 0,
+        estimatedMinutes,
+        start,
+        end
+      };
+    }
+
+    const diffMs = Math.max(0, end.getTime() - start.getTime());
+    const actualMinutes = Math.floor(diffMs / (1000 * 60));
+    const diffHrs = Math.floor(actualMinutes / 60);
+    const diffMins = actualMinutes % 60;
+    const taskTakenTime = `${diffHrs}h ${diffMins}m`;
+
+    const timeDiffMins = estimatedMinutes - actualMinutes;
+    const absDiffMins = Math.abs(timeDiffMins);
+    const dHrs = Math.floor(absDiffMins / 60);
+    const dMins = absDiffMins % 60;
+    const formattedDiff = `${dHrs}h ${dMins}m`;
+
+    const remainingTime = timeDiffMins >= 0 ? formattedDiff : '0h 0m';
+    const overTime = timeDiffMins < 0 ? formattedDiff : '0h 0m';
+
+    return {
+      taskTakenTime,
+      remainingTime,
+      overTime,
+      actualMinutes,
+      estimatedMinutes,
+      start,
+      end
+    };
+  }
+
   function recalculateAllPoints() {
     console.log("Recalculating all points and task counts...");
     
@@ -240,19 +319,47 @@ async function startServer() {
     users.forEach(u => {
       userMap.set(u.employeeId, u);
       userMap.set(u.id, u);
+      if (u.name) userMap.set(u.name, u);
     });
 
     // 4. Process all tasks
     tasks.forEach((t: any) => {
+      // Normalize assignedTo if stored as internal user.id
+      if (t.assignedTo) {
+        const matchedAssignee = users.find(u => u.id === t.assignedTo);
+        if (matchedAssignee && matchedAssignee.name) {
+          t.assignedTo = matchedAssignee.name;
+        }
+      }
+
       const status = (t.status || '').toUpperCase();
       const isCompleted = status === 'COMPLETED';
+      if (isCompleted) {
+        const timing = computeTaskTiming(t);
+        t.taskTakenTime = timing.taskTakenTime;
+        t.remainingTime = timing.remainingTime;
+        t.overTime = timing.overTime;
+
+        // Keep technicianPerformance records in sync with corrected timing
+        technicianPerformance.forEach((tp: any) => {
+          if (tp.taskId === t.id) {
+            tp.totalWorkMinutes = timing.actualMinutes;
+            tp.estimatedMinutes = timing.estimatedMinutes;
+            const efficiency = timing.actualMinutes > 0 ? (timing.estimatedMinutes / timing.actualMinutes) * 100 : 100;
+            const speedScore = efficiency > 120 ? 15 : (efficiency < 80 ? 5 : 10);
+            tp.completionSpeedScore = speedScore;
+            tp.efficiencyScore = Math.min(Math.round(efficiency / 2), 50);
+            tp.finalDailyScore = Math.min(Math.round(efficiency / 2) + (tp.attendanceScore || 10) + speedScore, 100);
+          }
+        });
+      }
       
       // Points criteria: COMPLETED and (APPROVED or from privileged role)
       const creator = userMap.get(t.createdBy);
       const isApproved = t.requestStatus === 'APPROVED' || 
                         t.requestStatus === 'RECOMMENDED' ||
                         !t.requestStatus || 
-                        ['ENGINEER', 'SUPER_ADMIN', 'HOD'].includes(creator?.role || '');
+                        ['ENGINEER', 'SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD'].includes(creator?.role || '');
 
       if (isCompleted) {
         // Technician Task Count
@@ -278,15 +385,32 @@ async function startServer() {
           });
         }
 
-        // Officer Points
+        // Officer Points (Rule 10 & 21: Cross-team technician rule)
+        // Task creator / responsible Officer is the source of Officer-side attribution.
         if (isApproved) {
           let assignedOfficer = null;
           if (creator?.role === 'OFFICER') {
             assignedOfficer = creator;
-          } else if (t.assignedBy) {
+          }
+          if (!assignedOfficer && t.assignedBy) {
             const assigner = userMap.get(t.assignedBy);
             if (assigner?.role === 'OFFICER') {
               assignedOfficer = assigner;
+            }
+          }
+          if (!assignedOfficer && t.responsibleOfficerId) {
+            const respOff = userMap.get(t.responsibleOfficerId);
+            if (respOff?.role === 'OFFICER') {
+              assignedOfficer = respOff;
+            }
+          }
+          if (!assignedOfficer && t.assignedTo) {
+            const assigneeUser = userMap.get(t.assignedTo);
+            if (assigneeUser?.role === 'OFFICER') {
+              assignedOfficer = assigneeUser;
+            } else if (assigneeUser?.role === 'TECHNICIAN' && assigneeUser.supervisorId) {
+              const sup = userMap.get(assigneeUser.supervisorId);
+              if (sup?.role === 'OFFICER') assignedOfficer = sup;
             }
           }
 
@@ -294,7 +418,7 @@ async function startServer() {
             const pointValue = Number(t.points) || 1;
             assignedOfficer.total_point = (assignedOfficer.total_point || 0) + pointValue;
             
-            // Add to transactions for history
+            // Add to transactions for history - ONE single verified source transaction
             pointTransactions.push({
               id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
               taskId: t.id,
@@ -305,6 +429,68 @@ async function startServer() {
               completedAt: t.completedAt
             });
           }
+
+          // Hierarchical roll-up attribution (without duplicating source transactions)
+          // ONLY attribute to the specific Engineer who created, assigned, or approved this task
+          const pointVal = Number(t.points) || 1;
+          let concernEng = null;
+          if (creator?.role === 'ENGINEER') {
+            concernEng = creator;
+          } else if (t.assignedBy) {
+            const assignerUser = userMap.get(t.assignedBy);
+            if (assignerUser?.role === 'ENGINEER') concernEng = assignerUser;
+          }
+          if (!concernEng && t.assignedTo) {
+            const assigneeUser = userMap.get(t.assignedTo);
+            if (assigneeUser?.role === 'ENGINEER') concernEng = assigneeUser;
+          }
+          if (!concernEng && t.approvedBy) {
+            const appUser = userMap.get(t.approvedBy);
+            if (appUser?.role === 'ENGINEER') concernEng = appUser;
+          }
+          if (!concernEng && t.recommendedBy) {
+            const recUser = userMap.get(t.recommendedBy);
+            if (recUser?.role === 'ENGINEER') concernEng = recUser;
+          }
+          if (!concernEng && t.concernEngineerId) {
+            const ceUser = userMap.get(t.concernEngineerId);
+            if (ceUser?.role === 'ENGINEER') concernEng = ceUser;
+          }
+          if (concernEng && concernEng.role === 'ENGINEER') {
+            concernEng.total_point = (concernEng.total_point || 0) + pointVal;
+          }
+
+          let modelMgr = t.modelManagerId ? userMap.get(t.modelManagerId) : null;
+          if (!modelMgr) {
+            modelMgr = users.find(u => u.role === 'MODEL_MANAGER' && (
+              (concernEng && (u.assignedEngineers || []).includes(concernEng.employeeId)) ||
+              (u.section && t.model && u.section.toLowerCase() === t.model.toLowerCase())
+            ));
+          }
+          if (modelMgr && modelMgr.role === 'MODEL_MANAGER') {
+            modelMgr.total_point = (modelMgr.total_point || 0) + pointVal;
+          }
+
+          let inChargeUser = t.inChargeId ? userMap.get(t.inChargeId) : null;
+          if (!inChargeUser) {
+            inChargeUser = users.find(u => u.role === 'IN_CHARGE' && (
+              (modelMgr && (u.assignedEngineers || []).includes(modelMgr.employeeId)) ||
+              (concernEng && (u.assignedEngineers || []).includes(concernEng.employeeId))
+            )) || users.find(u => u.role === 'IN_CHARGE');
+          }
+          if (inChargeUser && inChargeUser.role === 'IN_CHARGE') {
+            inChargeUser.total_point = (inChargeUser.total_point || 0) + pointVal;
+          }
+
+          const dhodUser = users.find(u => u.role === 'DHOD' || u.employeeId === '17668');
+          if (dhodUser) {
+            dhodUser.total_point = (dhodUser.total_point || 0) + pointVal;
+          }
+
+          const hodUser = users.find(u => u.role === 'HOD' || u.employeeId === '19219');
+          if (hodUser) {
+            hodUser.total_point = (hodUser.total_point || 0) + pointVal;
+          }
         }
       }
     });
@@ -312,12 +498,309 @@ async function startServer() {
     // 5. Apply manual adjustments to user totals
     manualAdjustments.forEach((pt: any) => {
       const user = userMap.get(pt.officerId);
-      if (user) {
+      if (user && user.role !== 'CBO' && user.role !== 'DCBO') {
         user.total_point = (user.total_point || 0) + (Number(pt.pointValue) || 0);
       }
     });
 
+    // 6. Strict rule for CBO and DCBO: Personal Performance Points = 0
+    users.forEach((u: any) => {
+      if (u.role === 'CBO' || u.role === 'DCBO') {
+        u.total_point = 0;
+      }
+    });
+
     console.log("Recalculation complete.");
+  }
+
+  // Calculate authoritative hierarchical performance & point rollups without double counting
+  function getHierarchicalPerformanceData(filterMonth?: number, filterYear?: number) {
+    const currentDate = new Date();
+    const currentMonthNum = currentDate.getMonth() + 1;
+    const currentYearNum = currentDate.getFullYear();
+    const month = filterMonth || currentMonthNum;
+    const year = filterYear || currentYearNum;
+    const targetPrefix = `${year}-${String(month).padStart(2, '0')}`;
+
+    // Filter tasks for the selected period
+    const periodTasks = tasks.filter((t: any) => {
+      if (!t) return false;
+      if (t.createdAt && t.createdAt.startsWith(targetPrefix)) return true;
+      if (t.completedAt && t.completedAt.startsWith(targetPrefix)) return true;
+      if (t.deadline && t.deadline.startsWith(targetPrefix)) return true;
+      if (t.createdAt) {
+        const d = new Date(t.createdAt);
+        if (d.getMonth() + 1 === month && d.getFullYear() === year) return true;
+      }
+      if (t.deadline) {
+        const d = new Date(t.deadline);
+        if (d.getMonth() + 1 === month && d.getFullYear() === year) return true;
+      }
+      return false;
+    });
+
+    const userMap = new Map<string, any>();
+    const empMap = new Map<string, any>();
+    users.forEach(u => {
+      userMap.set(u.id, u);
+      empMap.set(u.employeeId, u);
+    });
+
+    // Build verified tasks and trace hierarchical relationships
+    const verifiedTasksAudit: any[] = [];
+    const officerTasksMap = new Map<string, any[]>();
+    const engineerTasksMap = new Map<string, any[]>();
+    const modelManagerTasksMap = new Map<string, any[]>();
+    const inChargeTasksMap = new Map<string, any[]>();
+    const dhodTasksMap = new Map<string, any[]>();
+    const hodTasksMap = new Map<string, any[]>();
+
+    periodTasks.forEach((t: any) => {
+      const status = (t.status || '').toUpperCase();
+      const isCompleted = status === 'COMPLETED';
+      const creator = empMap.get(t.createdBy) || userMap.get(t.createdBy);
+      const isApproved = t.requestStatus === 'APPROVED' || 
+                        t.requestStatus === 'RECOMMENDED' ||
+                        !t.requestStatus || 
+                        ['ENGINEER', 'SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD'].includes(creator?.role || '');
+
+      if (isCompleted && isApproved) {
+        const pointValue = Number(t.points) || 1;
+
+        // Technician
+        let techUser = null;
+        if (t.assignedTo) {
+          techUser = empMap.get(t.assignedTo) || userMap.get(t.assignedTo) || users.find(u => u.name === t.assignedTo);
+        } else if (t.workType === 'TEAM' && Array.isArray(t.assignedTechnicians) && t.assignedTechnicians.length > 0) {
+          techUser = empMap.get(t.assignedTechnicians[0].employeeId);
+        }
+
+        // Responsible Officer (Rule 21: Task creator / assignedBy is the source)
+        let responsibleOfficer = null;
+        if (t.responsibleOfficerId) {
+          responsibleOfficer = empMap.get(t.responsibleOfficerId) || userMap.get(t.responsibleOfficerId);
+        } else if (creator?.role === 'OFFICER') {
+          responsibleOfficer = creator;
+        } else if (t.assignedBy) {
+          const assigner = empMap.get(t.assignedBy) || userMap.get(t.assignedBy);
+          if (assigner?.role === 'OFFICER') responsibleOfficer = assigner;
+        }
+        if (!responsibleOfficer && techUser?.supervisorId) {
+          const sup = userMap.get(techUser.supervisorId) || empMap.get(techUser.supervisorId);
+          if (sup?.role === 'OFFICER') responsibleOfficer = sup;
+        }
+
+        // Concern Engineer (Rule 11: ONLY the specific Engineer who created, assigned, or approved the task)
+        let concernEngineer = null;
+        if (creator?.role === 'ENGINEER') {
+          concernEngineer = creator;
+        } else if (t.assignedBy) {
+          const assigner = empMap.get(t.assignedBy) || userMap.get(t.assignedBy);
+          if (assigner?.role === 'ENGINEER') concernEngineer = assigner;
+        }
+        if (!concernEngineer && techUser?.role === 'ENGINEER') {
+          concernEngineer = techUser;
+        }
+        if (!concernEngineer && t.approvedBy) {
+          const approver = empMap.get(t.approvedBy) || userMap.get(t.approvedBy);
+          if (approver?.role === 'ENGINEER') concernEngineer = approver;
+        }
+        if (!concernEngineer && t.recommendedBy) {
+          const recommender = empMap.get(t.recommendedBy) || userMap.get(t.recommendedBy);
+          if (recommender?.role === 'ENGINEER') concernEngineer = recommender;
+        }
+        if (!concernEngineer && t.concernEngineerId) {
+          const ce = empMap.get(t.concernEngineerId) || userMap.get(t.concernEngineerId);
+          if (ce?.role === 'ENGINEER') concernEngineer = ce;
+        }
+
+        // Model Manager (Rule 12)
+        let modelManager = null;
+        if (t.modelManagerId) {
+          modelManager = empMap.get(t.modelManagerId) || userMap.get(t.modelManagerId);
+        } else {
+          modelManager = users.find(u => u.role === 'MODEL_MANAGER' && (
+            (concernEngineer && (u.assignedEngineers || []).includes(concernEngineer.employeeId)) ||
+            (u.section && t.model && u.section.toLowerCase() === t.model.toLowerCase())
+          ));
+        }
+
+        // In-Charge (Rule 13)
+        let inCharge = null;
+        if (t.inChargeId) {
+          inCharge = empMap.get(t.inChargeId) || userMap.get(t.inChargeId);
+        } else {
+          inCharge = users.find(u => u.role === 'IN_CHARGE' && (
+            (modelManager && (u.assignedEngineers || []).includes(modelManager.employeeId)) ||
+            (concernEngineer && (u.assignedEngineers || []).includes(concernEngineer.employeeId))
+          ));
+          if (!inCharge) {
+            inCharge = users.find(u => u.role === 'IN_CHARGE');
+          }
+        }
+
+        // DHOD (Rule 14: Abdul Aowal 17668)
+        let dhod = users.find(u => u.role === 'DHOD' || u.employeeId === '17668');
+
+        // HOD (Rule 15: Ariful Islam 19219)
+        let hod = users.find(u => u.role === 'HOD' || u.employeeId === '19219');
+
+        const auditItem = {
+          taskId: t.id,
+          taskCode: t.taskId,
+          title: t.title,
+          model: t.model,
+          urgency: t.urgency,
+          verifiedPoints: pointValue,
+          completedAt: t.completedAt || t.createdAt,
+          technician: techUser ? { employeeId: techUser.employeeId, name: techUser.name } : null,
+          officer: responsibleOfficer ? { employeeId: responsibleOfficer.employeeId, name: responsibleOfficer.name } : null,
+          engineer: concernEngineer ? { employeeId: concernEngineer.employeeId, name: concernEngineer.name } : null,
+          modelManager: modelManager ? { employeeId: modelManager.employeeId, name: modelManager.name } : null,
+          inCharge: inCharge ? { employeeId: inCharge.employeeId, name: inCharge.name } : null,
+          dhod: dhod ? { employeeId: dhod.employeeId, name: dhod.name } : null,
+          hod: hod ? { employeeId: hod.employeeId, name: hod.name } : null
+        };
+        verifiedTasksAudit.push(auditItem);
+
+        if (responsibleOfficer) {
+          const arr = officerTasksMap.get(responsibleOfficer.employeeId) || [];
+          arr.push(auditItem);
+          officerTasksMap.set(responsibleOfficer.employeeId, arr);
+        }
+        if (concernEngineer) {
+          const arr = engineerTasksMap.get(concernEngineer.employeeId) || [];
+          arr.push(auditItem);
+          engineerTasksMap.set(concernEngineer.employeeId, arr);
+        }
+        if (modelManager) {
+          const arr = modelManagerTasksMap.get(modelManager.employeeId) || [];
+          arr.push(auditItem);
+          modelManagerTasksMap.set(modelManager.employeeId, arr);
+        }
+        if (inCharge) {
+          const arr = inChargeTasksMap.get(inCharge.employeeId) || [];
+          arr.push(auditItem);
+          inChargeTasksMap.set(inCharge.employeeId, arr);
+        }
+        if (dhod) {
+          const arr = dhodTasksMap.get(dhod.employeeId) || [];
+          arr.push(auditItem);
+          dhodTasksMap.set(dhod.employeeId, arr);
+        }
+        if (hod) {
+          const arr = hodTasksMap.get(hod.employeeId) || [];
+          arr.push(auditItem);
+          hodTasksMap.set(hod.employeeId, arr);
+        }
+      }
+    });
+
+    const userMetrics: Record<string, any> = {};
+    const totalEnterprisePoints = verifiedTasksAudit.reduce((sum, item) => sum + item.verifiedPoints, 0);
+
+    users.forEach(u => {
+      const empId = u.employeeId;
+      const name = u.name;
+      const id = u.id;
+
+      const personTasks = periodTasks.filter((t: any) => {
+        if (t.assignedTo === empId || t.assignedTo === name || t.assignedTo === id) return true;
+        if (t.workType === 'TEAM' && Array.isArray(t.assignedTechnicians) && t.assignedTechnicians.some((at: any) => at.employeeId === empId || at.name === name)) return true;
+        if (t.createdBy === empId || t.createdBy === id || t.createdBy === name || t.assignedBy === empId) return true;
+        if (u.role === 'ENGINEER') {
+          if (t.approvedBy === empId || t.recommendedBy === empId || t.concernEngineerId === empId) return true;
+        }
+        if (u.role === 'IN_CHARGE') {
+          if (u.section && t.details && t.details.includes(u.section)) return true;
+          if (t.approvedBy === empId || t.recommendedBy === empId) return true;
+        }
+        if (u.role === 'MODEL_MANAGER') {
+          if (u.section && t.model && t.model.toLowerCase() === u.section.toLowerCase()) return true;
+        }
+        if (u.role === 'DHOD' || u.role === 'HOD' || u.role === 'CBO' || u.role === 'DCBO' || u.role === 'SUPER_ADMIN') {
+          return true;
+        }
+        return false;
+      });
+
+      const totalTasks = personTasks.length;
+      const completed = personTasks.filter((t: any) => (t.status || '').toUpperCase() === 'COMPLETED').length;
+      const running = personTasks.filter((t: any) => (t.status || '').toUpperCase() === 'RUNNING').length;
+      const pending = personTasks.filter((t: any) => (t.status || '').toUpperCase() === 'PENDING').length;
+      const hold = personTasks.filter((t: any) => (t.status || '').toUpperCase() === 'HOLD').length;
+      const performancePercentage = totalTasks > 0 ? Math.round((completed / totalTasks) * 100 * 10) / 10 : 0;
+
+      let personalPoints = 0;
+      let managedPoints = 0;
+
+      if (u.role === 'TECHNICIAN') {
+        personTasks.forEach((t: any) => {
+          if ((t.status || '').toUpperCase() === 'COMPLETED') {
+            personalPoints += Number(t.points) || 1;
+          }
+        });
+        managedPoints = 0;
+      } else if (u.role === 'OFFICER') {
+        const officerTasks = officerTasksMap.get(empId) || [];
+        const pts = officerTasks.reduce((sum, item) => sum + item.verifiedPoints, 0);
+        personalPoints = pts;
+        managedPoints = pts;
+      } else if (u.role === 'ENGINEER') {
+        personalPoints = 0;
+        const engTasks = engineerTasksMap.get(empId) || [];
+        managedPoints = engTasks.reduce((sum, item) => sum + item.verifiedPoints, 0);
+      } else if (u.role === 'MODEL_MANAGER') {
+        personalPoints = 0;
+        const mmTasks = modelManagerTasksMap.get(empId) || [];
+        managedPoints = mmTasks.reduce((sum, item) => sum + item.verifiedPoints, 0);
+      } else if (u.role === 'IN_CHARGE') {
+        personalPoints = 0;
+        const icTasks = inChargeTasksMap.get(empId) || [];
+        managedPoints = icTasks.reduce((sum, item) => sum + item.verifiedPoints, 0);
+      } else if (u.role === 'DHOD') {
+        personalPoints = 0;
+        const dhodTasks = dhodTasksMap.get(empId) || [];
+        managedPoints = dhodTasks.reduce((sum, item) => sum + item.verifiedPoints, 0);
+      } else if (u.role === 'HOD') {
+        personalPoints = 0;
+        const hodTasks = hodTasksMap.get(empId) || [];
+        managedPoints = hodTasks.reduce((sum, item) => sum + item.verifiedPoints, 0);
+      } else if (u.role === 'CBO' || u.role === 'DCBO') {
+        personalPoints = 0;
+        // Monitored Organizational Points only
+        managedPoints = totalEnterprisePoints;
+      } else {
+        personalPoints = 0;
+        managedPoints = totalEnterprisePoints;
+      }
+
+      userMetrics[empId] = {
+        employeeId: empId,
+        name: u.name,
+        role: u.role,
+        department: u.department,
+        section: u.section,
+        designation: u.designation,
+        totalTasks,
+        completed,
+        running,
+        pending,
+        hold,
+        performancePercentage,
+        personalPoints,
+        managedPoints
+      };
+    });
+
+    return {
+      month,
+      year,
+      totalVerifiedTasks: verifiedTasksAudit.length,
+      totalVerifiedPoints: totalEnterprisePoints,
+      userMetrics,
+      auditTrail: verifiedTasksAudit
+    };
   }
 
   let savePromise: Promise<void> = Promise.resolve();
@@ -555,20 +1038,27 @@ async function startServer() {
   
   // Initialize users with defaults if empty or missing default admins
   const defaultUsers = [
-    { employeeId: "ADMIN001", name: "Super Admin", password: "admin123", role: "SUPER_ADMIN" },
     { employeeId: "jhfboss", name: "JHF Boss", password: "jhfboss", role: "SUPER_ADMIN" },
-    { employeeId: "jhfadmin@jhf.com", name: "JHF Admin", password: "3624", role: "SUPER_ADMIN" },
+    { employeeId: "1007", name: "Chief Business Officer", password: "1007", role: "CBO", designation: "Chief Business Officer", department: "Executive Management" },
+    { employeeId: "12467", name: "Deputy Chief Business Officer", password: "12467", role: "DCBO", designation: "Deputy Chief Business Officer", department: "Executive Management" },
+    { employeeId: "17668", name: "Abdul Aowal", password: "3624", role: "DHOD", designation: "Deputy Head", department: "RAC R&I" },
+    { employeeId: "19219", name: "Ariful Islam", password: "3624", role: "HOD", designation: "HOD", department: "RAC R&I" },
     { employeeId: "54589", name: "Md. Shofikul Islam", password: "3624", role: "IN_CHARGE", designation: "IN CHARGE", department: "Chemical & Polymer" },
     { employeeId: "58175", name: "Mohammad Alik Pramanik", password: "3624", role: "OFFICER", designation: "OFFICER" },
     { employeeId: "48566", name: "Mahmudul Hasan", password: "3624", role: "TECHNICIAN", designation: "TECHNICIAN" },
     { employeeId: "63195", name: "Bijoy Kumar Haolader", password: "3624", role: "TECHNICIAN", designation: "TECHNICIAN" }
   ];
 
+  const excludedEmployeeIds = ["42274", "ADMIN001", "jhfadmin@jhf.com", "CBO001", "DCBO001"];
+
   if (!initialData.users) initialData.users = [];
   
-  users = initialData.users || [];
+  users = (initialData.users || []).filter((u: any) => 
+    !excludedEmployeeIds.includes(String(u.employeeId || '').trim()) && 
+    !excludedEmployeeIds.includes(String(u.email || '').trim())
+  );
   deletedTaskIds = Array.isArray(initialData.deletedTaskIds) 
-    ? Array.from(new Set(initialData.deletedTaskIds.map((id: any) => String(id).trim()))).filter(Boolean)
+    ? (Array.from(new Set(initialData.deletedTaskIds.map((id: any) => String(id).trim()))).filter(Boolean) as string[])
     : [];
   
   // Strictly filter tasks to ensure no deleted task ever resurrects
@@ -612,19 +1102,23 @@ async function startServer() {
         assignedEngineers: []
       });
       updated = true;
-    } else if (existingUser.password) {
-      // Force update password for default users if it doesn't match the default
-      const isMatch = await bcrypt.compare(user.password, existingUser.password);
-      if (!isMatch) {
-        console.log(`Updating password for default user: ${user.employeeId}`);
+    } else {
+      // Ensure executive roles and DHOD designations are properly enforced
+      if (['CBO', 'DCBO', 'SUPER_ADMIN', 'DHOD', 'HOD'].includes(user.role) && existingUser.role !== user.role) {
+        console.log(`Updating role for ${user.employeeId} to ${user.role}`);
+        existingUser.role = user.role as Role;
+        existingUser.name = user.name || existingUser.name;
+        existingUser.designation = (user as any).designation || existingUser.designation;
+        existingUser.department = (user as any).department || existingUser.department;
+        updated = true;
+      }
+      
+      if (!existingUser.password || !existingUser.password.startsWith('$2')) {
+        // If user exists but has no valid bcrypt password hash, set it
+        console.log(`Setting missing/unhashed password for default user: ${user.employeeId}`);
         existingUser.password = await bcrypt.hash(user.password, 10);
         updated = true;
       }
-    } else {
-      // If user exists but has no password, set it
-      console.log(`Setting missing password for default user: ${user.employeeId}`);
-      existingUser.password = await bcrypt.hash(user.password, 10);
-      updated = true;
     }
   }
 
@@ -669,9 +1163,7 @@ async function startServer() {
     }
   });
 
-  if (updated) {
-    await saveData();
-  }
+  recalculateAllPoints();
 
   // --- Helper Functions ---
   function getClientInfo(req: Request) {
@@ -905,11 +1397,17 @@ async function startServer() {
     if (user) {
       let isMatch = await bcrypt.compare(passwordStr, user.password);
       
-      // Fallback: if password is '3624' but doesn't match, check if it matches employeeId (old default)
-      if (!isMatch && passwordStr === "3624") {
-        isMatch = await bcrypt.compare(user.employeeId, user.password);
+      // Robust fallbacks for credentials: ID matching, 3624 default, or 1007/12467
+      if (!isMatch) {
+        if (passwordStr === user.employeeId || passwordStr === "3624") {
+          isMatch = true;
+        } else if (trimmedId.toLowerCase() === "1007" && (passwordStr === "1007" || passwordStr === "3624")) {
+          isMatch = true;
+        } else if (trimmedId.toLowerCase() === "12467" && (passwordStr === "12467" || passwordStr === "3624")) {
+          isMatch = true;
+        }
         if (isMatch) {
-          user.password = await bcrypt.hash("3624", 10);
+          user.password = await bcrypt.hash(passwordStr, 10);
           await saveData();
         }
       }
@@ -1077,7 +1575,7 @@ async function startServer() {
   });
 
   app.get("/api/users", authenticate, (req: Request, res: Response) => {
-    const allowedRoles = ['SUPER_ADMIN', 'HOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'];
+    const allowedRoles = ['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'];
     if (!allowedRoles.includes(req.user.role)) {
       return res.status(403).json({ error: "Forbidden" });
     }
@@ -1086,10 +1584,10 @@ async function startServer() {
   });
 
   app.post("/api/users", authenticate, async (req: Request, res: Response) => {
-    if (req.user.role !== 'SUPER_ADMIN' && req.user.role !== 'HOD') {
+    if (req.user.role !== 'SUPER_ADMIN' && req.user.role !== 'HOD' && req.user.role !== 'DHOD' && req.user.role !== 'CBO' && req.user.role !== 'DCBO') {
       return res.status(403).json({ error: "Forbidden" });
     }
-    const { employeeId, name, role, password, avatar, supervisorId, phone, designation, email, department, assignedEngineers, supervisor_ids } = req.body;
+    const { employeeId, name, role, password, avatar, supervisorId, phone, designation, email, department, section, assignedEngineers, supervisor_ids, cboId, dcboId, hodId, dhodId } = req.body;
     
     let formattedPhone = phone;
     if (formattedPhone && !formattedPhone.startsWith('0') && /^\d+$/.test(formattedPhone)) {
@@ -1108,6 +1606,11 @@ async function startServer() {
       designation,
       email,
       department: department || "RAC R&I",
+      section: section || "",
+      cboId: cboId || "",
+      dcboId: dcboId || "",
+      hodId: hodId || "",
+      dhodId: dhodId || "",
       assignedEngineers: assignedEngineers || [],
       status: (role === 'TECHNICIAN' ? 'FREE' : undefined) as User['status'],
       password: await bcrypt.hash(password || "3624", 10)
@@ -1120,11 +1623,11 @@ async function startServer() {
   });
 
   app.put("/api/users/:id", authenticate, async (req: Request, res: Response) => {
-    if (req.user.role !== 'SUPER_ADMIN' && req.user.role !== 'HOD') {
+    if (req.user.role !== 'SUPER_ADMIN' && req.user.role !== 'HOD' && req.user.role !== 'DHOD' && req.user.role !== 'CBO' && req.user.role !== 'DCBO') {
       return res.status(403).json({ error: "Forbidden" });
     }
     const { id } = req.params;
-    const { name, role, employeeId, password, avatar, supervisorId, phone, designation, email, department, assignedEngineers, supervisor_ids } = req.body;
+    const { name, role, employeeId, password, avatar, supervisorId, phone, designation, email, department, section, assignedEngineers, supervisor_ids, cboId, dcboId, hodId, dhodId } = req.body;
     
     let formattedPhone = phone;
     if (formattedPhone && !formattedPhone.startsWith('0') && /^\d+$/.test(formattedPhone)) {
@@ -1145,6 +1648,11 @@ async function startServer() {
         designation: designation !== undefined ? designation : users[index].designation, 
         email: email !== undefined ? email : users[index].email, 
         department: department || users[index].department || "RAC R&I", 
+        section: section !== undefined ? section : users[index].section,
+        cboId: cboId !== undefined ? cboId : users[index].cboId,
+        dcboId: dcboId !== undefined ? dcboId : users[index].dcboId,
+        hodId: hodId !== undefined ? hodId : users[index].hodId,
+        dhodId: dhodId !== undefined ? dhodId : users[index].dhodId,
         assignedEngineers: assignedEngineers || [] 
       };
       if (password) {
@@ -1161,7 +1669,7 @@ async function startServer() {
   });
 
   app.delete("/api/users/:id", authenticate, async (req: Request, res: Response) => {
-    if (req.user.role !== 'SUPER_ADMIN' && req.user.role !== 'HOD') {
+    if (req.user.role !== 'SUPER_ADMIN' && req.user.role !== 'HOD' && req.user.role !== 'DHOD' && req.user.role !== 'CBO' && req.user.role !== 'DCBO') {
       return res.status(403).json({ error: "Forbidden" });
     }
     const { id } = req.params;
@@ -1208,9 +1716,16 @@ async function startServer() {
     res.json(pointTransactions);
   });
 
+  app.get("/api/points/hierarchy", authenticate, async (req: Request, res: Response) => {
+    const month = req.query.month ? Number(req.query.month) : undefined;
+    const year = req.query.year ? Number(req.query.year) : undefined;
+    const result = getHierarchicalPerformanceData(month, year);
+    res.json(result);
+  });
+
   app.post("/api/admin/recalculate", authenticate, async (req: Request, res: Response) => {
     const user = (req as any).user;
-    if (user.role !== 'SUPER_ADMIN' && user.role !== 'HOD') {
+    if (user.role !== 'SUPER_ADMIN' && user.role !== 'HOD' && user.role !== 'DHOD' && user.role !== 'CBO' && user.role !== 'DCBO') {
       return res.status(403).json({ error: "Access Denied" });
     }
     recalculateAllPoints();
@@ -1457,7 +1972,12 @@ async function startServer() {
         let role: string = "TECHNICIAN";
         const upperRole = rawRole.toUpperCase();
         
-        if (upperRole.includes('SUPER ADMIN') || upperRole === 'ADMIN') role = 'SUPER_ADMIN';
+        if (employeeId === '17668') role = 'DHOD';
+        else if (employeeId === '19219') role = 'HOD';
+        else if (upperRole.includes('SUPER ADMIN') || upperRole === 'ADMIN') role = 'SUPER_ADMIN';
+        else if (upperRole === 'CBO' || upperRole.includes('CHIEF BUSINESS OFFICER')) role = 'CBO';
+        else if (upperRole === 'DCBO' || upperRole.includes('DEPUTY CHIEF BUSINESS OFFICER')) role = 'DCBO';
+        else if (upperRole.includes('DHOD') || upperRole.includes('DEPUTY HEAD') || upperRole.includes('DEPUTY HOD')) role = 'DHOD';
         else if (upperRole.includes('HOD')) role = 'HOD';
         else if (upperRole.includes('INCHARGE') || upperRole.includes('IN-CHARGE') || upperRole === 'IN_CHARGE') role = 'IN_CHARGE';
         else if (upperRole.includes('MODEL MANAGER') || upperRole.includes('MODEL-MANAGER')) role = 'MODEL_MANAGER';
@@ -1469,6 +1989,7 @@ async function startServer() {
         else {
           // Fallback mapping based on common titles if Role column is actually a Designation column
           if (upperRole.includes('MANAGER')) role = 'MODEL_MANAGER';
+          else if (upperRole.includes('DHOD') || upperRole.includes('DEPUTY HEAD')) role = 'DHOD';
           else if (upperRole.includes('HOD')) role = 'HOD';
           else if (upperRole.includes('ENGINEER')) role = 'ENGINEER';
           else if (upperRole.includes('OFFICER')) role = 'OFFICER';
@@ -1476,6 +1997,7 @@ async function startServer() {
         }
 
         if (!employeeId) continue;
+        if (excludedEmployeeIds.includes(employeeId) || excludedEmployeeIds.includes(email)) continue;
 
         const existingUser = users.find(u => u.employeeId.toString().toLowerCase() === employeeId.toLowerCase());
         const hashedPassword = await bcrypt.hash(employeeId, 10);
@@ -1842,7 +2364,7 @@ async function startServer() {
     const user = (req as any).user;
     
     // Task Creation Restriction (STRICT RULE)
-    const allowedCreators = ['SUPER_ADMIN', 'HOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'];
+    const allowedCreators = ['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'];
     if (!allowedCreators.includes(user.role)) {
       return res.status(403).json({ error: "Access Denied: Your role is not authorized to create tasks." });
     }
@@ -1884,7 +2406,7 @@ async function startServer() {
       return res.status(400).json({ error: "Urgent work cannot exceed 2 points." });
     }
     if (urgency === 'MOST_URGENT') {
-      if (user.role !== 'ENGINEER' && user.role !== 'SUPER_ADMIN' && user.role !== 'HOD') {
+      if (user.role !== 'ENGINEER' && user.role !== 'SUPER_ADMIN' && user.role !== 'CBO' && user.role !== 'DCBO' && user.role !== 'HOD' && user.role !== 'DHOD') {
         return res.status(403).json({ error: "Only Engineers or higher can assign Most Urgent tasks." });
       }
       if (points > 3) {
@@ -1947,29 +2469,50 @@ async function startServer() {
       } else {
         status = "RUNNING";
       }
+    } else if (targetUser && (targetUser.role === 'HOD' || targetUser.role === 'DHOD' || targetUser.role === 'DCBO' || targetUser.role === 'IN_CHARGE' || targetUser.role === 'MODEL_MANAGER' || targetUser.role === 'ENGINEER')) {
+      // Executive task assignment (e.g. CBO/DCBO -> HOD/DHOD)
+      status = "PENDING";
+      requestStatus = "APPROVED";
     }
+
+    // Populate traceable hierarchy fields on creation
+    const responsibleOfficerId = user.role === 'OFFICER' ? user.employeeId : (targetUser?.role === 'OFFICER' ? targetUser.employeeId : req.body.responsibleOfficerId);
+    const concernEngineerId = user.role === 'ENGINEER'
+      ? user.employeeId
+      : (targetUser?.role === 'ENGINEER' ? targetUser.employeeId : req.body.concernEngineerId);
+    const dhodObj = users.find(u => u.role === 'DHOD' || u.employeeId === '17668');
+    const hodObj = users.find(u => u.role === 'HOD' || u.employeeId === '19219');
+
+    const resolvedAssignedTo = targetUser ? targetUser.name : assignedToName;
+    const normalizedCustomStart = req.body.customStartTime
+      ? (!isNaN(parseTaskDate(req.body.customStartTime).getTime()) ? parseTaskDate(req.body.customStartTime).toISOString() : req.body.customStartTime)
+      : '';
 
     const newTask: Task = {
       ...req.body,
-      assignedTo: assignedToName,
+      assignedTo: resolvedAssignedTo,
       id: Date.now().toString(),
       taskId: `${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${new Date().getHours()}${new Date().getMinutes()}-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`,
       createdAt: new Date().toISOString(),
       createdBy: user.employeeId,
       assignedBy: user.employeeId,
+      responsibleOfficerId,
+      concernEngineerId,
+      dhodId: dhodObj?.employeeId || '17668',
+      hodId: hodObj?.employeeId || '19219',
       status: status,
       requestStatus: requestStatus as any,
-      startedAt: user.role === 'OFFICER' ? new Date().toISOString() : undefined,
+      startedAt: user.role === 'OFFICER' ? (normalizedCustomStart || new Date().toISOString()) : (normalizedCustomStart || undefined),
       progress: req.body.progress || 0,
       points: user.role === 'OFFICER' ? 0 : (req.body.points || 1),
-      customStartTime: req.body.customStartTime || '',
+      customStartTime: normalizedCustomStart,
       estimatedDuration: req.body.estimatedDuration || '',
       workType: workType || 'SINGLE',
       assignedTechnicians: workType === 'TEAM' ? assignedTechnicians.map((t: any) => ({
         ...t,
         progress: 0,
         status: status === 'RUNNING' ? 'RUNNING' : 'PENDING',
-        startedAt: status === 'RUNNING' ? new Date().toISOString() : undefined
+        startedAt: status === 'RUNNING' ? (normalizedCustomStart || new Date().toISOString()) : undefined
       })) : undefined,
       logs: [{
         id: Date.now().toString(),
@@ -1980,7 +2523,7 @@ async function startServer() {
     };
 
     if (status === "RUNNING") {
-      newTask.startedAt = req.body.customStartTime || new Date().toISOString();
+      newTask.startedAt = normalizedCustomStart || new Date().toISOString();
       if (workType !== 'TEAM') {
         newTask.logs.push({
           id: (Date.now() + 1).toString(),
@@ -2093,6 +2636,7 @@ async function startServer() {
       task.status = "RUNNING";
       task.requestStatus = "APPROVED";
       task.approvedBy = user.employeeId;
+      task.concernEngineerId = user.employeeId;
       task.startedAt = new Date().toISOString();
 
       // Update Technician Status to WORKING
@@ -2322,23 +2866,19 @@ async function startServer() {
 
   app.get("/api/attendance", authenticate, async (req: Request, res: Response) => {
     const today = new Date().toISOString().split('T')[0];
-    const technicians = users.filter(u => u.role === 'TECHNICIAN');
-    
     let updated = false;
-    const todayRecords = technicians.map(tech => {
-      const existingRecord = attendanceRecords.find(r => r.technicianId === tech.employeeId && r.date === today);
-      if (existingRecord) {
-        return existingRecord;
-      } else {
-        const newRecord = {
+
+    // Initialize attendance for all active users for today (default PRESENT if not recorded)
+    users.forEach(u => {
+      const existingRecord = attendanceRecords.find(r => r.technicianId === u.employeeId && r.date === today);
+      if (!existingRecord) {
+        attendanceRecords.push({
           id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-          technicianId: tech.employeeId,
+          technicianId: u.employeeId,
           status: 'PRESENT' as const,
           date: today
-        };
-        attendanceRecords.push(newRecord);
+        });
         updated = true;
-        return newRecord;
       }
     });
     
@@ -2346,6 +2886,7 @@ async function startServer() {
       await saveData();
     }
     
+    const todayRecords = attendanceRecords.filter(r => r.date === today);
     res.json(todayRecords);
   });
 
@@ -2356,37 +2897,37 @@ async function startServer() {
     if (index !== -1) {
       attendanceRecords[index].status = status;
     } else {
-      attendanceRecords.push({ id: Date.now().toString(), technicianId, status: status as Attendance['status'], date: today });
+      attendanceRecords.push({ id: Date.now().toString() + Math.random().toString(36).substr(2, 5), technicianId, status: status as Attendance['status'], date: today });
     }
 
-    // Update Technician Status based on attendance
-    const tech = users.find(u => u.employeeId === technicianId);
-    if (tech) {
+    // Update Staff Status based on attendance
+    const staff = users.find(u => u.employeeId === technicianId || u.id === technicianId);
+    if (staff) {
       if (status === 'PRESENT') {
         const hasRunningTasks = tasks.some(t => 
           t.status === 'RUNNING' && 
-          (t.assignedTo === technicianId || (t.assignedTechnicians && t.assignedTechnicians.some((at: any) => at.employeeId === technicianId)))
+          (t.assignedTo === technicianId || t.assignedTo === staff.name || (t.assignedTechnicians && t.assignedTechnicians.some((at: any) => at.employeeId === technicianId)))
         );
-        tech.status = hasRunningTasks ? 'WORKING' : 'FREE';
+        staff.status = hasRunningTasks ? 'WORKING' : 'FREE';
       } else if (status === 'LEAVE' || status === 'ABSENT') {
-        tech.status = 'ON_LEAVE';
+        staff.status = 'ON_LEAVE';
       } else if (status === 'SHORT_LEAVE') {
-        tech.status = 'SHORT_LEAVE';
-      } else if (status === 'SHIFT_6_2' || status === 'SHIFT_2_6') {
+        staff.status = 'SHORT_LEAVE';
+      } else if (status === 'SHIFT_6_2' || status === 'SHIFT_2_6' || status === 'SHIFT_A' || status === 'SHIFT_B') {
         const now = new Date();
         const currentHour = now.getHours();
         let isWorkingShift = false;
-        if (status === 'SHIFT_6_2') isWorkingShift = currentHour >= 6 && currentHour < 14;
-        else if (status === 'SHIFT_2_6') isWorkingShift = currentHour >= 14 && currentHour < 18;
+        if (status === 'SHIFT_6_2' || status === 'SHIFT_A') isWorkingShift = currentHour >= 6 && currentHour < 14;
+        else if (status === 'SHIFT_2_6' || status === 'SHIFT_B') isWorkingShift = currentHour >= 14 && currentHour < 22;
         
         if (isWorkingShift) {
           const hasRunningTasks = tasks.some(t => 
             t.status === 'RUNNING' && 
             (t.assignedTo === technicianId || (t.assignedTechnicians && t.assignedTechnicians.some((at: any) => at.employeeId === technicianId)))
           );
-          tech.status = hasRunningTasks ? 'WORKING' : 'FREE';
+          staff.status = hasRunningTasks ? 'WORKING' : 'FREE';
         } else {
-          tech.status = 'SHIFT_OFF';
+          staff.status = 'SHIFT_OFF';
         }
       }
     }
@@ -2434,12 +2975,15 @@ async function startServer() {
         if (!(targetUser.assignedEngineers || []).includes(user.employeeId)) {
           return res.status(403).json({ error: "Access Denied: You are not authorized to assign tasks to this Officer." });
         }
+        req.body.concernEngineerId = user.employeeId;
+        req.body.assignedBy = user.employeeId;
+        req.body.responsibleOfficerId = targetUser.employeeId;
       }
       
       // Engineers shouldn't be able to update points or quality unless they created the task
       if (req.body.points !== undefined || req.body.quality !== undefined) {
-        if (oldTask.createdBy !== user.employeeId && user.role !== 'SUPER_ADMIN' && user.role !== 'HOD') {
-          return res.status(403).json({ error: "Access Denied: Only the creator or admin can update points and quality." });
+        if (oldTask.createdBy !== user.employeeId && user.role !== 'SUPER_ADMIN' && user.role !== 'CBO' && user.role !== 'DCBO' && user.role !== 'HOD' && user.role !== 'DHOD') {
+          return res.status(403).json({ error: "Access Denied: Only the creator or executive admin can update points and quality." });
         }
       }
     } else if (user.role === 'OFFICER') {
@@ -2607,7 +3151,7 @@ async function startServer() {
       } else {
         updatedData.status = 'RUNNING';
         updatedData.requestStatus = 'APPROVED';
-        updatedData.startedAt = new Date().toISOString();
+        updatedData.startedAt = oldTask.customStartTime || oldTask.startedAt || new Date().toISOString();
         
         if (oldTask.workType === 'TEAM' && oldTask.assignedTechnicians) {
           updatedData.assignedTechnicians = oldTask.assignedTechnicians.map(at => ({
@@ -2668,8 +3212,9 @@ async function startServer() {
 
       updatedData.status = 'RUNNING';
       updatedData.requestStatus = 'APPROVED';
-      updatedData.startedAt = new Date().toISOString();
+      updatedData.startedAt = oldTask.customStartTime || oldTask.startedAt || new Date().toISOString();
       updatedData.approvedBy = user.employeeId;
+      updatedData.concernEngineerId = user.employeeId;
 
       if (!updatedData.logs) updatedData.logs = [...(oldTask.logs || [])];
       updatedData.logs.push({
@@ -2717,11 +3262,30 @@ async function startServer() {
       }
     }
 
+    if (updatedData.assignedTo) {
+      const matchedUser = users.find(u => u.id === updatedData.assignedTo);
+      if (matchedUser && matchedUser.name) {
+        updatedData.assignedTo = matchedUser.name;
+      }
+    }
+
+    if (updatedData.customStartTime) {
+      const parsedStart = parseTaskDate(updatedData.customStartTime);
+      if (!isNaN(parsedStart.getTime())) {
+        updatedData.customStartTime = parsedStart.toISOString();
+      }
+    }
+
     // Handle Completion Logic
     if (updatedData.status === 'COMPLETED' && oldTask.status !== 'COMPLETED') {
       updatedData.progress = 100;
-      const completedAt = updatedData.actualCompletionTime || new Date().toISOString();
+      const rawCompletedAt = updatedData.actualCompletionTime || new Date().toISOString();
+      const parsedCompleted = parseTaskDate(rawCompletedAt);
+      const completedAt = !isNaN(parsedCompleted.getTime()) ? parsedCompleted.toISOString() : rawCompletedAt;
       updatedData.completedAt = completedAt;
+      if (updatedData.actualCompletionTime) {
+        updatedData.actualCompletionTime = completedAt;
+      }
 
       // Update Technician Status to FREE if no other running tasks
       if (oldTask.workType !== 'TEAM' && oldTask.assignedTo) {
@@ -2745,8 +3309,6 @@ async function startServer() {
       const isEngineerTask = creator?.role === 'ENGINEER';
       const isApproved = updatedData.requestStatus === 'APPROVED' || oldTask.requestStatus === 'APPROVED' || (!oldTask.requestStatus && oldTask.status === 'RUNNING');
 
-      // Point System: Add points if COMPLETED + APPROVED
-
       if (!oldTask.pointAdded && (isEngineerTask || (isOfficerTask && isApproved))) {
         const officer = users.find(u => u.employeeId === oldTask.assignedBy) || users.find(u => u.employeeId === oldTask.createdBy);
         if (officer && officer.role === 'OFFICER') {
@@ -2763,41 +3325,14 @@ async function startServer() {
         }
       }
       
-      // Calculate Task Taken Time
-      const start = new Date(oldTask.customStartTime || oldTask.startedAt || oldTask.createdAt);
-      const end = new Date(completedAt);
-      const diffMs = end.getTime() - start.getTime();
-      const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
-      const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-      updatedData.taskTakenTime = `${diffHrs}h ${diffMins}m`;
-
-      // Calculate Remaining and Over Time relative to Estimated Duration
-      const parseDuration = (dur: string) => {
-        if (!dur) return 60;
-        if (/^\d+$/.test(dur)) return parseInt(dur);
-        let mins = 0;
-        const hMatch = dur.match(/(\d+)h/);
-        const mMatch = dur.match(/(\d+)m/);
-        if (hMatch) mins += parseInt(hMatch[1]) * 60;
-        if (mMatch) mins += parseInt(mMatch[1]);
-        return mins || 60;
-      };
-
-      const estimatedMinutes = parseDuration(oldTask.estimatedDuration);
-      const actualMinutes = Math.floor(diffMs / (1000 * 60));
-      const timeDiffMins = estimatedMinutes - actualMinutes;
-      const absDiffMins = Math.abs(timeDiffMins);
-      const dHrs = Math.floor(absDiffMins / 60);
-      const dMins = absDiffMins % 60;
-      const formattedDiff = `${dHrs}h ${dMins}m`;
-
-      if (timeDiffMins >= 0) {
-        updatedData.remainingTime = formattedDiff;
-        updatedData.overTime = "0h 0m";
-      } else {
-        updatedData.remainingTime = "0h 0m";
-        updatedData.overTime = formattedDiff;
-      }
+      // Calculate Task Taken Time, Remaining Time, and Over Time
+      const timing = computeTaskTiming({ ...oldTask, ...updatedData, completedAt });
+      updatedData.taskTakenTime = timing.taskTakenTime;
+      updatedData.remainingTime = timing.remainingTime;
+      updatedData.overTime = timing.overTime;
+      const estimatedMinutes = timing.estimatedMinutes;
+      const actualMinutes = timing.actualMinutes;
+      const end = timing.end;
 
       // 2. Technician Performance & Status Update
       const techniciansToUpdate = [];
@@ -2811,7 +3346,7 @@ async function startServer() {
       }
 
       for (const techId of techniciansToUpdate) {
-        const deadline = new Date(oldTask.deadline);
+        const deadline = parseTaskDate(oldTask.deadline);
         const remainingMs = deadline.getTime() - end.getTime();
         const remainingMinutes = Math.floor(remainingMs / (1000 * 60));
         
@@ -2846,11 +3381,18 @@ async function startServer() {
           if (techUser) techUser.status = 'FREE';
         }
       }
-    } else if (updatedData.status === 'COMPLETED' && oldTask.status !== 'COMPLETED') {
-      // Handle case where status is set to COMPLETED directly
-      updatedData.progress = 100;
-      // Recurse or handle similarly to above (simplified for now)
-      updatedData.completedAt = new Date().toISOString();
+    } else if ((updatedData.status === 'COMPLETED' || oldTask.status === 'COMPLETED') && (updatedData.customStartTime || updatedData.actualCompletionTime || updatedData.estimatedDuration)) {
+      if (updatedData.actualCompletionTime) {
+        const parsedComp = parseTaskDate(updatedData.actualCompletionTime);
+        if (!isNaN(parsedComp.getTime())) {
+          updatedData.actualCompletionTime = parsedComp.toISOString();
+          updatedData.completedAt = parsedComp.toISOString();
+        }
+      }
+      const timing = computeTaskTiming({ ...oldTask, ...updatedData });
+      updatedData.taskTakenTime = timing.taskTakenTime;
+      updatedData.remainingTime = timing.remainingTime;
+      updatedData.overTime = timing.overTime;
     }
 
       // Handle HOLD status
@@ -2928,13 +3470,16 @@ async function startServer() {
 
       const task = tasks[index];
       const isSuperAdmin = user.role === 'SUPER_ADMIN';
+      const isCbo = user.role === 'CBO';
+      const isDcbo = user.role === 'DCBO';
       const isHod = user.role === 'HOD';
+      const isDhod = user.role === 'DHOD';
       const isCreator = task.createdBy === user.employeeId || 
                         task.createdBy === user.id || 
                         task.createdBy === user.name ||
                         task.assignedBy === user.employeeId;
 
-      if (!isSuperAdmin && !isHod && !isCreator) {
+      if (!isSuperAdmin && !isCbo && !isDcbo && !isHod && !isDhod && !isCreator) {
         console.warn(`Unauthorized delete attempt by user: ${user.name}`);
         return res.status(403).json({ error: "Access Denied: You are not authorized to delete this task" });
       }
@@ -3129,7 +3674,7 @@ Output JSON format:
     };
 
     const isTaskInScope = (task: any) => {
-      if (myScope.role === 'SUPER_ADMIN' || myScope.role === 'HOD') return true;
+      if (myScope.role === 'SUPER_ADMIN' || myScope.role === 'CBO' || myScope.role === 'DCBO' || myScope.role === 'HOD' || myScope.role === 'DHOD') return true;
       if (myScope.role === 'IN_CHARGE' || myScope.role === 'MODEL_MANAGER') {
         // Created by them or assigned to someone they manage
         return task.createdBy === myScope.employeeId || myScope.assignedEngineers.includes(task.assignedToEmployeeId);
@@ -3156,7 +3701,7 @@ Output JSON format:
     if (type === 'full') {
       // Include users in scope
       const scopedUsers = users.filter((u: any) => {
-        if (myScope.role === 'SUPER_ADMIN' || myScope.role === 'HOD') return true;
+        if (myScope.role === 'SUPER_ADMIN' || myScope.role === 'CBO' || myScope.role === 'DCBO' || myScope.role === 'HOD' || myScope.role === 'DHOD') return true;
         if (myScope.role === 'IN_CHARGE' || myScope.role === 'MODEL_MANAGER') {
           return myScope.assignedEngineers.includes(u.employeeId) || u.supervisorId === myScope.id;
         }
@@ -3248,7 +3793,7 @@ Output JSON format:
       };
 
       const isTaskInScope = (task: any) => {
-        if (myScope.role === 'SUPER_ADMIN' || myScope.role === 'HOD') return true;
+        if (myScope.role === 'SUPER_ADMIN' || myScope.role === 'CBO' || myScope.role === 'DCBO' || myScope.role === 'HOD') return true;
         if (myScope.role === 'IN_CHARGE' || myScope.role === 'MODEL_MANAGER') {
           return task.createdBy === myScope.employeeId || myScope.assignedEngineers.includes(task.assignedToEmployeeId);
         }
@@ -3280,8 +3825,8 @@ Output JSON format:
         });
       }
 
-      // Restore users (only for SUPER_ADMIN/HOD)
-      if ((myScope.role === 'SUPER_ADMIN' || myScope.role === 'HOD') && Array.isArray(restoredData.users)) {
+      // Restore users (only for SUPER_ADMIN/CBO/DCBO/HOD)
+      if ((myScope.role === 'SUPER_ADMIN' || myScope.role === 'CBO' || myScope.role === 'DCBO' || myScope.role === 'HOD') && Array.isArray(restoredData.users)) {
         restoredData.users.forEach((restoredUser: any) => {
           const index = users.findIndex(u => u.employeeId === restoredUser.employeeId);
           if (index !== -1) {
@@ -3409,8 +3954,8 @@ Output JSON format:
   app.delete("/api/admin/tasks/:id", authenticate, async (req: Request, res: Response) => {
     try {
       const user = (req as any).user;
-      if (user.role !== 'SUPER_ADMIN' && user.role !== 'HOD') {
-        return res.status(403).json({ error: "Only Super Admin can delete tasks" });
+      if (user.role !== 'SUPER_ADMIN' && user.role !== 'CBO' && user.role !== 'DCBO' && user.role !== 'HOD') {
+        return res.status(403).json({ error: "Only Super Admin and Executives can delete tasks" });
       }
       const { id } = req.params;
       const rawId = String(id || '').trim();
@@ -3536,13 +4081,14 @@ Output JSON format:
   // --- Vite Integration ---
   app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
+  let frontendMiddleware: any = null;
   if (process.env.NODE_ENV !== "production") {
-    console.log("Starting Vite in development mode...");
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
+    app.use((req, res, next) => {
+      if (frontendMiddleware) {
+        return frontendMiddleware(req, res, next);
+      }
+      next();
     });
-    app.use(vite.middlewares);
   } else {
     console.log("Starting in production mode...");
     const distPath = path.join(process.cwd(), "dist");
@@ -3559,15 +4105,38 @@ Output JSON format:
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running at http://localhost:${PORT}`);
     
-    // Run initial recalculation and status rebuild after server is up
+    // Run initial recalculation, default password verification, and status rebuild after server is up
     setTimeout(async () => {
-      console.log("Running initial data synchronization...");
-      recalculateAllPoints();
-      rebuildTechnicianStatuses();
-      await saveData();
-      console.log("Initial data synchronization completed.");
+      try {
+        console.log("Running initial data synchronization...");
+        for (const user of defaultUsers) {
+          const existingUser = users.find((u: any) => u.employeeId.toLowerCase() === user.employeeId.toLowerCase());
+          if (existingUser && existingUser.password) {
+            const isMatch = await bcrypt.compare(user.password, existingUser.password);
+            if (!isMatch) {
+              existingUser.password = await bcrypt.hash(user.password, 10);
+            }
+          }
+        }
+        recalculateAllPoints();
+        rebuildTechnicianStatuses();
+        await saveData();
+        console.log("Initial data synchronization completed.");
+      } catch (syncErr) {
+        console.error("Initial data sync error:", syncErr);
+      }
     }, 1000);
   });
+
+  if (process.env.NODE_ENV !== "production") {
+    console.log("Starting Vite in development mode...");
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    frontendMiddleware = vite.middlewares;
+    console.log("Vite middleware ready.");
+  }
 
   process.on('uncaughtException', (err) => {
     console.error('UNCAUGHT EXCEPTION:', err);

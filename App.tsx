@@ -88,6 +88,9 @@ import * as XLSX from 'xlsx';
 import { cn } from './utils';
 import { Role, User, Task, Attendance, TaskLog, TaskStatus, PointTransaction, TechnicianPerformance } from './types';
 import { toast, Toaster } from 'sonner';
+import { ExecutiveCommandCenter } from './ExecutiveCommandCenter';
+import { CBODashboard } from './CBODashboard';
+import { AssociateAttendanceManagement } from './AssociateAttendanceManagement';
 
 // --- Context ---
 const ThemeContext = React.createContext('dark');
@@ -103,7 +106,7 @@ const CountdownTimer = ({ task }: { task: Task }) => {
     const isOfficerTask = task.status === 'PENDING' && task.requestStatus === 'RECOMMENDED';
     if (task.status !== 'RUNNING' && !isOfficerTask) {
       if (task.status === 'COMPLETED') {
-        setTimeLeft('Completed');
+        setTimeLeft(task.taskTakenTime ? `Done (${task.taskTakenTime})` : 'Completed');
         setProgress(100);
         setColor('bg-green-500');
       } else {
@@ -114,25 +117,30 @@ const CountdownTimer = ({ task }: { task: Task }) => {
       return;
     }
 
-    const timer = setInterval(() => {
+    const parseDuration = (dur?: string) => {
+      if (!dur) return 60;
+      const str = String(dur).trim();
+      if (/^\d+$/.test(str)) return parseInt(str, 10) || 60;
+      let mins = 0;
+      const dMatch = str.match(/(\d+)\s*d/i);
+      const hMatch = str.match(/(\d+)\s*h/i);
+      const mMatch = str.match(/(\d+)\s*m/i);
+      if (dMatch) mins += parseInt(dMatch[1], 10) * 24 * 60;
+      if (hMatch) mins += parseInt(hMatch[1], 10) * 60;
+      if (mMatch) mins += parseInt(mMatch[1], 10);
+      if (mins === 0) {
+        const numMatch = str.match(/(\d+)/);
+        if (numMatch) mins = parseInt(numMatch[1], 10);
+      }
+      return mins || 60;
+    };
+
+    const updateTimer = () => {
       const start = new Date(task.customStartTime || task.startedAt || task.createdAt).getTime();
       const now = new Date().getTime();
-      
-      const parseDuration = (dur: string) => {
-        if (!dur) return 60;
-        if (/^\d+$/.test(dur)) return parseInt(dur);
-        let mins = 0;
-        const hMatch = dur.match(/(\d+)h/);
-        const mMatch = dur.match(/(\d+)m/);
-        if (hMatch) mins += parseInt(hMatch[1]) * 60;
-        if (mMatch) mins += parseInt(mMatch[1]);
-        return mins || 60;
-      };
-
-      const durationMins = parseDuration(task.estimatedDuration!);
+      const durationMins = parseDuration(task.estimatedDuration);
       const durationMs = durationMins * 60 * 1000;
       const end = start + durationMs;
-      
       const remainingMs = end - now;
       
       if (remainingMs <= 0) {
@@ -149,7 +157,7 @@ const CountdownTimer = ({ task }: { task: Task }) => {
         const s = Math.floor((remainingMs % (1000 * 60)) / 1000);
         setTimeLeft(`${h}h ${m}m ${s}s`);
         
-        const elapsedMs = now - start;
+        const elapsedMs = Math.max(0, now - start);
         const currentProgress = Math.min(100, Math.max(0, (elapsedMs / durationMs) * 100));
         setProgress(currentProgress);
         
@@ -157,7 +165,10 @@ const CountdownTimer = ({ task }: { task: Task }) => {
         else if (currentProgress < 85) setColor('bg-amber-500');
         else setColor('bg-red-500');
       }
-    }, 1000);
+    };
+
+    updateTimer();
+    const timer = setInterval(updateTimer, 1000);
 
     return () => clearInterval(timer);
   }, [task]);
@@ -309,9 +320,11 @@ const ReportingPanel = ({ tasks, staff, user }: { tasks: Task[], staff: User[], 
     if (!start || !end) return 'N/A';
     const s = new Date(start);
     const e = new Date(end);
-    const diff = e.getTime() - s.getTime();
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    if (isNaN(s.getTime()) || isNaN(e.getTime())) return 'N/A';
+    const diff = Math.max(0, e.getTime() - s.getTime());
+    const totalMins = Math.floor(diff / (1000 * 60));
+    const hours = Math.floor(totalMins / 60);
+    const minutes = totalMins % 60;
     return `${hours}h ${minutes}m`;
   };
 
@@ -331,23 +344,31 @@ const ReportingPanel = ({ tasks, staff, user }: { tasks: Task[], staff: User[], 
     const rows = filteredTasks.map(t => {
       const row: any[] = [t.taskId, t.title, t.model, t.points || 0];
       
-      const creator = staff.find(s => s.employeeId === t.createdBy);
-      const assigner = staff.find(s => s.employeeId === t.assignedBy);
-      const assignee = staff.find(s => s.name.toLowerCase().trim() === t.assignedTo.toLowerCase().trim());
+      const creator = staff.find(s => s.employeeId === t.createdBy || s.id === t.createdBy);
+      const assigner = staff.find(s => s.employeeId === t.assignedBy || s.id === t.assignedBy);
+      const assignee = staff.find(s => s.id === t.assignedTo || s.employeeId === t.assignedTo || (s.name && t.assignedTo && s.name.toLowerCase().trim() === t.assignedTo.toLowerCase().trim()));
 
-      // Logic to find Engineer, Officer, Technician
-      const findEngineer = (s: User | undefined) => {
-        if (!s) return null;
-        if (s.role === 'ENGINEER') return s;
-        if (s.role === 'OFFICER') return staff.find(e => e.id === s.supervisorId && e.role === 'ENGINEER');
-        if (s.role === 'TECHNICIAN') {
-          const officer = staff.find(o => o.id === s.supervisorId && o.role === 'OFFICER');
-          return officer ? staff.find(e => e.id === officer.supervisorId && e.role === 'ENGINEER') : null;
+      // Logic to find the specific Engineer, Officer, Technician for this task
+      const resolveTaskEngineer = (task: Task): User | undefined => {
+        if (creator?.role === 'ENGINEER') return creator;
+        if (assigner?.role === 'ENGINEER') return assigner;
+        if (assignee?.role === 'ENGINEER') return assignee;
+        if (task.approvedBy) {
+          const appEng = staff.find(s => (s.employeeId === task.approvedBy || s.id === task.approvedBy) && s.role === 'ENGINEER');
+          if (appEng) return appEng;
         }
-        return null;
+        if (task.recommendedBy) {
+          const recEng = staff.find(s => (s.employeeId === task.recommendedBy || s.id === task.recommendedBy) && s.role === 'ENGINEER');
+          if (recEng) return recEng;
+        }
+        if (task.concernEngineerId) {
+          const concEng = staff.find(s => (s.employeeId === task.concernEngineerId || s.id === task.concernEngineerId) && s.role === 'ENGINEER');
+          if (concEng) return concEng;
+        }
+        return undefined;
       };
       
-      const engineer = findEngineer(creator) || findEngineer(assigner) || findEngineer(assignee);
+      const engineer = resolveTaskEngineer(t);
       const engineerName = engineer?.name || 'N/A';
       
       const findOfficer = (s: User | undefined) => {
@@ -366,12 +387,15 @@ const ReportingPanel = ({ tasks, staff, user }: { tasks: Task[], staff: User[], 
       const history = (t.logs || []).map(l => `[${new Date(l.timestamp).toLocaleString()}] ${l.action} by ${l.user}`).join('\n');
 
       const formattedDeadline = new Date(t.deadline).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      const startRef = t.customStartTime || t.startedAt || t.createdAt;
+      const endRef = t.actualCompletionTime || t.completedAt;
+      const takenStr = t.taskTakenTime || calculateDuration(startRef, endRef);
       if (role === 'ENGINEER') {
-        row.push(officerName, t.status, formattedDeadline, t.completedAt ? new Date(t.completedAt).toLocaleString() : 'N/A', calculateDuration(t.startedAt, t.completedAt), history);
+        row.push(officerName, t.status, formattedDeadline, endRef ? new Date(endRef).toLocaleString() : 'N/A', takenStr, history);
       } else if (role === 'OFFICER') {
-        row.push(engineerName, technicianName, t.status, formattedDeadline, t.completedAt ? new Date(t.completedAt).toLocaleString() : 'N/A', calculateDuration(t.startedAt, t.completedAt), history);
+        row.push(engineerName, technicianName, t.status, formattedDeadline, endRef ? new Date(endRef).toLocaleString() : 'N/A', takenStr, history);
       } else {
-        row.push(engineerName, officerName, technicianName, t.status, formattedDeadline, t.completedAt ? new Date(t.completedAt).toLocaleString() : 'N/A', calculateDuration(t.startedAt, t.completedAt), history);
+        row.push(engineerName, officerName, technicianName, t.status, formattedDeadline, endRef ? new Date(endRef).toLocaleString() : 'N/A', takenStr, history);
       }
       return row;
     });
@@ -409,16 +433,26 @@ const ReportingPanel = ({ tasks, staff, user }: { tasks: Task[], staff: User[], 
 
       // Engineer filtering (if a specific engineer is selected)
       if (selectedEngineer !== 'ALL') {
-        const creator = staff.find(s => s.employeeId === t.createdBy);
-        const assigner = staff.find(s => s.employeeId === t.assignedBy);
-        const assignee = staff.find(s => s.id === t.assignedTo || s.name.toLowerCase().trim() === t.assignedTo.toLowerCase().trim());
+        const creator = staff.find(s => s.employeeId === t.createdBy || s.id === t.createdBy);
+        const assigner = staff.find(s => s.employeeId === t.assignedBy || s.id === t.assignedBy);
+        const assignee = staff.find(s => s.id === t.assignedTo || s.employeeId === t.assignedTo || (s.name && t.assignedTo && s.name.toLowerCase().trim() === t.assignedTo.toLowerCase().trim()));
 
-        const creatorEngId = getResponsibleEngineerId(creator);
-        const assignerEngId = getResponsibleEngineerId(assigner);
-        const assigneeEngId = getResponsibleEngineerId(assignee);
+        let taskEngId: string | null = null;
+        if (creator?.role === 'ENGINEER') taskEngId = creator.employeeId;
+        else if (assigner?.role === 'ENGINEER') taskEngId = assigner.employeeId;
+        else if (assignee?.role === 'ENGINEER') taskEngId = assignee.employeeId;
+        else if (t.approvedBy) {
+          const appEng = staff.find(s => (s.employeeId === t.approvedBy || s.id === t.approvedBy) && s.role === 'ENGINEER');
+          if (appEng) taskEngId = appEng.employeeId;
+        } else if (t.recommendedBy) {
+          const recEng = staff.find(s => (s.employeeId === t.recommendedBy || s.id === t.recommendedBy) && s.role === 'ENGINEER');
+          if (recEng) taskEngId = recEng.employeeId;
+        } else if (t.concernEngineerId) {
+          const concEng = staff.find(s => (s.employeeId === t.concernEngineerId || s.id === t.concernEngineerId) && s.role === 'ENGINEER');
+          if (concEng) taskEngId = concEng.employeeId;
+        }
 
-        const isInvolved = [creatorEngId, assignerEngId, assigneeEngId].includes(selectedEngineer);
-        return isInvolved;
+        return taskEngId === selectedEngineer;
       }
 
       return true;
@@ -427,7 +461,7 @@ const ReportingPanel = ({ tasks, staff, user }: { tasks: Task[], staff: User[], 
 
   const scopedEngineers = staff.filter(s => {
     if (s.role !== 'ENGINEER') return false;
-    if (user?.role === 'SUPER_ADMIN' || user?.role === 'HOD') return true;
+    if (user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD') return true;
     if (user?.role === 'ENGINEER' && s.employeeId === user.employeeId) return true;
     if (user?.assignedEngineers && user.assignedEngineers.length > 0) {
       return user.assignedEngineers.includes(s.employeeId);
@@ -1256,7 +1290,7 @@ export default function App() {
   };
 
   // Helper for safe JSON fetching
-  const fetchJson = async (url: string, options: RequestInit = {}, retries = 2) => {
+  const fetchJson = async (url: string, options: RequestInit = {}, retries = 6) => {
     let lastErr: any = null;
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
@@ -1287,13 +1321,26 @@ export default function App() {
         
         if (!contentType || !contentType.includes('application/json')) {
           const text = await res.text();
-          // If server is warming up or reverse proxy returning temporary 502/503/504
-          if (attempt < retries && (res.status === 502 || res.status === 503 || res.status === 504)) {
-            await new Promise(r => setTimeout(r, 600 * (attempt + 1)));
+          const isWarmingUp =
+            res.status === 502 ||
+            res.status === 503 ||
+            res.status === 504 ||
+            text.includes('Starting Server') ||
+            text.includes('<!doctype html>') ||
+            text.includes('<!DOCTYPE html>') ||
+            text.includes('<html');
+
+          // If server is warming up or reverse proxy returning temporary interstitial HTML / 502/503/504
+          if (attempt < retries && isWarmingUp) {
+            await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
             continue;
           }
-          console.error(`Non-JSON response from ${url} (Status ${res.status}):`, text.slice(0, 500));
-          throw new Error(`Server returned an unexpected response format (HTML instead of JSON). Status: ${res.status}`);
+          console.warn(`Non-JSON response from ${url} (Status ${res.status}):`, text.slice(0, 200));
+          throw new Error(
+            text.includes('Starting Server')
+              ? 'Server is starting up. Please try again in a few seconds.'
+              : `Server is temporarily busy (Status: ${res.status}). Please try again.`
+          );
         }
 
         const data = await res.json();
@@ -1304,14 +1351,18 @@ export default function App() {
       } catch (err: any) {
         lastErr = err;
         const errMsg = err?.message || String(err);
-        const isNetworkErr = err instanceof TypeError || errMsg.toLowerCase().includes('failed to fetch') || errMsg.toLowerCase().includes('networkerror');
+        const isNetworkErr =
+          err instanceof TypeError ||
+          errMsg.toLowerCase().includes('failed to fetch') ||
+          errMsg.toLowerCase().includes('networkerror') ||
+          errMsg.toLowerCase().includes('load failed');
         const isSafeToRetry = !options.method || options.method === 'GET';
         if (attempt < retries && (isNetworkErr || isSafeToRetry)) {
-          await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+          await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
           continue;
         }
         if (!url.includes('/api/auth/login')) {
-          console.error(`Fetch error for ${url}:`, err);
+          console.warn(`Fetch warning for ${url}:`, err);
         }
         throw err;
       }
@@ -1353,7 +1404,7 @@ export default function App() {
     const currentUserData = staffList.find(u => u.id === user.id) || user;
     const myEmpId = currentUserData.employeeId;
     
-    if (currentUserData.role === 'SUPER_ADMIN' || currentUserData.role === 'HOD') return true;
+    if (currentUserData.role === 'SUPER_ADMIN' || currentUserData.role === 'CBO' || currentUserData.role === 'DCBO' || currentUserData.role === 'HOD' || currentUserData.role === 'DHOD') return true;
     
     if (currentUserData.role === 'IN_CHARGE' || currentUserData.role === 'MODEL_MANAGER') {
       const myAssignedEngs = currentUserData.assignedEngineers || [];
@@ -1703,6 +1754,49 @@ export default function App() {
       };
     }
 
+    if (staff.role === 'ENGINEER') {
+      const myEmpId = staff.employeeId;
+      const myId = staff.id;
+      const myName = (staff.name || '').toLowerCase().trim();
+
+      const myEngTasks = tasks.filter(t => {
+        const isCreatedByMe = t.createdBy === myEmpId || t.createdBy === myId;
+        const isAssignedByMe = t.assignedBy === myEmpId || t.assignedBy === myId;
+        const isAssignedToMe = (t.assignedTo || '').toLowerCase().trim() === myName || t.assignedTo === myEmpId || t.assignedTo === myId;
+        const isApprovedByMe = t.approvedBy === myEmpId || t.approvedBy === myId || t.recommendedBy === myEmpId || t.concernEngineerId === myEmpId;
+        return isCreatedByMe || isAssignedByMe || isAssignedToMe || isApprovedByMe;
+      });
+
+      const completedEngTasks = myEngTasks.filter(t => t.status === 'COMPLETED');
+      const totalPointsAllTime = completedEngTasks.reduce((sum, t) => sum + (Number(t.points) || 1), 0);
+      const completedThisMonth = completedEngTasks.filter(t => {
+        const d = new Date(t.completedAt || t.createdAt);
+        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      });
+      const totalPointsThisMonth = completedThisMonth.reduce((sum, t) => sum + (Number(t.points) || 1), 0);
+
+      const taskScore = Math.min(60, totalPointsAllTime);
+
+      const myAttendance = attendance.filter(a => a.technicianId === staff.employeeId);
+      const presentDays = myAttendance.filter(a => a.status === 'PRESENT').length;
+      const attendanceScore = myAttendance.length > 0 ? (presentDays / myAttendance.length) * 10 : 10;
+
+      const onTimeTasks = completedEngTasks.filter(t => {
+        if (!t.completedAt || !t.deadline) return true;
+        return new Date(t.completedAt) <= new Date(t.deadline);
+      }).length;
+      const efficiencyScore = completedEngTasks.length > 0 ? (onTimeTasks / completedEngTasks.length) * 30 : 30;
+
+      return {
+        taskScore: Math.round(taskScore * 10) / 10,
+        attendanceScore: Math.round(attendanceScore * 10) / 10,
+        efficiencyScore: Math.round(efficiencyScore * 10) / 10,
+        total: Math.round((taskScore + attendanceScore + efficiencyScore) * 10) / 10,
+        totalPoints: totalPointsThisMonth,
+        totalCompleted: completedThisMonth.length
+      };
+    }
+
     // Default for other roles
     return { taskScore: 0, attendanceScore: 10, efficiencyScore: 30, total: 40 };
   };
@@ -1786,6 +1880,17 @@ export default function App() {
         const isAssignedToMe = assignedTo === myName || t.assignedTo === currentUserData.id || t.assignedTo === currentUserData.employeeId;
         const isCreatedByMe = t.createdBy === myEmpId || t.createdBy === currentUserData.id;
         const isAssignedByMe = t.assignedBy === myEmpId || t.assignedBy === currentUserData.id;
+        const isApprovedByMe = t.approvedBy === myEmpId || t.recommendedBy === myEmpId || t.concernEngineerId === myEmpId;
+
+        if (currentUserData.role === 'ENGINEER') {
+          // If an Engineer is logged in, only include tasks they created, assigned, approved, or pending recommendation from their officers
+          if (isAssignedToMe || isCreatedByMe || isAssignedByMe || isApprovedByMe) return true;
+          const creator = staffList.find(s => s.employeeId === t.createdBy || s.id === t.createdBy);
+          if (t.requestStatus === 'RECOMMENDED' && creator?.role === 'OFFICER' && (creator.assignedEngineers || []).includes(myEmpId)) {
+            return true;
+          }
+          return false;
+        }
         
         const subordinates = staffList.filter(s => s.supervisorId === currentUserData.id || s.supervisorId === currentUserData.employeeId).map(s => (s.name || '').toLowerCase());
         const isAssignedToSubordinate = subordinates.includes(assignedTo);
@@ -1886,14 +1991,18 @@ export default function App() {
       try {
         setUser(JSON.parse(savedUser));
         setIsLoggedIn(true);
-        fetchTasks(token);
         const userObj = JSON.parse(savedUser);
+        if (userObj.role === 'CBO' || userObj.role === 'DCBO') {
+          fetchTasks(token, true);
+        } else {
+          fetchTasks(token);
+        }
         if (userObj.role === 'SUPER_ADMIN') {
           // Auto-process employees on load for Super Admin
           handleProcessEmployees(true);
           fetchBackupSettings();
         }
-        if (['SUPER_ADMIN', 'HOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(userObj.role)) {
+        if (['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(userObj.role)) {
           fetchStaff(token);
           fetchAttendance(token);
         }
@@ -2678,11 +2787,15 @@ export default function App() {
     if (!token || !isLoggedIn) return;
 
     // Initial fetch
-    fetchTasks(token);
+    if (user?.role === 'CBO' || user?.role === 'DCBO') {
+      fetchTasks(token, true);
+    } else {
+      fetchTasks(token);
+    }
     fetchNotifications(token);
     fetchPoints(token);
     fetchPerformance(token);
-    if (['SUPER_ADMIN', 'HOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(user?.role || '')) {
+    if (['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(user?.role || '')) {
       fetchStaff(token);
       fetchAttendance(token);
     }
@@ -2690,11 +2803,15 @@ export default function App() {
     // Set up auto-refresh every 10 seconds
     const interval = setInterval(() => {
       console.log('Auto-refreshing data (Smart Polling)...');
-      fetchTasks(token);
+      if (user?.role === 'CBO' || user?.role === 'DCBO') {
+        fetchTasks(token, true);
+      } else {
+        fetchTasks(token);
+      }
       fetchNotifications(token);
       fetchPoints(token);
       fetchPerformance(token);
-      if (['SUPER_ADMIN', 'HOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(user?.role || '')) {
+      if (['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(user?.role || '')) {
         // Background fetch staff but skip full user state update if modal is open
         fetchStaff(token, isAnyModalOpen);
         fetchAttendance(token);
@@ -2704,11 +2821,15 @@ export default function App() {
     // Refresh on window focus
     const handleFocus = () => {
       console.log('Window focused, refreshing data...');
-      fetchTasks(token);
+      if (user?.role === 'CBO' || user?.role === 'DCBO') {
+        fetchTasks(token, true);
+      } else {
+        fetchTasks(token);
+      }
       fetchNotifications(token);
       fetchPoints(token);
       fetchPerformance(token);
-      if (['SUPER_ADMIN', 'HOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(user?.role || '')) {
+      if (['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(user?.role || '')) {
         fetchStaff(token, isAnyModalOpen);
         fetchAttendance(token);
       }
@@ -2905,13 +3026,17 @@ export default function App() {
         localStorage.setItem('user', JSON.stringify(data.user));
         setUser(data.user);
         setIsLoggedIn(true);
-        fetchTasks(data.token);
+        if (data.user.role === 'CBO' || data.user.role === 'DCBO') {
+          fetchTasks(data.token, true);
+        } else {
+          fetchTasks(data.token);
+        }
         fetchPoints(data.token);
         
         // Lazy Load: Non-critical data
         setTimeout(() => {
           fetchPerformance(data.token);
-          if (['SUPER_ADMIN', 'HOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(data.user.role)) {
+          if (['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(data.user.role)) {
             fetchStaff(data.token);
             fetchAttendance(data.token);
           }
@@ -3244,6 +3369,11 @@ export default function App() {
     setIsLoading(true);
     try {
       const token = localStorage.getItem('token');
+      const normalizedCompletionTime = statusUpdateData.actualCompletionTime
+        ? (!isNaN(new Date(statusUpdateData.actualCompletionTime).getTime())
+            ? new Date(statusUpdateData.actualCompletionTime).toISOString()
+            : statusUpdateData.actualCompletionTime)
+        : '';
       const data = await fetchJson(`/api/tasks/${statusUpdateTask.id}`, {
         method: 'PUT',
         headers: {
@@ -3254,7 +3384,7 @@ export default function App() {
           status: statusUpdateData.status,
           progress: statusUpdateData.progress,
           remarks: statusUpdateData.remarks,
-          actualCompletionTime: statusUpdateData.actualCompletionTime,
+          actualCompletionTime: normalizedCompletionTime,
           logs: [
             ...(statusUpdateTask.logs || []),
             {
@@ -3287,6 +3417,11 @@ export default function App() {
     if (!dateStr) return '';
     if (type === 'date') return dateStr.split('T')[0];
     if (type === 'datetime-local') {
+      const d = new Date(dateStr);
+      if (!isNaN(d.getTime())) {
+        const pad = (n: number) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      }
       if (dateStr.includes('T')) return dateStr.slice(0, 16);
       return `${dateStr}T00:00`;
     }
@@ -3320,7 +3455,7 @@ export default function App() {
       return;
     }
 
-    if (['HOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(user?.role || '') && !editingTask) {
+    if (['HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(user?.role || '') && !editingTask) {
       // Strict Assignment Rule Validation for all hierarchical roles
       const assignedStaff = staffList.find(s => s.id === newTask.assignedTo || s.name === newTask.assignedTo || s.employeeId === newTask.assignedTo);
       if (assignedStaff) {
@@ -3347,7 +3482,7 @@ export default function App() {
             toast.error("Access Denied: Engineers can only assign tasks to Officers who are mapped to them.");
             return;
           }
-        } else if (['HOD', 'IN_CHARGE', 'MODEL_MANAGER'].includes(currentUserData?.role || '')) {
+        } else if (['HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER'].includes(currentUserData?.role || '')) {
           // Hierarchical roles check
           if (assignedStaff.role === 'OFFICER') {
             if (!(assignedStaff.assignedEngineers || []).includes(myEmpId || '')) {
@@ -3387,8 +3522,15 @@ export default function App() {
       const isAuthorizedOfficer = user?.role === 'OFFICER' && user?.employeeId === '42949';
       const isEngineer = user?.role === 'ENGINEER';
 
+      const normalizedCustomStartTime = newTask.customStartTime
+        ? (!isNaN(new Date(newTask.customStartTime).getTime())
+            ? new Date(newTask.customStartTime).toISOString()
+            : newTask.customStartTime)
+        : '';
+
       const payload = editingTask ? {
         ...newTask,
+        customStartTime: normalizedCustomStartTime,
         workType: finalWorkType,
         assignedBy: user?.employeeId,
         assignedTechnicians: finalWorkType === 'TEAM' ? selectedTechs : undefined,
@@ -3396,6 +3538,7 @@ export default function App() {
         requestStatus: editingTask.requestStatus
       } : {
         ...newTask,
+        customStartTime: normalizedCustomStartTime,
         workType: finalWorkType,
         assignedTo: finalAssignedTo,
         createdBy: user?.employeeId,
@@ -3441,7 +3584,7 @@ export default function App() {
       }
       
       const cleanTargetId = String(taskId).trim();
-      const endpoint = (user?.role === 'SUPER_ADMIN' || user?.role === 'HOD')
+      const endpoint = (user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD')
         ? `/api/admin/tasks/${encodeURIComponent(cleanTargetId)}` 
         : `/api/tasks/${encodeURIComponent(cleanTargetId)}`;
       
@@ -3467,8 +3610,8 @@ export default function App() {
       await fetchStaff(token);
       await fetchPoints(token);
       
-      // Also refresh points and staff if admin
-      if (user?.role === 'SUPER_ADMIN' || user?.role === 'HOD') {
+      // Also refresh points and staff if admin / executive
+      if (user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD') {
         const updatedPoints = await fetchJson('/api/points', { headers: { 'Authorization': `Bearer ${token}` } });
         if (updatedPoints) setPointTransactions(updatedPoints);
         const updatedUsers = await fetchJson('/api/users', { headers: { 'Authorization': `Bearer ${token}` } });
@@ -3551,9 +3694,11 @@ export default function App() {
     if (!start || !end) return 'N/A';
     const s = new Date(start);
     const e = new Date(end);
-    const diff = e.getTime() - s.getTime();
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    if (isNaN(s.getTime()) || isNaN(e.getTime())) return 'N/A';
+    const diff = Math.max(0, e.getTime() - s.getTime());
+    const totalMins = Math.floor(diff / (1000 * 60));
+    const hours = Math.floor(totalMins / 60);
+    const minutes = totalMins % 60;
     return `${hours}h ${minutes}m`;
   };
 
@@ -3663,7 +3808,7 @@ export default function App() {
     }
   };
 
-  const roles: Role[] = ['SUPER_ADMIN', 'HOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER', 'TECHNICIAN'];
+  const roles: Role[] = ['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER', 'TECHNICIAN'];
 
   if (!isLoggedIn) {
     const titleText = "Daily Work Update";
@@ -4080,7 +4225,7 @@ export default function App() {
                 No Number
               </div>
             )}
-            {['OFFICER', 'SUPER_ADMIN', 'HOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER'].includes(user?.role || '') && statusInfo.status === 'Free' && isAvailable && (
+            {['OFFICER', 'SUPER_ADMIN', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER'].includes(user?.role || '') && statusInfo.status === 'Free' && isAvailable && (
               <button 
                 onClick={() => {
                   setNewTask({ ...newTask, assignedTo: tech.id, workType: 'SINGLE', assignedTechnicians: [] });
@@ -4736,21 +4881,29 @@ export default function App() {
                       onChange={(e) => setNewStaff({...newStaff, role: e.target.value as Role, supervisorId: ''})}
                       className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                     >
-                      {roles.map(r => <option key={r} value={r} className="bg-[#0f0f12]">{r.replace('_', ' ')}</option>)}
+                      {roles.map(r => (
+                        <option key={r} value={r} className="bg-[#0f0f12]">
+                          {r === 'CBO' ? 'Chief Business Officer (CBO)' :
+                           r === 'DCBO' ? 'Deputy Chief Business Officer (DCBO)' :
+                           r === 'HOD' ? 'Head of Department (HOD)' :
+                           r === 'DHOD' ? 'Deputy Head of Department (DHOD)' :
+                           r.replace(/_/g, ' ')}
+                        </option>
+                      ))}
                     </select>
                   </div>
                   
-                  {['ENGINEER', 'OFFICER', 'TECHNICIAN'].includes(newStaff.role) && (
+                  {['CBO', 'DCBO', 'HOD', 'DHOD', 'ENGINEER', 'OFFICER', 'TECHNICIAN'].includes(newStaff.role) && (
                     <div>
                       <label className="block text-sm font-medium text-gray-400 mb-2">
                         {newStaff.role === 'TECHNICIAN' && shiftingTechnicianIds.includes(newStaff.employeeId) 
                           ? 'Supervisors (Multi-select for Shifting Technician)' 
-                          : `Supervisor (Display Only for ${newStaff.role === 'ENGINEER' ? 'In-Charge' : newStaff.role === 'OFFICER' ? 'HOD/In-Charge/Model Manager/Engineer' : 'Officer'})`}
+                          : `Supervisor (${newStaff.role === 'CBO' ? 'Super Admin' : newStaff.role === 'DCBO' ? 'CBO / Super Admin' : newStaff.role === 'HOD' ? 'DCBO / CBO' : newStaff.role === 'DHOD' ? 'HOD / DCBO' : newStaff.role === 'ENGINEER' ? 'In-Charge' : newStaff.role === 'OFFICER' ? 'HOD/DHOD/In-Charge/Model Manager/Engineer' : 'Officer'})`}
                       </label>
                       
                       {newStaff.role === 'TECHNICIAN' && shiftingTechnicianIds.includes(newStaff.employeeId) ? (
                         <div className="max-h-40 overflow-y-auto bg-white/5 border border-white/10 rounded-xl p-4 space-y-2">
-                          {staffList.filter(s => s.role === 'OFFICER' || s.role === 'ENGINEER' || s.role === 'IN_CHARGE' || s.role === 'HOD' || s.role === 'MODEL_MANAGER').map(sup => (
+                          {staffList.filter(s => s.role === 'OFFICER' || s.role === 'ENGINEER' || s.role === 'IN_CHARGE' || s.role === 'HOD' || s.role === 'DHOD' || s.role === 'MODEL_MANAGER').map(sup => (
                             <label key={sup.id} className="flex items-center gap-3 cursor-pointer hover:bg-white/5 p-2 rounded-lg transition-all">
                               <input 
                                 type="checkbox"
@@ -4778,12 +4931,16 @@ export default function App() {
                         >
                           <option value="" className="bg-[#0f0f12]">Select Supervisor</option>
                           {staffList.filter(s => {
-                            if (newStaff.role === 'ENGINEER') return s.role === 'IN_CHARGE' || s.role === 'HOD' || s.role === 'MODEL_MANAGER' || s.role === 'SUPER_ADMIN';
-                            if (newStaff.role === 'OFFICER') return ['ENGINEER', 'HOD', 'IN_CHARGE', 'MODEL_MANAGER', 'SUPER_ADMIN'].includes(s.role);
-                            if (newStaff.role === 'TECHNICIAN') return s.role === 'OFFICER' || s.role === 'ENGINEER' || s.role === 'IN_CHARGE' || s.role === 'HOD' || s.role === 'MODEL_MANAGER';
+                            if (newStaff.role === 'CBO') return s.role === 'SUPER_ADMIN';
+                            if (newStaff.role === 'DCBO') return s.role === 'CBO' || s.role === 'SUPER_ADMIN';
+                            if (newStaff.role === 'HOD') return s.role === 'DCBO' || s.role === 'CBO' || s.role === 'SUPER_ADMIN';
+                            if (newStaff.role === 'DHOD') return s.role === 'HOD' || s.role === 'DCBO' || s.role === 'CBO' || s.role === 'SUPER_ADMIN';
+                            if (newStaff.role === 'ENGINEER') return s.role === 'IN_CHARGE' || s.role === 'HOD' || s.role === 'DHOD' || s.role === 'MODEL_MANAGER' || s.role === 'SUPER_ADMIN';
+                            if (newStaff.role === 'OFFICER') return ['ENGINEER', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'SUPER_ADMIN', 'CBO', 'DCBO'].includes(s.role);
+                            if (newStaff.role === 'TECHNICIAN') return s.role === 'OFFICER' || s.role === 'ENGINEER' || s.role === 'IN_CHARGE' || s.role === 'HOD' || s.role === 'DHOD' || s.role === 'MODEL_MANAGER';
                             return false;
                           }).map(s => (
-                            <option key={s.id} value={s.id} className="bg-[#0f0f12]">{s.name} ({s.employeeId})</option>
+                            <option key={s.id} value={s.id} className="bg-[#0f0f12]">{s.name} ({s.employeeId}) - {s.role.replace(/_/g, ' ')}</option>
                           ))}
                         </select>
                       )}
@@ -4794,17 +4951,17 @@ export default function App() {
                     </div>
                   )}
 
-                  {['OFFICER', 'HOD', 'IN_CHARGE', 'MODEL_MANAGER'].includes(newStaff.role) && (
+                  {['OFFICER', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER'].includes(newStaff.role) && (
                     <div>
                       <label className="block text-sm font-medium text-gray-400 mb-2">
                         {newStaff.role === 'OFFICER' ? 'Assign Engineers (Multi-select)' : 'Assign Authorities (Multi-select)'}
                       </label>
                       <div className="max-h-40 overflow-y-auto bg-white/5 border border-white/10 rounded-xl p-4 space-y-2">
                         {staffList.filter(s => {
-                          if (newStaff.role === 'OFFICER') return ['ENGINEER', 'HOD', 'IN_CHARGE', 'MODEL_MANAGER', 'SUPER_ADMIN'].includes(s.role);
-                          if (newStaff.role === 'IN_CHARGE' || newStaff.role === 'MODEL_MANAGER') return s.role === 'ENGINEER' || s.role === 'HOD' || s.role === 'IN_CHARGE' || s.role === 'MODEL_MANAGER';
-                          // For HOD/Super Admin, they can assign any authority
-                          return ['ENGINEER', 'HOD', 'IN_CHARGE', 'MODEL_MANAGER', 'SUPER_ADMIN'].includes(s.role);
+                          if (newStaff.role === 'OFFICER') return ['ENGINEER', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'SUPER_ADMIN'].includes(s.role);
+                          if (newStaff.role === 'IN_CHARGE' || newStaff.role === 'MODEL_MANAGER') return s.role === 'ENGINEER' || s.role === 'HOD' || s.role === 'DHOD' || s.role === 'IN_CHARGE' || s.role === 'MODEL_MANAGER';
+                          // For HOD/DHOD/Super Admin, they can assign any authority
+                          return ['ENGINEER', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'SUPER_ADMIN'].includes(s.role);
                         }).map(eng => (
                           <label key={eng.id} className="flex items-center gap-3 cursor-pointer hover:bg-white/5 p-2 rounded-lg transition-all">
                             <input 
@@ -4824,9 +4981,9 @@ export default function App() {
                           </label>
                         ))}
                         {staffList.filter(s => {
-                          if (newStaff.role === 'OFFICER') return ['ENGINEER', 'HOD', 'IN_CHARGE', 'MODEL_MANAGER', 'SUPER_ADMIN'].includes(s.role);
-                          if (newStaff.role === 'IN_CHARGE' || newStaff.role === 'MODEL_MANAGER') return s.role === 'ENGINEER' || s.role === 'HOD' || s.role === 'IN_CHARGE' || s.role === 'MODEL_MANAGER';
-                          return ['ENGINEER', 'HOD', 'IN_CHARGE', 'MODEL_MANAGER', 'SUPER_ADMIN'].includes(s.role);
+                          if (newStaff.role === 'OFFICER') return ['ENGINEER', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'SUPER_ADMIN'].includes(s.role);
+                          if (newStaff.role === 'IN_CHARGE' || newStaff.role === 'MODEL_MANAGER') return s.role === 'ENGINEER' || s.role === 'HOD' || s.role === 'DHOD' || s.role === 'IN_CHARGE' || s.role === 'MODEL_MANAGER';
+                          return ['ENGINEER', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'SUPER_ADMIN'].includes(s.role);
                         }).length === 0 && (
                           <p className="text-xs text-gray-500 italic">No Authorities available</p>
                         )}
@@ -4946,7 +5103,7 @@ export default function App() {
                               if (myEmpId === '41053') return ['24K', '30K', '36K'].includes(m);
                               return false;
                             }
-                            if (m === 'General Work') return user?.role === 'HOD' || user?.role === 'SUPER_ADMIN';
+                            if (m === 'General Work') return user?.role === 'HOD' || user?.role === 'DHOD' || user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO';
                             return true;
                           }).map(m => (
                             <button
@@ -4985,7 +5142,7 @@ export default function App() {
                     >
                       {urgencies.filter(u => {
                         if (u === 'MOST_URGENT') {
-                          return user?.role === 'ENGINEER' || user?.role === 'SUPER_ADMIN' || user?.role === 'HOD' || user?.role === 'IN_CHARGE' || user?.employeeId === '42949';
+                          return user?.role === 'ENGINEER' || user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD' || user?.role === 'IN_CHARGE' || user?.employeeId === '42949';
                         }
                         return true;
                       }).map(u => <option key={u} value={u} className="bg-[#0f0f12]">{u}</option>)}
@@ -5148,10 +5305,18 @@ export default function App() {
 
                               const filteredStaff = staffList.filter(s => {
                                 if (currentUserData?.role === 'SUPER_ADMIN') return true;
-                                if (['HOD', 'IN_CHARGE', 'MODEL_MANAGER'].includes(currentUserData?.role || '')) {
+                                if (currentUserData?.role === 'CBO') {
+                                  // CBO can assign to DCBO, HOD, DHOD, and all lower roles
+                                  return s.role === 'DCBO' || s.role === 'HOD' || s.role === 'DHOD' || s.role === 'IN_CHARGE' || s.role === 'MODEL_MANAGER' || s.role === 'ENGINEER' || s.role === 'OFFICER';
+                                }
+                                if (currentUserData?.role === 'DCBO') {
+                                  // DCBO can assign to HOD, DHOD, and all lower roles
+                                  return s.role === 'HOD' || s.role === 'DHOD' || s.role === 'IN_CHARGE' || s.role === 'MODEL_MANAGER' || s.role === 'ENGINEER' || s.role === 'OFFICER';
+                                }
+                                if (['HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER'].includes(currentUserData?.role || '')) {
                                   const isMyOfficer = s.role === 'OFFICER' && (s.assignedEngineers || []).some(id => id.toString().trim() === myEmpId);
                                   const isMyEngineer = s.role === 'ENGINEER' && myAssignedEngs.includes(s.employeeId);
-                                  return isMyOfficer || isMyEngineer;
+                                  return isMyOfficer || isMyEngineer || s.role === 'HOD' || s.role === 'DHOD' || s.role === 'IN_CHARGE' || s.role === 'MODEL_MANAGER';
                                 }
                                 if (currentUserData?.role === 'ENGINEER') {
                                   return s.role === 'OFFICER' && (s.assignedEngineers || []).some(id => id.toString().trim() === myEmpId);
@@ -5305,7 +5470,10 @@ export default function App() {
                         setStatusUpdateData({ 
                           ...statusUpdateData, 
                           progress: p, 
-                          status: p === 100 ? 'COMPLETED' : 'RUNNING' 
+                          status: p === 100 ? 'COMPLETED' : 'RUNNING',
+                          actualCompletionTime: p === 100 && !statusUpdateData.actualCompletionTime
+                            ? formatDateForInput(new Date().toISOString(), 'datetime-local')
+                            : statusUpdateData.actualCompletionTime
                         });
                       }}
                       className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-500"
@@ -5534,10 +5702,20 @@ export default function App() {
 
         <nav className="flex-1 px-4 space-y-2 overflow-y-auto custom-scrollbar">
           {/* 1. Attendance */}
-          {['SUPER_ADMIN', 'HOD', 'IN_CHARGE', 'MODEL_MANAGER', 'OFFICER', 'ENGINEER', 'TECHNICIAN'].includes(user?.role || '') && (
+          {['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'OFFICER', 'ENGINEER', 'TECHNICIAN'].includes(user?.role || '') && (
             <SidebarItem 
               icon={CheckCircle2} 
-              label="Attendance" 
+              label={
+                user?.role === 'CBO' ? "Associate Attendance (DCBO & HOD)" :
+                user?.role === 'DCBO' ? "Associate Attendance (HOD)" :
+                user?.role === 'HOD' || user?.role === 'DHOD' ? "In-Charge Attendance" :
+                user?.role === 'IN_CHARGE' ? "Model & Eng Attendance" :
+                user?.role === 'MODEL_MANAGER' ? "Eng & Officer Attendance" :
+                user?.role === 'ENGINEER' ? "Officer Attendance" :
+                user?.role === 'OFFICER' ? "Technician Attendance" :
+                user?.role === 'TECHNICIAN' ? "My Attendance" :
+                "Attendance"
+              } 
               active={activeTab === 'attendance'} 
               onClick={() => setActiveTab('attendance')} 
               color="text-green-500"
@@ -5547,7 +5725,7 @@ export default function App() {
           {/* 2. Dashboard */}
           <SidebarItem 
             icon={LayoutDashboard} 
-            label="Dashboard" 
+            label={user?.role === 'CBO' || user?.role === 'DCBO' ? "Executive Command" : "Dashboard"} 
             active={activeTab === 'dashboard'} 
             onClick={() => setActiveTab('dashboard')} 
             color="text-blue-500"
@@ -5603,7 +5781,7 @@ export default function App() {
           />
 
           {/* 8. Technician Monitoring */}
-          {['SUPER_ADMIN', 'HOD', 'IN_CHARGE', 'MODEL_MANAGER', 'OFFICER', 'ENGINEER'].includes(user?.role || '') && (
+          {!['CBO', 'DCBO'].includes(user?.role || '') && ['SUPER_ADMIN', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'OFFICER', 'ENGINEER'].includes(user?.role || '') && (
             <SidebarItem 
               icon={Activity} 
               label="Technician Monitoring" 
@@ -5614,7 +5792,7 @@ export default function App() {
           )}
 
           {/* 9. Team Requests (Supervisor Approval) */}
-          {['SUPER_ADMIN', 'HOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(user?.role || '') && (
+          {['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(user?.role || '') && (
             <SidebarItem 
               icon={Bell} 
               label="Team Requests" 
@@ -5626,11 +5804,11 @@ export default function App() {
           )}
 
           {/* 10. Section/Model/Dept Overview */}
-          {['SUPER_ADMIN', 'HOD', 'IN_CHARGE', 'MODEL_MANAGER'].includes(user?.role || '') && (
+          {['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER'].includes(user?.role || '') && (
             <SidebarItem 
               icon={Layers} 
               label={
-                user?.role === 'HOD' || user?.role === 'SUPER_ADMIN' ? "Department Overview" :
+                user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD' || user?.role === 'SUPER_ADMIN' ? "Department Overview" :
                 user?.role === 'IN_CHARGE' ? "Section Overview" : "Model Wise Work"
               } 
               active={activeTab === 'section' || activeTab === 'models'} 
@@ -5643,7 +5821,7 @@ export default function App() {
           )}
 
           {/* 11. Staff Management */}
-          {(user?.role === 'SUPER_ADMIN' || user?.role === 'HOD') && (
+          {(user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD') && (
             <SidebarItem 
               icon={Users} 
               label="Staff Management" 
@@ -5681,7 +5859,7 @@ export default function App() {
           />
 
           {/* 15. Backup & Restore */}
-          {['SUPER_ADMIN', 'HOD', 'IN_CHARGE', 'MODEL_MANAGER', 'OFFICER', 'ENGINEER'].includes(user?.role || '') && (
+          {['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'OFFICER', 'ENGINEER'].includes(user?.role || '') && (
             <SidebarItem 
               icon={Database} 
               label="Backup & Restore" 
@@ -5711,7 +5889,9 @@ export default function App() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold truncate">{user?.name}</p>
-              <p className="text-[10px] text-gray-500 uppercase tracking-wider">{user?.role.replace('_', ' ')}</p>
+              <p className="text-[10px] text-gray-500 uppercase tracking-wider">
+                {user?.role === 'CBO' ? 'Chief Business Officer' : user?.role === 'DCBO' ? 'Deputy Chief Business Officer' : user?.role.replace('_', ' ')}
+              </p>
             </div>
           </div>
           <button 
@@ -5736,7 +5916,7 @@ export default function App() {
               {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
             <h2 className="text-xl font-bold capitalize">
-              {activeTab === 'dashboard' ? 'Dashboard' :
+              {activeTab === 'dashboard' ? (user?.role === 'CBO' || user?.role === 'DCBO' ? 'Executive Business & Workforce Command Center' : 'Dashboard') :
                activeTab === 'tasks' || activeTab === 'officer_tasks' || activeTab === 'mywork' ? 'Task Management' :
                activeTab === 'attendance' ? 'Attendance' :
                activeTab === 'daily_task' ? 'Daily Task' :
@@ -5745,7 +5925,7 @@ export default function App() {
                activeTab === 'analytics' ? 'Analytics' :
                activeTab === 'technician_monitoring' ? 'Technician Monitoring' :
                activeTab === 'section' || activeTab === 'models' ? (
-                 user?.role === 'HOD' || user?.role === 'SUPER_ADMIN' ? "Department Overview" :
+                 user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD' || user?.role === 'SUPER_ADMIN' ? "Department Overview" :
                  user?.role === 'IN_CHARGE' ? "Section Overview" : "Model Wise Work"
                ) :
                activeTab === 'staff' ? 'Staff Management' :
@@ -5824,6 +6004,69 @@ export default function App() {
 
         <div className="p-8 max-w-7xl mx-auto space-y-8">
           {activeTab === 'dashboard' && (
+            user?.role === 'CBO' ? (
+              <CBODashboard
+                currentUser={user!}
+                staffList={staffList}
+                tasks={tasks}
+                attendance={attendance}
+                onOpenNewTaskModal={(preselectedAssignee) => {
+                  setEditingTask(null);
+                  setNewTask({ 
+                    title: '', 
+                    model: 'General Work', 
+                    details: '', 
+                    urgency: 'REGULAR', 
+                    assignedTo: preselectedAssignee || '', 
+                    deadline: '', 
+                    points: 1, 
+                    customStartTime: '', 
+                    estimatedDuration: '',
+                    workType: 'SINGLE',
+                    assignedTechnicians: []
+                  });
+                  setSelectedTechs([]);
+                  setIsTaskModalOpen(true);
+                }}
+                onRefreshData={handleRecalculate}
+                onUpdateAttendance={handleUpdateAttendance}
+                onSelectTask={(task) => {
+                  setSelectedTask(task);
+                  setIsTaskDetailsModalOpen(true);
+                }}
+              />
+            ) : user?.role === 'DCBO' ? (
+              <ExecutiveCommandCenter
+                currentUser={user!}
+                staffList={staffList}
+                tasks={tasks}
+                attendance={attendance}
+                onOpenNewTaskModal={(preselectedAssignee) => {
+                  setEditingTask(null);
+                  setNewTask({ 
+                    title: '', 
+                    model: 'General Work', 
+                    details: '', 
+                    urgency: 'REGULAR', 
+                    assignedTo: preselectedAssignee || '', 
+                    deadline: '', 
+                    points: 1, 
+                    customStartTime: '', 
+                    estimatedDuration: '',
+                    workType: 'SINGLE',
+                    assignedTechnicians: []
+                  });
+                  setSelectedTechs([]);
+                  setIsTaskModalOpen(true);
+                }}
+                onRefreshData={handleRecalculate}
+                onUpdateAttendance={handleUpdateAttendance}
+                onSelectTask={(task) => {
+                  setSelectedTask(task);
+                  setIsTaskDetailsModalOpen(true);
+                }}
+              />
+            ) : (
             <>
               {/* Welcome Section */}
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -5832,7 +6075,7 @@ export default function App() {
                   <p className="text-gray-400 mt-1">Here's what's happening in your department today.</p>
                 </div>
                 <div className="flex items-center gap-3">
-                  {['SUPER_ADMIN', 'HOD'].includes(user?.role || '') && (
+                  {['SUPER_ADMIN', 'HOD', 'DHOD'].includes(user?.role || '') && (
                     <button 
                       onClick={handleRecalculate}
                       disabled={isLoading}
@@ -5993,6 +6236,7 @@ export default function App() {
                 </GlassCard>
               </div>
             </>
+            )
           )}
 
           {activeTab === 'tasks' && (
@@ -6564,7 +6808,7 @@ export default function App() {
                                     progress: 100,
                                     status: 'COMPLETED',
                                     remarks: task.remarks ? `${task.remarks} - Fixed` : 'Issue resolved / Fixed',
-                                    actualCompletionTime: new Date().toISOString().slice(0, 16)
+                                    actualCompletionTime: formatDateForInput(new Date().toISOString(), 'datetime-local')
                                   });
                                   setIsStatusUpdateModalOpen(true);
                                 }}
@@ -6577,7 +6821,7 @@ export default function App() {
                           </td>
                           <td className="px-4 py-4 text-right whitespace-nowrap">
                             <div className="flex items-center justify-end gap-2">
-                              {['OFFICER', 'ENGINEER', 'IN_CHARGE', 'MODEL_MANAGER'].includes(user?.role || '') && task.status !== 'COMPLETED' && (
+                              {['OFFICER', 'ENGINEER', 'IN_CHARGE', 'MODEL_MANAGER', 'DHOD', 'HOD'].includes(user?.role || '') && task.status !== 'COMPLETED' && (
                                 <button 
                                   onClick={() => {
                                     setStatusUpdateTask(task);
@@ -6589,7 +6833,7 @@ export default function App() {
                                   Update Status
                                 </button>
                               )}
-                              {((['SUPER_ADMIN', 'HOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(user?.role || '')) || task.createdBy === user?.employeeId || task.createdBy === user?.id) && (
+                              {((['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(user?.role || '')) || task.createdBy === user?.employeeId || task.createdBy === user?.id) && (
                                 <>
                                   <button 
                                     onClick={() => {
@@ -6602,7 +6846,7 @@ export default function App() {
                                         assignedTo: task.assignedTo,
                                         deadline: task.deadline,
                                         points: task.points || 10,
-                                        customStartTime: task.customStartTime || '',
+                                        customStartTime: formatDateForInput(task.customStartTime, 'datetime-local'),
                                         estimatedDuration: task.estimatedDuration || '',
                                         workType: task.workType || 'SINGLE',
                                         assignedTechnicians: task.assignedTechnicians || []
@@ -6615,7 +6859,7 @@ export default function App() {
                                   >
                                     <Edit2 size={16} />
                                   </button>
-                                  {(user?.role === 'SUPER_ADMIN' || user?.role === 'HOD' || task.createdBy === user?.employeeId || task.createdBy === user?.id || task.createdBy === user?.name || task.assignedBy === user?.employeeId) && (
+                                  {(user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD' || task.createdBy === user?.employeeId || task.createdBy === user?.id || task.createdBy === user?.name || task.assignedBy === user?.employeeId) && (
                                     <button 
                                       onClick={() => setTaskToDelete(task.id)}
                                       className="p-2 hover:bg-white/10 rounded-lg text-red-400 transition-all"
@@ -7500,7 +7744,7 @@ export default function App() {
               {user?.role !== 'OFFICER' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {staffList.filter(s => {
-                    if (user?.role === 'SUPER_ADMIN' || user?.role === 'HOD') return true;
+                    if (user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD') return true;
                     if (user?.role === 'IN_CHARGE' || user?.role === 'MODEL_MANAGER') {
                       return s.role === 'ENGINEER' && (user.assignedEngineers || []).includes(s.employeeId);
                     }
@@ -7946,79 +8190,12 @@ export default function App() {
           )}
 
           {activeTab === 'attendance' && (
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h1 className="text-3xl font-bold">Technician Attendance</h1>
-                  <p className="text-gray-500 text-sm mt-1">Daily attendance management for technicians</p>
-                </div>
-                <div className="px-4 py-2 bg-blue-500/10 border border-blue-500/20 rounded-xl flex items-center gap-2">
-                  <Calendar size={14} className="text-blue-400" />
-                  <span className="text-xs font-bold text-blue-400">
-                    {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })}
-                  </span>
-                </div>
-              </div>
-              
-              <div className="bg-blue-500/5 border border-blue-500/10 rounded-2xl p-4 flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 bg-blue-500/20 rounded-full flex items-center justify-center text-blue-400">
-                  <Info size={20} />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-blue-400">Daily Reset System Active</p>
-                  <p className="text-[10px] text-gray-500">All technicians are auto-set to "Present" at 00:00 every day. Officers can manually update status below.</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {staffList
-                  .filter(s => s.role === 'TECHNICIAN' && isStaffInScope(s))
-                  .map((tech, i) => {
-                    const techAttendance = attendance.find(a => a.technicianId === tech.employeeId);
-                    return (
-                      <GlassCard key={tech.id} className="flex flex-col">
-                        <div className="flex items-center gap-4 mb-6">
-                          <div className="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center font-bold">
-                            {tech.name[0]}
-                          </div>
-                          <div>
-                            <h3 className="font-bold">{tech.name}</h3>
-                            <p className="text-xs text-gray-500">{tech.employeeId}</p>
-                          </div>
-                        </div>
-                        
-                        <div className="grid grid-cols-2 gap-2">
-                          {[
-                            { label: 'Present', value: 'PRESENT' },
-                            { label: 'Leave', value: 'LEAVE' },
-                            { label: 'Short-Leave', value: 'SHORT_LEAVE' },
-                            { label: 'Shift A (6AM-2PM)', value: 'SHIFT_A' },
-                            { label: 'Shift B (2PM-10PM)', value: 'SHIFT_B' }
-                          ].map(opt => (
-                            <button 
-                              key={opt.value}
-                              onClick={() => handleUpdateAttendance(tech.employeeId, opt.value)}
-                              className={cn(
-                                "py-2 rounded-lg text-[10px] font-bold transition-all",
-                                techAttendance?.status === opt.value 
-                                  ? "bg-blue-600 text-white" 
-                                  : "bg-white/5 text-gray-500 hover:bg-white/10"
-                              )}
-                            >
-                              {opt.label}
-                            </button>
-                          ))}
-                        </div>
-                      </GlassCard>
-                    );
-                  })}
-                {staffList.filter(s => s.role === 'TECHNICIAN' && (user?.role === 'SUPER_ADMIN' || user?.role === 'HOD' || s.supervisorId === user?.id)).length === 0 && (
-                  <div className="col-span-full py-20 text-center bg-white/5 rounded-3xl border border-dashed border-white/10">
-                    <p className="text-gray-500">No technicians found in the system.</p>
-                  </div>
-                )}
-              </div>
-            </div>
+            <AssociateAttendanceManagement
+              currentUser={user}
+              staffList={staffList}
+              attendance={attendance}
+              onUpdateAttendance={handleUpdateAttendance}
+            />
           )}
 
           {activeTab === 'performance' && (
@@ -8052,7 +8229,7 @@ export default function App() {
                     <div className="space-y-4">
                       {staffList
                         .filter(s => {
-                          if (user?.role === 'SUPER_ADMIN' || user?.role === 'HOD' || user?.role === 'IN_CHARGE' || user?.role === 'MODEL_MANAGER') {
+                          if (user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD' || user?.role === 'IN_CHARGE' || user?.role === 'MODEL_MANAGER') {
                             return s.role === 'TECHNICIAN' || s.role === 'OFFICER' || s.role === 'ENGINEER';
                           }
                           if (user?.role === 'OFFICER') {
@@ -8101,7 +8278,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  {['SUPER_ADMIN', 'HOD', 'IN_CHARGE', 'MODEL_MANAGER'].includes(user?.role || '') && (
+                  {['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER'].includes(user?.role || '') && (
                     <div className="space-y-6">
                       <h2 className="text-xl font-bold flex items-center gap-2">
                         <Award className="text-purple-400" /> Officer Point Rankings
@@ -8401,7 +8578,7 @@ export default function App() {
                 {(() => {
                   const myEngineers = staffList.filter(s => {
                     if (s.role !== 'ENGINEER') return false;
-                    if (user.role === 'SUPER_ADMIN' || user.role === 'HOD') return true;
+                    if (user.role === 'SUPER_ADMIN' || user.role === 'CBO' || user.role === 'DCBO' || user.role === 'HOD' || user.role === 'DHOD') return true;
                     return user.assignedEngineers?.includes(s.employeeId);
                   });
                   
@@ -8443,8 +8620,8 @@ export default function App() {
                 {staffList.filter(s => {
                   if (s.role !== 'ENGINEER') return false;
                   
-                  // Super Admin and HOD see everyone
-                  if (user.role === 'SUPER_ADMIN' || user.role === 'HOD') return true;
+                  // Super Admin, CBO, DCBO, HOD, and DHOD see everyone
+                  if (user.role === 'SUPER_ADMIN' || user.role === 'CBO' || user.role === 'DCBO' || user.role === 'HOD' || user.role === 'DHOD') return true;
                   
                   // In-Charge ONLY sees assigned engineers
                   if (user.role === 'IN_CHARGE') {
@@ -8454,32 +8631,12 @@ export default function App() {
                   return false;
                 }).map((engineer) => {
                   const engineerTasks = tasks.filter(t => {
-                    const creator = staffList.find(s => s.employeeId === t.createdBy);
-                    const assignee = staffList.find(s => s.name.toLowerCase().trim() === t.assignedTo.toLowerCase().trim());
-                    
-                    const isCreatedByEngineer = t.createdBy === engineer.employeeId;
-                    const isAssignedByEngineer = t.assignedBy === engineer.employeeId;
-                    const isAssignedToEngineer = t.assignedTo.toLowerCase().trim() === engineer.name.toLowerCase().trim();
-                    
-                    // Check if creator is subordinate of this engineer
-                    const isCreatorSubordinate = creator && (
-                      (creator.role === 'OFFICER' && creator.supervisorId === engineer.id) ||
-                      (creator.role === 'TECHNICIAN' && (
-                        staffList.find(s => s.id === creator.supervisorId && s.role === 'OFFICER' && s.supervisorId === engineer.id) ||
-                        creator.supervisorId === engineer.id
-                      ))
-                    );
+                    const isCreatedByEngineer = t.createdBy === engineer.employeeId || t.createdBy === engineer.id;
+                    const isAssignedByEngineer = t.assignedBy === engineer.employeeId || t.assignedBy === engineer.id;
+                    const isAssignedToEngineer = (t.assignedTo || '').toLowerCase().trim() === engineer.name.toLowerCase().trim() || t.assignedTo === engineer.employeeId || t.assignedTo === engineer.id;
+                    const isApprovedByEngineer = t.approvedBy === engineer.employeeId || t.recommendedBy === engineer.employeeId || t.concernEngineerId === engineer.employeeId;
 
-                    // Check if assignee is subordinate of this engineer
-                    const isAssigneeSubordinate = assignee && (
-                      (assignee.role === 'OFFICER' && assignee.supervisorId === engineer.id) ||
-                      (assignee.role === 'TECHNICIAN' && (
-                        staffList.find(s => s.id === assignee.supervisorId && s.role === 'OFFICER' && s.supervisorId === engineer.id) ||
-                        assignee.supervisorId === engineer.id
-                      ))
-                    );
-
-                    return isCreatedByEngineer || isAssignedByEngineer || isAssignedToEngineer || isCreatorSubordinate || isAssigneeSubordinate;
+                    return isCreatedByEngineer || isAssignedByEngineer || isAssignedToEngineer || isApprovedByEngineer;
                   });
 
                   return (
@@ -8677,8 +8834,8 @@ export default function App() {
                 )}
               </div>
 
-              {/* General Work Section (HOD Only) */}
-              {(user?.role === 'HOD' || user?.role === 'SUPER_ADMIN') && (
+              {/* General Work Section (HOD, DHOD & Executive Only) */}
+              {(user?.role === 'HOD' || user?.role === 'DHOD' || user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO') && (
                 <div className="mt-12">
                   <h2 className="text-xl font-bold mb-6 text-blue-400 flex items-center gap-2">
                     <Wrench size={24} />
@@ -9128,7 +9285,7 @@ export default function App() {
                   <GlassCard className="p-6 flex flex-col items-center justify-center text-center">
                     <p className="text-xs text-gray-500 uppercase tracking-widest mb-2">Active Staff</p>
                     <p className="text-5xl font-black text-purple-500">
-                      {user?.role === 'SUPER_ADMIN' || user?.role === 'HOD' 
+                      {user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD'
                         ? staffList.length 
                         : staffList.filter(s => s.supervisorId === user?.id || s.id === user?.id).length}
                     </p>
@@ -9405,15 +9562,25 @@ export default function App() {
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <p className="text-xs text-gray-400 uppercase tracking-widest">Started At</p>
-                          <p className="text-white text-sm">{selectedTask.startedAt ? new Date(selectedTask.startedAt).toLocaleString() : 'Not Started'}</p>
+                          <p className="text-white text-sm">
+                            {(selectedTask.customStartTime || selectedTask.startedAt || selectedTask.createdAt)
+                              ? new Date(selectedTask.customStartTime || selectedTask.startedAt || selectedTask.createdAt).toLocaleString()
+                              : 'Not Started'}
+                          </p>
                         </div>
                         <div>
                           <p className="text-xs text-gray-400 uppercase tracking-widest">Completed At</p>
-                          <p className="text-white text-sm">{selectedTask.completedAt ? new Date(selectedTask.completedAt).toLocaleString() : 'In Progress'}</p>
+                          <p className="text-white text-sm">
+                            {(selectedTask.actualCompletionTime || selectedTask.completedAt)
+                              ? new Date(selectedTask.actualCompletionTime || selectedTask.completedAt!).toLocaleString()
+                              : 'In Progress'}
+                          </p>
                         </div>
                         <div>
                           <p className="text-xs text-gray-400 uppercase tracking-widest">Time Taken</p>
-                          <p className="text-white text-sm">{selectedTask.taskTakenTime || calculateDuration(selectedTask.startedAt, selectedTask.completedAt)}</p>
+                          <p className="text-white text-sm">
+                            {selectedTask.taskTakenTime || calculateDuration(selectedTask.customStartTime || selectedTask.startedAt || selectedTask.createdAt, selectedTask.actualCompletionTime || selectedTask.completedAt)}
+                          </p>
                         </div>
                         <div>
                           <p className="text-xs text-gray-400 uppercase tracking-widest">Remaining / Over Time</p>
@@ -9625,7 +9792,7 @@ export default function App() {
                             {selectedTask.status === 'PENDING' ? 'Start Task' : 'Complete Task'}
                           </button>
                         )}
-                        {(user?.role === 'SUPER_ADMIN' || user?.role === 'HOD' || selectedTask.createdBy === user?.employeeId || selectedTask.createdBy === user?.id || selectedTask.createdBy === user?.name || selectedTask.assignedBy === user?.employeeId) && (
+                        {(user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD' || selectedTask.createdBy === user?.employeeId || selectedTask.createdBy === user?.id || selectedTask.createdBy === user?.name || selectedTask.assignedBy === user?.employeeId) && (
                           <button 
                             onClick={() => setTaskToDelete(selectedTask.id)}
                             disabled={isLoading}

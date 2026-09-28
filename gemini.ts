@@ -8,7 +8,14 @@ const getAI = () => {
     if (!apiKey) {
       throw new Error("GEMINI_API_KEY environment variable is required");
     }
-    aiInstance = new GoogleGenAI({ apiKey });
+    aiInstance = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        }
+      }
+    });
   }
   return aiInstance;
 };
