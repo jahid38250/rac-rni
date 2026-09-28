@@ -34,6 +34,8 @@ import {
   Database,
   Award,
   Activity,
+  Briefcase,
+  Building2,
   Phone,
   PhoneOff,
   Edit2,
@@ -1208,6 +1210,7 @@ export default function App() {
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
   const [rejectTaskId, setRejectTaskId] = useState<string | null>(null);
   const [rejectRemarks, setRejectRemarks] = useState('');
+  const [executiveSubView, setExecutiveSubView] = useState<'CBO' | 'DCBO'>('CBO');
 
   // Track if any modal is open to prevent interruptions
   const isAnyModalOpen = isTaskModalOpen || isStaffModalOpen || isTaskDetailsModalOpen || isStatusUpdateModalOpen || isChangePasswordModalOpen || isResetPasswordModalOpen || isRejectModalOpen;
@@ -5731,6 +5734,17 @@ export default function App() {
             color="text-blue-500"
           />
 
+          {/* 2.5. Executive Management (Super Admin, HOD, DHOD) */}
+          {['SUPER_ADMIN', 'HOD', 'DHOD'].includes(user?.role || '') && (
+            <SidebarItem 
+              icon={Briefcase} 
+              label="Executive Management" 
+              active={activeTab === 'executive_management'} 
+              onClick={() => setActiveTab('executive_management')} 
+              color="text-amber-400"
+            />
+          )}
+
           {/* 3. Task Management */}
           <SidebarItem 
             icon={ClipboardList} 
@@ -5917,6 +5931,7 @@ export default function App() {
             </button>
             <h2 className="text-xl font-bold capitalize">
               {activeTab === 'dashboard' ? (user?.role === 'CBO' || user?.role === 'DCBO' ? 'Executive Business & Workforce Command Center' : 'Dashboard') :
+               activeTab === 'executive_management' ? 'Executive Management Panel (CBO & DCBO Command)' :
                activeTab === 'tasks' || activeTab === 'officer_tasks' || activeTab === 'mywork' ? 'Task Management' :
                activeTab === 'attendance' ? 'Attendance' :
                activeTab === 'daily_task' ? 'Daily Task' :
@@ -6068,6 +6083,31 @@ export default function App() {
               />
             ) : (
             <>
+              {/* Executive Management Quick Access for Super Admin, HOD, DHOD */}
+              {['SUPER_ADMIN', 'HOD', 'DHOD'].includes(user?.role || '') && (
+                <div className="bg-gradient-to-r from-amber-500/10 via-purple-500/10 to-blue-500/10 border border-amber-500/20 rounded-3xl p-5 backdrop-blur-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 font-bold shrink-0">
+                      <Briefcase size={20} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase">Executive Suite</span>
+                      </div>
+                      <h3 className="font-bold text-white text-base mt-0.5">Executive Management Panel (CBO & DCBO)</h3>
+                      <p className="text-xs text-slate-400">Institutional CBO KPI tracking, DCBO workforce oversight, and executive delegation</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setActiveTab('executive_management')}
+                    className="px-5 py-2.5 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white font-bold text-xs rounded-xl transition-all shadow-lg shadow-amber-500/20 flex items-center gap-2 shrink-0 cursor-pointer"
+                  >
+                    <span>Open Executive Panel</span>
+                    <ChevronRight size={14} />
+                  </button>
+                </div>
+              )}
+
               {/* Welcome Section */}
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
@@ -6237,6 +6277,127 @@ export default function App() {
               </div>
             </>
             )
+          )}
+
+          {activeTab === 'executive_management' && (
+            <div className="space-y-6 animate-in fade-in duration-300">
+              {/* Executive Suite Header & Command Switcher */}
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-slate-900/90 border border-white/10 p-6 rounded-3xl backdrop-blur-xl shadow-2xl">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 bg-gradient-to-tr from-amber-600 to-orange-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-amber-500/20 shrink-0">
+                    <Briefcase size={28} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="px-2.5 py-0.5 bg-amber-500/10 border border-amber-500/20 rounded-full text-[10px] font-bold text-amber-400 uppercase tracking-wider">
+                        {user?.role === 'SUPER_ADMIN' ? 'Super Admin Executive Suite' : user?.role === 'HOD' ? 'HOD Executive Suite' : 'DHOD Executive Suite'}
+                      </span>
+                      <span className="px-2 py-0.5 bg-blue-500/10 border border-blue-500/20 rounded-full text-[10px] font-semibold text-blue-400">
+                        {executiveSubView === 'CBO' ? 'Active: CBO Dashboard' : 'Active: DCBO Command Center'}
+                      </span>
+                    </div>
+                    <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight">
+                      Executive Management Panel
+                    </h1>
+                    <p className="text-slate-400 text-xs md:text-sm mt-0.5">
+                      Full institutional oversight over Chief Business Officer (CBO) & Deputy CBO command hierarchies
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center bg-white/5 border border-white/10 p-1.5 rounded-2xl shrink-0">
+                  <button
+                    onClick={() => setExecutiveSubView('CBO')}
+                    className={cn(
+                      "px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer",
+                      executiveSubView === 'CBO' 
+                        ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30" 
+                        : "text-slate-400 hover:text-white hover:bg-white/5"
+                    )}
+                  >
+                    <Award size={15} />
+                    <span>CBO Executive Dashboard</span>
+                  </button>
+                  <button
+                    onClick={() => setExecutiveSubView('DCBO')}
+                    className={cn(
+                      "px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer",
+                      executiveSubView === 'DCBO' 
+                        ? "bg-purple-600 text-white shadow-lg shadow-purple-600/30" 
+                        : "text-slate-400 hover:text-white hover:bg-white/5"
+                    )}
+                  >
+                    <Building2 size={15} />
+                    <span>DCBO Command Center</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Active Executive Component */}
+              {executiveSubView === 'CBO' ? (
+                <CBODashboard
+                  currentUser={user!}
+                  staffList={staffList}
+                  tasks={tasks}
+                  attendance={attendance}
+                  onOpenNewTaskModal={(preselectedAssignee) => {
+                    setEditingTask(null);
+                    setNewTask({ 
+                      title: '', 
+                      model: 'General Work', 
+                      details: '', 
+                      urgency: 'REGULAR', 
+                      assignedTo: preselectedAssignee || '', 
+                      deadline: '', 
+                      points: 1, 
+                      customStartTime: '', 
+                      estimatedDuration: '',
+                      workType: 'SINGLE',
+                      assignedTechnicians: []
+                    });
+                    setSelectedTechs([]);
+                    setIsTaskModalOpen(true);
+                  }}
+                  onRefreshData={handleRecalculate}
+                  onUpdateAttendance={handleUpdateAttendance}
+                  onSelectTask={(task) => {
+                    setSelectedTask(task);
+                    setIsTaskDetailsModalOpen(true);
+                  }}
+                />
+              ) : (
+                <ExecutiveCommandCenter
+                  currentUser={user!}
+                  staffList={staffList}
+                  tasks={tasks}
+                  attendance={attendance}
+                  onOpenNewTaskModal={(preselectedAssignee) => {
+                    setEditingTask(null);
+                    setNewTask({ 
+                      title: '', 
+                      model: 'General Work', 
+                      details: '', 
+                      urgency: 'REGULAR', 
+                      assignedTo: preselectedAssignee || '', 
+                      deadline: '', 
+                      points: 1, 
+                      customStartTime: '', 
+                      estimatedDuration: '',
+                      workType: 'SINGLE',
+                      assignedTechnicians: []
+                    });
+                    setSelectedTechs([]);
+                    setIsTaskModalOpen(true);
+                  }}
+                  onRefreshData={handleRecalculate}
+                  onUpdateAttendance={handleUpdateAttendance}
+                  onSelectTask={(task) => {
+                    setSelectedTask(task);
+                    setIsTaskDetailsModalOpen(true);
+                  }}
+                />
+              )}
+            </div>
           )}
 
           {activeTab === 'tasks' && (

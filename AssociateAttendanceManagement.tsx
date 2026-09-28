@@ -138,16 +138,13 @@ export const AssociateAttendanceManagement: React.FC<AssociateAttendanceProps> =
     if (role === 'IN_CHARGE') {
       const associates = staffList.filter(s => {
         if (s.role === 'MODEL_MANAGER') {
-          if (myDept && s.department) {
-            return s.department.toLowerCase() === myDept.toLowerCase();
-          }
-          return true;
-        }
-        if (s.role === 'ENGINEER') {
-          // Concern Engineer assigned to In-Charge or in same department/section
-          if (myAssignedEngs.includes(s.employeeId)) return true;
+          if (Array.isArray(currentUser?.assignedEngineers) && currentUser.assignedEngineers.includes(s.employeeId)) return true;
           if (myDept && s.department && s.department.toLowerCase() === myDept.toLowerCase()) return true;
           return false;
+        }
+        if (s.role === 'ENGINEER') {
+          // Strictly Concern Engineers assigned to this In-Charge
+          return myAssignedEngs.includes(s.employeeId) || myAssignedEngs.includes(s.id);
         }
         return false;
       });
@@ -171,11 +168,11 @@ export const AssociateAttendanceManagement: React.FC<AssociateAttendanceProps> =
     if (role === 'MODEL_MANAGER') {
       const associates = staffList.filter(s => {
         if (s.role === 'ENGINEER') {
-          return myAssignedEngs.includes(s.employeeId) || (myDept && s.department === myDept);
+          return myAssignedEngs.includes(s.employeeId) || myAssignedEngs.includes(s.id);
         }
         if (s.role === 'OFFICER') {
           const officerEngs = s.assignedEngineers || [];
-          return officerEngs.some(engId => myAssignedEngs.includes(engId)) || (myDept && s.department === myDept);
+          return officerEngs.some(engId => myAssignedEngs.includes(engId));
         }
         return false;
       });
@@ -195,19 +192,27 @@ export const AssociateAttendanceManagement: React.FC<AssociateAttendanceProps> =
       };
     }
 
-    // 6. ENGINEER to OFFICER
+    // 6. ENGINEER to OFFICER (Strictly Concern Officers)
     if (role === 'ENGINEER') {
+      const myId = currentUser?.id || '';
       const associates = staffList.filter(s => {
         if (s.role === 'OFFICER') {
-          return (s.assignedEngineers || []).includes(myEmpId) || (myDept && s.department === myDept);
+          // Strictly Concern Officers who have this engineer in assignedEngineers
+          const officerEngs = s.assignedEngineers || [];
+          const isAssignedToOfficer = officerEngs.includes(myEmpId) || officerEngs.includes(myId);
+          const isInMyEngineersList = Array.isArray(currentUser?.assignedEngineers) && (
+            currentUser.assignedEngineers.includes(s.employeeId) || 
+            currentUser.assignedEngineers.includes(s.id)
+          );
+          return isAssignedToOfficer || isInMyEngineersList;
         }
         return false;
       });
       return {
-        title: "Responsible Officer Attendance",
-        subtitle: "Daily attendance monitoring for Officers assigned to your engineering scope",
-        hierarchyBadge: "Engineer ➔ Officer",
-        hierarchyDescription: "Monitoring responsible officers assigned to your engineering scope.",
+        title: "Concern Officer Attendance",
+        subtitle: "Daily attendance monitoring for Officers assigned to your engineering portfolio",
+        hierarchyBadge: "Engineer ➔ Concern Officers",
+        hierarchyDescription: "Strictly monitoring attendance of officers associated with your engineering scope.",
         associates,
         isTechnicianView: false,
         allowedStatuses: [
@@ -219,21 +224,26 @@ export const AssociateAttendanceManagement: React.FC<AssociateAttendanceProps> =
       };
     }
 
-    // 7. OFFICER to TECHNICIAN
+    // 7. OFFICER to TECHNICIAN (Strictly My Team Technicians)
     if (role === 'OFFICER') {
+      const myId = currentUser?.id || '';
       const associates = staffList.filter(s => {
         if (s.role === 'TECHNICIAN') {
-          return s.supervisorId === currentUser?.id || 
-                 (s.supervisor_ids || []).includes(currentUser?.employeeId || '') || 
-                 (myDept && s.department === myDept);
+          // Strictly My Team: technician directly supervised by this officer
+          const isPrimarySupervisor = s.supervisorId === myId || s.supervisorId === myEmpId;
+          const isSecondarySupervisor = Array.isArray(s.supervisor_ids) && (
+            s.supervisor_ids.includes(myEmpId) || 
+            s.supervisor_ids.includes(myId)
+          );
+          return isPrimarySupervisor || isSecondarySupervisor;
         }
         return false;
       });
       return {
-        title: "Technician Attendance & Shift Management",
-        subtitle: "Daily attendance and active shift allocation for assigned technicians",
-        hierarchyBadge: "Officer ➔ Technician",
-        hierarchyDescription: "Direct operational supervisor for technicians and shift assignments.",
+        title: "My Team Technician Attendance",
+        subtitle: "Daily attendance and active shift allocation for your assigned team technicians",
+        hierarchyBadge: "Officer ➔ My Team Technicians",
+        hierarchyDescription: "Direct operational supervisor for technicians assigned strictly under your team.",
         associates,
         isTechnicianView: true,
         allowedStatuses: [
