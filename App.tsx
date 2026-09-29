@@ -1400,6 +1400,42 @@ export default function App() {
     return null;
   };
 
+  // Helper functions for IN_CHARGE concern engineers & officers
+  const getInChargeConcernEngineers = (inChargeUser: User): User[] => {
+    if (!inChargeUser) return [];
+    const myId = inChargeUser.id;
+    const myEmpId = (inChargeUser.employeeId || '').toString().trim();
+    const hodEmpIds = ['19219', '17668'];
+    const inChargeEngList = (inChargeUser.assignedEngineers || []).filter(id => !hodEmpIds.includes(id));
+    return staffList.filter(u => u.role === 'ENGINEER' && (
+      u.supervisorId === myId ||
+      u.supervisorId === myEmpId ||
+      (Array.isArray(u.supervisor_ids) && (u.supervisor_ids.includes(myId) || u.supervisor_ids.includes(myEmpId))) ||
+      inChargeEngList.includes(u.employeeId) ||
+      inChargeEngList.includes(u.id)
+    ));
+  };
+
+  const getInChargeConcernOfficers = (inChargeUser: User): User[] => {
+    if (!inChargeUser) return [];
+    const myEmpId = (inChargeUser.employeeId || '').toString().trim();
+    const myId = inChargeUser.id;
+    const hodEmpIds = ['19219', '17668'];
+    const concernEngs = getInChargeConcernEngineers(inChargeUser);
+    const concernEngEmpIds = concernEngs.map(e => e.employeeId);
+    const concernEngIds = concernEngs.map(e => e.id);
+
+    return staffList.filter(u => u.role === 'OFFICER' && (
+      u.supervisorId === myId ||
+      u.supervisorId === myEmpId ||
+      (Array.isArray(u.supervisor_ids) && (u.supervisor_ids.includes(myId) || u.supervisor_ids.includes(myEmpId))) ||
+      (u.assignedEngineers || []).includes(myEmpId) ||
+      (u.assignedEngineers || []).includes(myId) ||
+      (u.assignedEngineers || []).some(id => !hodEmpIds.includes(id) && (concernEngEmpIds.includes(id) || concernEngIds.includes(id))) ||
+      (Boolean(u.supervisorId) && (concernEngIds.includes(u.supervisorId) || concernEngEmpIds.includes(u.supervisorId)))
+    ));
+  };
+
   const isStaffInScope = (staff: User): boolean => {
     if (!user) return false;
     
@@ -1409,11 +1445,42 @@ export default function App() {
     
     if (currentUserData.role === 'SUPER_ADMIN' || currentUserData.role === 'CBO' || currentUserData.role === 'DCBO' || currentUserData.role === 'HOD' || currentUserData.role === 'DHOD') return true;
     
-    if (currentUserData.role === 'IN_CHARGE' || currentUserData.role === 'MODEL_MANAGER') {
+    if (currentUserData.role === 'IN_CHARGE') {
+      const concernEngs = getInChargeConcernEngineers(currentUserData);
+      const concernOfficers = getInChargeConcernOfficers(currentUserData);
+      const concernEngEmpIds = concernEngs.map(e => e.employeeId);
+      const concernEngIds = concernEngs.map(e => e.id);
+      const concernOfficerIds = concernOfficers.map(o => o.id);
+      const concernOfficerEmpIds = concernOfficers.map(o => o.employeeId);
+
+      if (staff.role === 'ENGINEER') {
+        return concernEngs.some(e => e.id === staff.id || e.employeeId === staff.employeeId);
+      }
+
+      if (staff.role === 'OFFICER') {
+        return concernOfficers.some(o => o.id === staff.id || o.employeeId === staff.employeeId);
+      }
+
+      if (staff.role === 'TECHNICIAN') {
+        const officer = staffList.find(s => s.id === staff.supervisorId || (staff.supervisor_ids || []).includes(s.employeeId));
+        if (officer?.role === 'OFFICER') {
+          return concernOfficerIds.includes(officer.id) || concernOfficerEmpIds.includes(officer.employeeId);
+        }
+        if (officer?.role === 'ENGINEER') {
+          return concernEngIds.includes(officer.id) || concernEngEmpIds.includes(officer.employeeId);
+        }
+      }
+      return false;
+    }
+
+    if (currentUserData.role === 'MODEL_MANAGER') {
       const myAssignedEngs = currentUserData.assignedEngineers || [];
       
-      // If it's an engineer, check if they are assigned to me
-      if (staff.role === 'ENGINEER') return myAssignedEngs.includes(staff.employeeId);
+      // If it's an engineer, check if assigned to me
+      if (staff.role === 'ENGINEER') {
+        return myAssignedEngs.includes(staff.employeeId) || 
+               myAssignedEngs.includes(staff.id);
+      }
       
       // If it's an officer, check if any of their assigned engineers are assigned to me
       if (staff.role === 'OFFICER') {
@@ -1861,22 +1928,39 @@ export default function App() {
         }
 
         if (currentUserData.role === 'IN_CHARGE') {
-          const creator = staffList.find(s => s.employeeId === t.createdBy);
-          const assigner = staffList.find(s => s.employeeId === t.assignedBy);
-          const assignee = staffList.find(s => s.id === t.assignedTo || s.name.toLowerCase().trim() === t.assignedTo.toLowerCase().trim());
+          const isCreatedByMe = t.createdBy === myEmpId || t.createdBy === currentUserData.id;
+          const isAssignedByMe = t.assignedBy === myEmpId || t.assignedBy === currentUserData.id;
+          if (isCreatedByMe || isAssignedByMe) return true;
+
+          const concernEngs = getInChargeConcernEngineers(currentUserData);
+          const concernOfficers = getInChargeConcernOfficers(currentUserData);
+          const concernEngEmpIds = concernEngs.map(e => e.employeeId);
+          const concernEngIds = concernEngs.map(e => e.id);
+          const concernOfficerEmpIds = concernOfficers.map(o => o.employeeId);
+          const concernOfficerIds = concernOfficers.map(o => o.id);
+          const allConcernIds = [...concernEngEmpIds, ...concernEngIds, ...concernOfficerEmpIds, ...concernOfficerIds];
+
+          const isDirectMatch = allConcernIds.includes(t.createdBy) ||
+                                allConcernIds.includes(t.assignedBy) ||
+                                allConcernIds.includes(t.assignedTo) ||
+                                (t.concernEngineerId && concernEngEmpIds.includes(t.concernEngineerId)) ||
+                                (t.responsibleOfficerId && concernOfficerEmpIds.includes(t.responsibleOfficerId)) ||
+                                (t.inChargeId && (t.inChargeId === myEmpId || t.inChargeId === currentUserData.id));
+          if (isDirectMatch) return true;
+
+          const creator = staffList.find(s => s.employeeId === t.createdBy || s.id === t.createdBy);
+          const assigner = staffList.find(s => s.employeeId === t.assignedBy || s.id === t.assignedBy);
+          const assignee = staffList.find(s => s.id === t.assignedTo || s.name.toLowerCase().trim() === (t.assignedTo || '').toLowerCase().trim() || s.employeeId === t.assignedTo);
           
           const creatorEngId = getResponsibleEngineerId(creator);
           const assignerEngId = getResponsibleEngineerId(assigner);
           const assigneeEngId = getResponsibleEngineerId(assignee);
           
-          const isCreatorInScope = creatorEngId && myAssignedEngs.includes(creatorEngId);
-          const isAssignerInScope = assignerEngId && myAssignedEngs.includes(assignerEngId);
-          const isAssigneeInScope = assigneeEngId && myAssignedEngs.includes(assigneeEngId);
-          
-          const isCreatedByMe = t.createdBy === myEmpId;
-          const isAssignedByMe = t.assignedBy === myEmpId;
-          
-          return isCreatorInScope || isAssignerInScope || isAssigneeInScope || isCreatedByMe || isAssignedByMe;
+          const isCreatorInScope = creatorEngId && concernEngEmpIds.includes(creatorEngId);
+          const isAssignerInScope = assignerEngId && concernEngEmpIds.includes(assignerEngId);
+          const isAssigneeInScope = assigneeEngId && concernEngEmpIds.includes(assigneeEngId);
+
+          return isCreatorInScope || isAssignerInScope || isAssigneeInScope;
         }
 
         const assignedTo = (t.assignedTo || '').toLowerCase();
@@ -1958,12 +2042,14 @@ export default function App() {
 
   const dashboardTasks = useMemo(() => {
     const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
+    // Default to last 30 days / 1 month + all active/non-completed tasks so tasks NEVER disappear
+    const oneMonthAgo = new Date(now.getTime() - 31 * 24 * 60 * 60 * 1000);
     
     return filteredTasks.filter(t => {
       const taskDate = new Date(t.createdAt);
-      return taskDate.getMonth() === currentMonth && taskDate.getFullYear() === currentYear;
+      const isRecent = !isNaN(taskDate.getTime()) && taskDate >= oneMonthAgo;
+      const isNotCompleted = t.status !== 'COMPLETED';
+      return isRecent || isNotCompleted;
     });
   }, [filteredTasks]);
 
@@ -3057,14 +3143,13 @@ export default function App() {
   const [notifications, setNotifications] = useState<{id: string, message: string, read: boolean, timestamp: string}[]>([]);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
 
-  const fetchTasks = async (token: string, all = false) => {
+  const fetchTasks = async (token: string, _all = true) => {
     try {
-      // Performance Boost: Limit initial load to current month or last 100 tasks
-      const url = all ? '/api/tasks?all=true&limit=100' : `/api/tasks?month=${new Date().getMonth() + 1}&year=${new Date().getFullYear()}`;
+      const url = '/api/tasks?all=true';
       const data = await fetchJson(url, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      if (data) setTasks(data);
+      if (data && Array.isArray(data)) setTasks(data);
     } catch (err) {
       console.error('Fetch tasks error:', err);
     }
@@ -3458,7 +3543,7 @@ export default function App() {
       return;
     }
 
-    if (['HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(user?.role || '') && !editingTask) {
+    if (['HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(user?.role || '')) {
       // Strict Assignment Rule Validation for all hierarchical roles
       const assignedStaff = staffList.find(s => s.id === newTask.assignedTo || s.name === newTask.assignedTo || s.employeeId === newTask.assignedTo);
       if (assignedStaff) {
@@ -3485,15 +3570,30 @@ export default function App() {
             toast.error("Access Denied: Engineers can only assign tasks to Officers who are mapped to them.");
             return;
           }
-        } else if (['HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER'].includes(currentUserData?.role || '')) {
+        } else if (currentUserData?.role === 'IN_CHARGE') {
+          const concernEngs = getInChargeConcernEngineers(currentUserData);
+          const concernOfficers = getInChargeConcernOfficers(currentUserData);
+          const isConcernEng = concernEngs.some(e => e.id === assignedStaff.id || e.employeeId === assignedStaff.employeeId);
+          const isConcernOfficer = concernOfficers.some(o => o.id === assignedStaff.id || o.employeeId === assignedStaff.employeeId);
+
+          if (!isConcernEng && !isConcernOfficer) {
+            toast.error("Access Denied: In-Charge can only assign tasks to their concern Engineers and concern Officers.");
+            return;
+          }
+        } else if (['HOD', 'DHOD', 'MODEL_MANAGER'].includes(currentUserData?.role || '')) {
           // Hierarchical roles check
           if (assignedStaff.role === 'OFFICER') {
-            if (!(assignedStaff.assignedEngineers || []).includes(myEmpId || '')) {
-              toast.error("Access Denied: You are not authorized to assign tasks to this Officer. (Mapping required)");
+            const isAssigned = (assignedStaff.assignedEngineers || []).includes(myEmpId || '') || 
+                               (assignedStaff.assignedEngineers || []).some(id => myAssignedEngs.includes(id));
+            const isSameDept = Boolean(currentUserData?.department) && Boolean(assignedStaff.department) && currentUserData.department.toLowerCase() === assignedStaff.department.toLowerCase();
+            if (!isAssigned && !isSameDept && currentUserData?.role !== 'HOD' && currentUserData?.role !== 'DHOD') {
+              toast.error("Access Denied: You are not authorized to assign tasks to this Officer.");
               return;
             }
           } else if (assignedStaff.role === 'ENGINEER') {
-            if (!myAssignedEngs.includes(assignedStaff.employeeId)) {
+            const isAssigned = myAssignedEngs.includes(assignedStaff.employeeId) || myAssignedEngs.includes(assignedStaff.id);
+            const isSameDept = Boolean(currentUserData?.department) && Boolean(assignedStaff.department) && currentUserData.department.toLowerCase() === assignedStaff.department.toLowerCase();
+            if (!isAssigned && !isSameDept && currentUserData?.role !== 'HOD' && currentUserData?.role !== 'DHOD') {
               toast.error("Access Denied: You are not authorized to assign tasks to this Engineer.");
               return;
             }
@@ -3515,7 +3615,7 @@ export default function App() {
       
       const finalAssignedTo = newTask.assignedTo;
 
-      const finalWorkType = user?.role === 'ENGINEER' ? 'SINGLE' : newTask.workType;
+      const finalWorkType = user?.role !== 'OFFICER' ? 'SINGLE' : newTask.workType;
 
       const hasOtherTeamTech = finalWorkType === 'TEAM' && selectedTechs.some((at: any) => {
         const tech = staffList.find(s => s.employeeId === at.employeeId);
@@ -4228,7 +4328,7 @@ export default function App() {
                 No Number
               </div>
             )}
-            {['OFFICER', 'SUPER_ADMIN', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER'].includes(user?.role || '') && statusInfo.status === 'Free' && isAvailable && (
+            {['OFFICER', 'SUPER_ADMIN'].includes(user?.role || '') && statusInfo.status === 'Free' && isAvailable && (
               <button 
                 onClick={() => {
                   setNewTask({ ...newTask, assignedTo: tech.id, workType: 'SINGLE', assignedTechnicians: [] });
@@ -5106,7 +5206,7 @@ export default function App() {
                               if (myEmpId === '41053') return ['24K', '30K', '36K'].includes(m);
                               return false;
                             }
-                            if (m === 'General Work') return user?.role === 'HOD' || user?.role === 'DHOD' || user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO';
+                            if (m === 'General Work') return user?.role === 'HOD' || user?.role === 'DHOD' || user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'IN_CHARGE';
                             return true;
                           }).map(m => (
                             <button
@@ -5276,7 +5376,7 @@ export default function App() {
                               </button>
                             </div>
                           )}
-                          {newTask.workType === 'TEAM' && selectedTechs.map(t => (
+                          {newTask.workType === 'TEAM' && user?.role === 'OFFICER' && selectedTechs.map(t => (
                             <div key={t.employeeId} className="flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 px-3 py-1.5 rounded-lg">
                               <span className="text-xs text-blue-400 font-medium">{t.name} ({t.employeeId})</span>
                               <button
@@ -5291,7 +5391,7 @@ export default function App() {
                         </div>
                       </div>
                     ) : (
-                      newTask.workType === 'SINGLE' ? (
+                      (newTask.workType === 'SINGLE' || user?.role !== 'OFFICER') ? (
                         <div>
                           <label className="block text-sm font-medium text-gray-400 mb-2">Assign To</label>
                           <select 
@@ -5316,10 +5416,22 @@ export default function App() {
                                   // DCBO can assign to HOD, DHOD, and all lower roles
                                   return s.role === 'HOD' || s.role === 'DHOD' || s.role === 'IN_CHARGE' || s.role === 'MODEL_MANAGER' || s.role === 'ENGINEER' || s.role === 'OFFICER';
                                 }
-                                if (['HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER'].includes(currentUserData?.role || '')) {
-                                  const isMyOfficer = s.role === 'OFFICER' && (s.assignedEngineers || []).some(id => id.toString().trim() === myEmpId);
-                                  const isMyEngineer = s.role === 'ENGINEER' && myAssignedEngs.includes(s.employeeId);
-                                  return isMyOfficer || isMyEngineer || s.role === 'HOD' || s.role === 'DHOD' || s.role === 'IN_CHARGE' || s.role === 'MODEL_MANAGER';
+                                if (['HOD', 'DHOD'].includes(currentUserData?.role || '')) {
+                                  return s.role === 'IN_CHARGE' || s.role === 'MODEL_MANAGER' || s.role === 'ENGINEER' || s.role === 'OFFICER';
+                                }
+                                if (currentUserData?.role === 'IN_CHARGE') {
+                                  const concernEngs = getInChargeConcernEngineers(currentUserData);
+                                  const concernOfficers = getInChargeConcernOfficers(currentUserData);
+                                  return concernEngs.some(e => e.id === s.id || e.employeeId === s.employeeId) ||
+                                         concernOfficers.some(o => o.id === s.id || o.employeeId === s.employeeId);
+                                }
+                                if (currentUserData?.role === 'MODEL_MANAGER') {
+                                  const isConcernEng = s.role === 'ENGINEER' && (
+                                    myAssignedEngs.includes(s.employeeId) || 
+                                    myAssignedEngs.includes(s.id)
+                                  );
+                                  const isConcernOfficer = s.role === 'OFFICER' && (s.assignedEngineers || []).some(id => myAssignedEngs.includes(id));
+                                  return isConcernEng || isConcernOfficer;
                                 }
                                 if (currentUserData?.role === 'ENGINEER') {
                                   return s.role === 'OFFICER' && (s.assignedEngineers || []).some(id => id.toString().trim() === myEmpId);
@@ -5328,7 +5440,9 @@ export default function App() {
                               });
 
                               return filteredStaff.map(s => (
-                                <option key={s.id} value={s.id} className="bg-[#0f0f12]">{s.name} ({s.employeeId})</option>
+                                <option key={s.id} value={s.id} className="bg-[#0f0f12]">
+                                  {s.name} ({s.employeeId}){currentUserData?.role === 'IN_CHARGE' ? ` - ${s.role === 'ENGINEER' ? 'Concern Engineer' : 'Concern Officer'}` : ''}
+                                </option>
                               ));
                             })()}
                           </select>
@@ -6722,7 +6836,7 @@ export default function App() {
                   <option value="ALL">All Users</option>
                   <option value="MY_SCOPE">My Tasks & Team</option>
                   <optgroup label="Staff Members">
-                    {staffList.map(s => (
+                    {staffList.filter(s => isStaffInScope(s)).map(s => (
                       <option key={s.id} value={s.employeeId || s.id} className="bg-[#0f0f12]">
                         {s.name} ({s.employeeId}) - {s.role}
                       </option>
@@ -7174,7 +7288,7 @@ export default function App() {
                   <option value="ALL">All Users</option>
                   <option value="MY_SCOPE">My Tasks & Team</option>
                   <optgroup label="Staff Members">
-                    {staffList.map(s => (
+                    {staffList.filter(s => isStaffInScope(s)).map(s => (
                       <option key={s.id} value={s.employeeId || s.id} className="bg-[#0f0f12]">
                         {s.name} ({s.employeeId}) - {s.role}
                       </option>
@@ -7906,7 +8020,13 @@ export default function App() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {staffList.filter(s => {
                     if (user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD') return true;
-                    if (user?.role === 'IN_CHARGE' || user?.role === 'MODEL_MANAGER') {
+                    if (user?.role === 'IN_CHARGE') {
+                      const concernEngs = getInChargeConcernEngineers(user);
+                      const concernOfficers = getInChargeConcernOfficers(user);
+                      return concernEngs.some(ce => ce.id === s.id || ce.employeeId === s.employeeId) ||
+                             concernOfficers.some(co => co.id === s.id || co.employeeId === s.employeeId);
+                    }
+                    if (user?.role === 'MODEL_MANAGER') {
                       return s.role === 'ENGINEER' && (user.assignedEngineers || []).includes(s.employeeId);
                     }
                     return false;
@@ -8390,8 +8510,11 @@ export default function App() {
                     <div className="space-y-4">
                       {staffList
                         .filter(s => {
-                          if (user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD' || user?.role === 'IN_CHARGE' || user?.role === 'MODEL_MANAGER') {
+                          if (user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD') {
                             return s.role === 'TECHNICIAN' || s.role === 'OFFICER' || s.role === 'ENGINEER';
+                          }
+                          if (user?.role === 'IN_CHARGE' || user?.role === 'MODEL_MANAGER') {
+                            return isStaffInScope(s) && (s.role === 'TECHNICIAN' || s.role === 'OFFICER' || s.role === 'ENGINEER');
                           }
                           if (user?.role === 'OFFICER') {
                             return s.role === 'TECHNICIAN' && s.supervisorId === user.id;
@@ -8447,7 +8570,15 @@ export default function App() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {(() => {
                           const rankedOfficers = staffList
-                            .filter(s => s.role === 'OFFICER')
+                            .filter(s => {
+                              if (s.role !== 'OFFICER') return false;
+                              if (user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD') return true;
+                              if (user?.role === 'IN_CHARGE') {
+                                const concernOfficers = getInChargeConcernOfficers(user);
+                                return concernOfficers.some(co => co.id === s.id || co.employeeId === s.employeeId);
+                              }
+                              return isStaffInScope(s);
+                            })
                             .map(s => {
                               const points = Math.max(
                                 getValidOfficerPoints(s.employeeId),
@@ -8728,9 +8859,35 @@ export default function App() {
                   <h1 className="text-3xl font-bold">{user?.role === 'IN_CHARGE' ? "Section Monitoring Dashboard" : "Department Monitoring Dashboard"}</h1>
                   <p className="text-gray-400 mt-1">Real-time monitoring of Engineer activities and task progress.</p>
                 </div>
-                <div className="flex items-center gap-2 text-xs text-gray-400">
-                  <Clock size={14} />
-                  <span>Last updated: {new Date().toLocaleTimeString()}</span>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 text-xs text-gray-400">
+                    <Clock size={14} />
+                    <span>Last updated: {new Date().toLocaleTimeString()}</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setEditingTask(null);
+                      setNewTask({
+                        title: '',
+                        model: 'General Work',
+                        details: '',
+                        urgency: 'REGULAR',
+                        assignedTo: '',
+                        deadline: new Date().toISOString().slice(0, 10),
+                        points: 1,
+                        customStartTime: '',
+                        estimatedDuration: '',
+                        workType: 'SINGLE',
+                        assignedTechnicians: []
+                      });
+                      setSelectedTechs([]);
+                      setIsTaskModalOpen(true);
+                    }}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-500/20 flex items-center gap-2 cursor-pointer"
+                  >
+                    <Plus size={15} />
+                    <span>Create Task</span>
+                  </button>
                 </div>
               </div>
 
@@ -8740,7 +8897,12 @@ export default function App() {
                   const myEngineers = staffList.filter(s => {
                     if (s.role !== 'ENGINEER') return false;
                     if (user.role === 'SUPER_ADMIN' || user.role === 'CBO' || user.role === 'DCBO' || user.role === 'HOD' || user.role === 'DHOD') return true;
-                    return user.assignedEngineers?.includes(s.employeeId);
+                    if (user.role === 'IN_CHARGE') {
+                      const concernEngs = getInChargeConcernEngineers(user);
+                      return concernEngs.some(ce => ce.id === s.id || ce.employeeId === s.employeeId);
+                    }
+                    return (user.assignedEngineers || []).includes(s.employeeId) || 
+                           (user.assignedEngineers || []).includes(s.id);
                   });
                   
                   const myTasks = filteredTasks; // Use the already scoped filteredTasks
@@ -8784,9 +8946,10 @@ export default function App() {
                   // Super Admin, CBO, DCBO, HOD, and DHOD see everyone
                   if (user.role === 'SUPER_ADMIN' || user.role === 'CBO' || user.role === 'DCBO' || user.role === 'HOD' || user.role === 'DHOD') return true;
                   
-                  // In-Charge ONLY sees assigned engineers
+                  // In-Charge sees concern engineers
                   if (user.role === 'IN_CHARGE') {
-                    return user.assignedEngineers?.includes(s.employeeId);
+                    const concernEngs = getInChargeConcernEngineers(user);
+                    return concernEngs.some(ce => ce.id === s.id || ce.employeeId === s.employeeId);
                   }
                   
                   return false;
@@ -8802,29 +8965,57 @@ export default function App() {
 
                   return (
                     <GlassCard key={engineer.id} className="overflow-hidden border-white/10">
-                      <div className="flex items-center justify-between mb-6 border-b border-white/5 pb-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 border-b border-white/5 pb-4">
                         <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center font-bold text-lg">
+                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center font-bold text-lg shrink-0">
                             {engineer.name[0]}
                           </div>
                           <div>
                             <h3 className="text-lg font-bold">{engineer.name}</h3>
-                            <p className="text-xs text-blue-400 font-mono">{engineer.employeeId}</p>
+                            <p className="text-xs text-blue-400 font-mono">{engineer.employeeId} &bull; {engineer.department || 'RAC R&I'}</p>
                           </div>
                         </div>
-                        <div className="flex gap-6">
-                          <div className="text-center">
-                            <p className="text-[10px] text-gray-500 uppercase tracking-widest">Pending</p>
-                            <p className="text-lg font-bold text-amber-500">{engineerTasks.filter(t => t.status === 'PENDING').length}</p>
+                        <div className="flex items-center gap-4">
+                          <div className="flex gap-4 sm:gap-6">
+                            <div className="text-center">
+                              <p className="text-[10px] text-gray-500 uppercase tracking-widest">Pending</p>
+                              <p className="text-lg font-bold text-amber-500">{engineerTasks.filter(t => t.status === 'PENDING').length}</p>
+                            </div>
+                            <div className="text-center">
+                              <p className="text-[10px] text-gray-500 uppercase tracking-widest">Running</p>
+                              <p className="text-lg font-bold text-blue-500">{engineerTasks.filter(t => t.status === 'RUNNING').length}</p>
+                            </div>
+                            <div className="text-center">
+                              <p className="text-[10px] text-gray-500 uppercase tracking-widest">Completed</p>
+                              <p className="text-lg font-bold text-green-500">{engineerTasks.filter(t => t.status === 'COMPLETED').length}</p>
+                            </div>
                           </div>
-                          <div className="text-center">
-                            <p className="text-[10px] text-gray-500 uppercase tracking-widest">Running</p>
-                            <p className="text-lg font-bold text-blue-500">{engineerTasks.filter(t => t.status === 'RUNNING').length}</p>
-                          </div>
-                          <div className="text-center">
-                            <p className="text-[10px] text-gray-500 uppercase tracking-widest">Completed</p>
-                            <p className="text-lg font-bold text-green-500">{engineerTasks.filter(t => t.status === 'COMPLETED').length}</p>
-                          </div>
+
+                          {/* Direct Assign Task to this Engineer */}
+                          <button
+                            onClick={() => {
+                              setEditingTask(null);
+                              setNewTask({
+                                title: '',
+                                model: 'General Work',
+                                details: '',
+                                urgency: 'REGULAR',
+                                assignedTo: engineer.id,
+                                deadline: new Date().toISOString().slice(0, 10),
+                                points: 1,
+                                customStartTime: '',
+                                estimatedDuration: '',
+                                workType: 'SINGLE',
+                                assignedTechnicians: []
+                              });
+                              setSelectedTechs([]);
+                              setIsTaskModalOpen(true);
+                            }}
+                            className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-500/20 flex items-center gap-1.5 shrink-0 cursor-pointer"
+                          >
+                            <Plus size={14} />
+                            <span>Assign Task</span>
+                          </button>
                         </div>
                       </div>
 
@@ -8984,6 +9175,11 @@ export default function App() {
 
                 {staffList.filter(s => {
                   if (s.role !== 'ENGINEER') return false;
+                  if (user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD') return true;
+                  if (user?.role === 'IN_CHARGE') {
+                    const concernEngs = getInChargeConcernEngineers(user);
+                    return concernEngs.some(ce => ce.id === s.id || ce.employeeId === s.employeeId);
+                  }
                   if (user.assignedEngineers && user.assignedEngineers.length > 0) {
                     return user.assignedEngineers.includes(s.employeeId);
                   }

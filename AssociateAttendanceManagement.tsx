@@ -144,7 +144,9 @@ export const AssociateAttendanceManagement: React.FC<AssociateAttendanceProps> =
         }
         if (s.role === 'ENGINEER') {
           // Strictly Concern Engineers assigned to this In-Charge
-          return myAssignedEngs.includes(s.employeeId) || myAssignedEngs.includes(s.id);
+          return myAssignedEngs.includes(s.employeeId) || myAssignedEngs.includes(s.id) ||
+                 s.supervisorId === currentUser?.id || s.supervisorId === currentUser?.employeeId ||
+                 (Array.isArray(s.supervisor_ids) && (s.supervisor_ids.includes(currentUser?.id) || s.supervisor_ids.includes(currentUser?.employeeId)));
         }
         return false;
       });

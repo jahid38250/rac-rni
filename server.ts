@@ -150,9 +150,18 @@ async function startServer() {
             loadedContent = parsedDb;
             loadedFrom = DB_FILE;
           } else {
+            const dataTasks = Array.isArray(loadedContent.tasks) ? loadedContent.tasks.length : 0;
+            const dbTasks = Array.isArray(parsedDb.tasks) ? parsedDb.tasks.length : 0;
             const dataTime = loadedContent.lastSavedAt ? new Date(loadedContent.lastSavedAt).getTime() : 0;
             const dbTime = parsedDb.lastSavedAt ? new Date(parsedDb.lastSavedAt).getTime() : 0;
-            if (dbTime > dataTime) {
+
+            if (dataTasks > 0 && dbTasks === 0) {
+              console.log(`[DATA PROTECTION] Keeping DATA_FILE (${dataTasks} tasks) over empty DB_FILE.`);
+            } else if (dbTasks > 0 && dataTasks === 0) {
+              console.log(`[DATA RECOVERY] DB_FILE has ${dbTasks} tasks while DATA_FILE has 0. Using DB_FILE.`);
+              loadedContent = parsedDb;
+              loadedFrom = DB_FILE;
+            } else if (dbTime > dataTime) {
               console.log(`[DATA RECOVERY] DB_FILE has fresher timestamp (${parsedDb.lastSavedAt}) than DATA_FILE (${loadedContent.lastSavedAt}). Using DB_FILE.`);
               loadedContent = parsedDb;
               loadedFrom = DB_FILE;
@@ -251,6 +260,35 @@ async function startServer() {
       if (numMatch) mins = parseInt(numMatch[1], 10);
     }
     return mins || 60;
+  }
+
+  function getInChargeConcernStaff(inChargeUser: any, allUsers: any[]) {
+    const myId = inChargeUser.id;
+    const myEmpId = (inChargeUser.employeeId || '').toString().trim();
+    const hodEmpIds = ['19219', '17668'];
+    const inChargeEngList = (inChargeUser.assignedEngineers || []).filter((id: string) => !hodEmpIds.includes(id));
+    
+    const concernEngs = allUsers.filter(u => u.role === 'ENGINEER' && (
+      u.supervisorId === myId ||
+      u.supervisorId === myEmpId ||
+      (Array.isArray(u.supervisor_ids) && (u.supervisor_ids.includes(myId) || u.supervisor_ids.includes(myEmpId))) ||
+      inChargeEngList.includes(u.employeeId) ||
+      inChargeEngList.includes(u.id)
+    ));
+    const concernEngEmpIds = concernEngs.map(e => e.employeeId);
+    const concernEngIds = concernEngs.map(e => e.id);
+
+    const concernOfficers = allUsers.filter(u => u.role === 'OFFICER' && (
+      u.supervisorId === myId ||
+      u.supervisorId === myEmpId ||
+      (Array.isArray(u.supervisor_ids) && (u.supervisor_ids.includes(myId) || u.supervisor_ids.includes(myEmpId))) ||
+      (u.assignedEngineers || []).includes(myEmpId) ||
+      (u.assignedEngineers || []).includes(myId) ||
+      (u.assignedEngineers || []).some((id: string) => !hodEmpIds.includes(id) && (concernEngEmpIds.includes(id) || concernEngIds.includes(id))) ||
+      (Boolean(u.supervisorId) && (concernEngIds.includes(u.supervisorId) || concernEngEmpIds.includes(u.supervisorId)))
+    ));
+
+    return { concernEngs, concernOfficers };
   }
 
   function computeTaskTiming(taskObj: any) {
@@ -1061,15 +1099,8 @@ async function startServer() {
     ? (Array.from(new Set(initialData.deletedTaskIds.map((id: any) => String(id).trim()))).filter(Boolean) as string[])
     : [];
   
-  // Strictly filter tasks to ensure no deleted task ever resurrects
-  tasks = (initialData.tasks || []).filter((t: any) => {
-    if (!t) return false;
-    const tId = String(t.id || '').trim();
-    const tTaskId = String(t.taskId || '').trim();
-    if (tId && deletedTaskIds.includes(tId)) return false;
-    if (tTaskId && deletedTaskIds.includes(tTaskId)) return false;
-    return true;
-  });
+  // All tasks in persistent database are kept permanently
+  tasks = Array.isArray(initialData.tasks) ? initialData.tasks.filter(Boolean) : [];
   
   attendanceRecords = initialData.attendanceRecords || initialData.assignments || [];
   notifications = initialData.notifications || [];
@@ -1908,12 +1939,13 @@ async function startServer() {
   app.get("/api/tasks", authenticate, (req: Request, res: Response) => {
     const { month, year, all } = req.query;
     
-    if (all === 'true') {
+    // Always return all tasks by default so all records are permanently accessible
+    if (all === 'true' || (!month && !year)) {
       return res.json(tasks);
     }
 
-    const currentMonth = month ? parseInt(month as string) : new Date().getMonth() + 1;
-    const currentYear = year ? parseInt(year as string) : new Date().getFullYear();
+    const currentMonth = parseInt(month as string);
+    const currentYear = parseInt(year as string);
 
     const filteredTasks = tasks.filter((t: any) => {
       const taskDate = new Date(t.createdAt);
@@ -2049,33 +2081,7 @@ async function startServer() {
   });
 
   app.post("/api/system/clear-tasks", authenticate, async (req: Request, res: Response) => {
-    if (req.user.role !== 'SUPER_ADMIN') {
-      return res.status(403).json({ error: "Forbidden" });
-    }
-    tasks.forEach((t: any) => {
-      if (t.id && !deletedTaskIds.includes(String(t.id).trim())) deletedTaskIds.push(String(t.id).trim());
-      if (t.taskId && !deletedTaskIds.includes(String(t.taskId).trim())) deletedTaskIds.push(String(t.taskId).trim());
-    });
-    tasks.length = 0;
-    attendanceRecords.length = 0;
-    pointTransactions.length = 0;
-    technicianPerformance.length = 0;
-    assignmentRequests.length = 0;
-    notifications.length = 0;
-    adminAuditLogs.length = 0;
-    
-    // Reset points and task counts on all users, keep user and employee data intact
-    users.forEach((u: any) => {
-      u.total_point = 0;
-      u.completedTask = 0;
-      if (u.role === 'TECHNICIAN') {
-        u.status = 'FREE';
-      }
-    });
-
-    await saveData(true);
-    await logAdminAction(req.user, 'CLEAR_TASKS', 'Cleared all dummy tasks and operational data, preserving employee and user records');
-    res.json({ message: "All tasks and operational data cleared successfully. All employee and user accounts preserved.", userCount: users.length });
+    return res.status(403).json({ error: "Bulk deletion of tasks is permanently disabled by policy. All tasks are permanent records." });
   });
 
   app.get("/api/system/backup", authenticate, (req: Request, res: Response) => {
@@ -2398,6 +2404,23 @@ async function startServer() {
       }
     }
     
+    // Strict Assignment Rule for In-Charge
+    if (user.role === 'IN_CHARGE') {
+      if (!assignedToName) {
+        return res.status(400).json({ error: "Task must be assigned to an authorized staff member." });
+      }
+      const targetUserCheck = users.find(u => u.id === assignedToName || u.name === assignedToName || u.employeeId === assignedToName);
+      if (!targetUserCheck) {
+        return res.status(400).json({ error: "Assigned staff not found." });
+      }
+      const { concernEngs, concernOfficers } = getInChargeConcernStaff(user, users);
+      const isConcernEng = concernEngs.some(ce => ce.id === targetUserCheck.id || ce.employeeId === targetUserCheck.employeeId);
+      const isConcernOfficer = concernOfficers.some(co => co.id === targetUserCheck.id || co.employeeId === targetUserCheck.employeeId);
+      if (!isConcernEng && !isConcernOfficer) {
+        return res.status(403).json({ error: "Access Denied: In-Charge can only assign tasks to their concern Engineers and concern Officers." });
+      }
+    }
+    
     // Point Validation
     if (urgency === 'REGULAR' && points > 1) {
       return res.status(400).json({ error: "Regular work cannot exceed 1 point." });
@@ -2406,7 +2429,7 @@ async function startServer() {
       return res.status(400).json({ error: "Urgent work cannot exceed 2 points." });
     }
     if (urgency === 'MOST_URGENT') {
-      if (user.role !== 'ENGINEER' && user.role !== 'SUPER_ADMIN' && user.role !== 'CBO' && user.role !== 'DCBO' && user.role !== 'HOD' && user.role !== 'DHOD') {
+      if (user.role !== 'ENGINEER' && user.role !== 'SUPER_ADMIN' && user.role !== 'CBO' && user.role !== 'DCBO' && user.role !== 'HOD' && user.role !== 'DHOD' && user.role !== 'IN_CHARGE' && user.role !== 'MODEL_MANAGER') {
         return res.status(403).json({ error: "Only Engineers or higher can assign Most Urgent tasks." });
       }
       if (points > 3) {
@@ -2469,17 +2492,23 @@ async function startServer() {
       } else {
         status = "RUNNING";
       }
-    } else if (targetUser && (targetUser.role === 'HOD' || targetUser.role === 'DHOD' || targetUser.role === 'DCBO' || targetUser.role === 'IN_CHARGE' || targetUser.role === 'MODEL_MANAGER' || targetUser.role === 'ENGINEER')) {
-      // Executive task assignment (e.g. CBO/DCBO -> HOD/DHOD)
+    } else if (targetUser && (targetUser.role === 'HOD' || targetUser.role === 'DHOD' || targetUser.role === 'DCBO' || targetUser.role === 'IN_CHARGE' || targetUser.role === 'MODEL_MANAGER' || targetUser.role === 'ENGINEER' || targetUser.role === 'OFFICER')) {
+      // Executive / Managerial task assignment
       status = "PENDING";
       requestStatus = "APPROVED";
     }
 
     // Populate traceable hierarchy fields on creation
     const responsibleOfficerId = user.role === 'OFFICER' ? user.employeeId : (targetUser?.role === 'OFFICER' ? targetUser.employeeId : req.body.responsibleOfficerId);
-    const concernEngineerId = user.role === 'ENGINEER'
+    let concernEngineerId = user.role === 'ENGINEER'
       ? user.employeeId
       : (targetUser?.role === 'ENGINEER' ? targetUser.employeeId : req.body.concernEngineerId);
+    if (!concernEngineerId && targetUser?.role === 'OFFICER') {
+      const { concernEngs } = user.role === 'IN_CHARGE' ? getInChargeConcernStaff(user, users) : { concernEngs: [] };
+      const matchingEng = concernEngs.find(ce => (targetUser.assignedEngineers || []).includes(ce.employeeId) || targetUser.supervisorId === ce.id);
+      if (matchingEng) concernEngineerId = matchingEng.employeeId;
+    }
+    const inChargeId = user.role === 'IN_CHARGE' ? user.employeeId : (req.body.inChargeId || undefined);
     const dhodObj = users.find(u => u.role === 'DHOD' || u.employeeId === '17668');
     const hodObj = users.find(u => u.role === 'HOD' || u.employeeId === '19219');
 
@@ -2498,6 +2527,7 @@ async function startServer() {
       assignedBy: user.employeeId,
       responsibleOfficerId,
       concernEngineerId,
+      inChargeId,
       dhodId: dhodObj?.employeeId || '17668',
       hodId: hodObj?.employeeId || '19219',
       status: status,
@@ -2962,6 +2992,29 @@ async function startServer() {
       
       if (!isAllowed) {
         return res.status(403).json({ error: "Access Denied: Technicians can only update status, progress, remarks, logs, startedAt, and completedAt." });
+      }
+    } else if (user.role === 'IN_CHARGE') {
+      const assignedToName = req.body.assignedTo;
+      if (assignedToName && assignedToName !== oldTask.assignedTo) {
+        const targetUser = users.find(u => u.id === assignedToName || u.name === assignedToName || u.employeeId === assignedToName);
+        if (!targetUser) {
+          return res.status(400).json({ error: "Assigned staff not found." });
+        }
+        const { concernEngs, concernOfficers } = getInChargeConcernStaff(user, users);
+        const isConcernEng = concernEngs.some(ce => ce.id === targetUser.id || ce.employeeId === targetUser.employeeId);
+        const isConcernOfficer = concernOfficers.some(co => co.id === targetUser.id || co.employeeId === targetUser.employeeId);
+        if (!isConcernEng && !isConcernOfficer) {
+          return res.status(403).json({ error: "Access Denied: In-Charge can only assign tasks to their concern Engineers and concern Officers." });
+        }
+        req.body.assignedBy = user.employeeId;
+        req.body.inChargeId = user.employeeId;
+        if (targetUser.role === 'OFFICER') {
+          req.body.responsibleOfficerId = targetUser.employeeId;
+          const matchingEng = concernEngs.find(ce => (targetUser.assignedEngineers || []).includes(ce.employeeId) || targetUser.supervisorId === ce.id);
+          if (matchingEng) req.body.concernEngineerId = matchingEng.employeeId;
+        } else if (targetUser.role === 'ENGINEER') {
+          req.body.concernEngineerId = targetUser.employeeId;
+        }
       }
     } else if (user.role === 'ENGINEER') {
       // Strict Assignment Rule for Engineers on Update
@@ -4170,25 +4223,8 @@ Output JSON format:
       }
     });
 
-    // Also remove very old inactive sessions (e.g. older than 30 days) to keep data.json small
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    const initialCount = userSessions.length;
-    const filteredSessions = userSessions.filter(s => {
-      if (s.active) return true;
-      const loginTime = new Date(s.loginTime);
-      return loginTime > thirtyDaysAgo;
-    });
-
-    if (filteredSessions.length !== initialCount) {
-      userSessions.length = 0;
-      for (const session of filteredSessions) {
-        userSessions.push(session);
-      }
-      changed = true;
-    }
-
     if (changed) {
-      console.log(`Cleaned up sessions. Active sessions: ${userSessions.filter(s => s.active).length}`);
+      console.log(`Updated inactive sessions. Active sessions: ${userSessions.filter(s => s.active).length}`);
       await saveData();
     }
   }, 3600000); // Every hour
