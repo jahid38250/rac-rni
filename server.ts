@@ -1023,13 +1023,14 @@ async function startServer() {
     users.forEach((u: any) => {
       if (u.role === 'TECHNICIAN') {
         const techAttendance = attendanceRecords.find((a: any) => a.technicianId === u.employeeId && a.date === todayDate);
+        // Only active RUNNING tasks mean the technician is WORKING. HOLD, COMPLETED, PENDING, etc. mean FREE.
         const hasActiveTasks = tasks.some((t: any) => 
-          (t.status === 'RUNNING' || (t.status === 'PENDING' && t.requestStatus === 'RECOMMENDED')) && 
+          t.status === 'RUNNING' && 
           (
             t.assignedTo === u.employeeId || 
             t.assignedTo === u.id || 
             (t.assignedTo && u.name && t.assignedTo.toLowerCase() === u.name.toLowerCase()) ||
-            (t.assignedTechnicians && t.assignedTechnicians.some((at: any) => at.employeeId === u.employeeId))
+            (t.assignedTechnicians && Array.isArray(t.assignedTechnicians) && t.assignedTechnicians.some((at: any) => at.employeeId === u.employeeId || at.id === u.id || (at.name && u.name && at.name.toLowerCase().trim() === u.name.toLowerCase().trim())))
           )
         );
 
@@ -1606,7 +1607,7 @@ async function startServer() {
   });
 
   app.get("/api/users", authenticate, (req: Request, res: Response) => {
-    const allowedRoles = ['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'];
+    const allowedRoles = ['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER', 'TECHNICIAN'];
     if (!allowedRoles.includes(req.user.role)) {
       return res.status(403).json({ error: "Forbidden" });
     }
@@ -3448,18 +3449,58 @@ async function startServer() {
       updatedData.overTime = timing.overTime;
     }
 
-      // Handle HOLD status
+      // Handle HOLD status: release technicians to FREE immediately
       if (updatedData.status === 'HOLD') {
         updatedData.progress = 0; // No progress shown during HOLD
         if (!updatedData.remarks) {
           return res.status(400).json({ error: "Remarks are required for Temporary Hold" });
         }
+        // Explicitly release technician(s) to FREE if they have no other RUNNING tasks
+        const releaseTechs = () => {
+          const techIds: string[] = [];
+          if (oldTask.workType === 'TEAM' && oldTask.assignedTechnicians) {
+            oldTask.assignedTechnicians.forEach((at: any) => techIds.push(at.employeeId));
+          } else if (oldTask.assignedTo) {
+            techIds.push(oldTask.assignedTo);
+          }
+          techIds.forEach(idOrName => {
+            const tech = users.find(u => u.employeeId === idOrName || u.name === idOrName || u.id === idOrName);
+            if (tech && tech.role === 'TECHNICIAN') {
+              const hasOtherRunning = tasks.some(t => 
+                t.id !== oldTask.id && 
+                t.status === 'RUNNING' && 
+                (t.assignedTo === tech.employeeId || t.assignedTo === tech.name || t.assignedTo === tech.id || 
+                 (t.assignedTechnicians && Array.isArray(t.assignedTechnicians) && t.assignedTechnicians.some((at: any) => at.employeeId === tech.employeeId)))
+              );
+              if (!hasOtherRunning) {
+                tech.status = 'FREE';
+              }
+            }
+          });
+        };
+        releaseTechs();
       }
 
       // If status changes from HOLD back to RUNNING or a percentage is set
       if (oldTask.status === 'HOLD' && (updatedData.status === 'RUNNING' || (updatedData.progress > 0 && updatedData.status !== 'HOLD'))) {
         updatedData.status = 'RUNNING';
         updatedData.startedAt = new Date().toISOString();
+        // Immediately set technician to WORKING
+        const setTechsWorking = () => {
+          const techIds: string[] = [];
+          if (oldTask.workType === 'TEAM' && oldTask.assignedTechnicians) {
+            oldTask.assignedTechnicians.forEach((at: any) => techIds.push(at.employeeId));
+          } else if (oldTask.assignedTo) {
+            techIds.push(oldTask.assignedTo);
+          }
+          techIds.forEach(idOrName => {
+            const tech = users.find(u => u.employeeId === idOrName || u.name === idOrName || u.id === idOrName);
+            if (tech && tech.role === 'TECHNICIAN') {
+              tech.status = 'WORKING';
+            }
+          });
+        };
+        setTechsWorking();
       }
 
       // Ensure logs are appended if not already handled by the logic above or the request body

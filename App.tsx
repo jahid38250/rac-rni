@@ -93,6 +93,7 @@ import { toast, Toaster } from 'sonner';
 import { ExecutiveCommandCenter } from './ExecutiveCommandCenter';
 import { CBODashboard } from './CBODashboard';
 import { AssociateAttendanceManagement } from './AssociateAttendanceManagement';
+import { RoleBasedAnalytics } from './RoleBasedAnalytics';
 
 // --- Context ---
 const ThemeContext = React.createContext('dark');
@@ -1339,10 +1340,16 @@ export default function App() {
             continue;
           }
           console.warn(`Non-JSON response from ${url} (Status ${res.status}):`, text.slice(0, 200));
+          if (res.status === 403) {
+            throw new Error(`Access Denied (Status: 403): You do not have permission to access this resource.`);
+          }
+          if (res.status === 401) {
+            throw new Error(`Unauthorized (Status: 401): Please log in again.`);
+          }
           throw new Error(
             text.includes('Starting Server')
               ? 'Server is starting up. Please try again in a few seconds.'
-              : `Server is temporarily busy (Status: ${res.status}). Please try again.`
+              : `Server error (Status: ${res.status}). Please try again.`
           );
         }
 
@@ -1359,7 +1366,12 @@ export default function App() {
           errMsg.toLowerCase().includes('failed to fetch') ||
           errMsg.toLowerCase().includes('networkerror') ||
           errMsg.toLowerCase().includes('load failed');
-        const isSafeToRetry = !options.method || options.method === 'GET';
+        const isAuthOrForbidden =
+          errMsg.includes('403') ||
+          errMsg.includes('401') ||
+          errMsg.includes('Forbidden') ||
+          errMsg.includes('Access Denied');
+        const isSafeToRetry = (!options.method || options.method === 'GET') && !isAuthOrForbidden;
         if (attempt < retries && (isNetworkErr || isSafeToRetry)) {
           await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
           continue;
@@ -2884,7 +2896,7 @@ export default function App() {
     fetchNotifications(token);
     fetchPoints(token);
     fetchPerformance(token);
-    if (['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(user?.role || '')) {
+    if (['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER', 'TECHNICIAN'].includes(user?.role || '')) {
       fetchStaff(token);
       fetchAttendance(token);
     }
@@ -2900,7 +2912,7 @@ export default function App() {
       fetchNotifications(token);
       fetchPoints(token);
       fetchPerformance(token);
-      if (['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(user?.role || '')) {
+      if (['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER', 'TECHNICIAN'].includes(user?.role || '')) {
         // Background fetch staff but skip full user state update if modal is open
         fetchStaff(token, isAnyModalOpen);
         fetchAttendance(token);
@@ -2918,7 +2930,7 @@ export default function App() {
       fetchNotifications(token);
       fetchPoints(token);
       fetchPerformance(token);
-      if (['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(user?.role || '')) {
+      if (['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER', 'TECHNICIAN'].includes(user?.role || '')) {
         fetchStaff(token, isAnyModalOpen);
         fetchAttendance(token);
       }
@@ -3125,7 +3137,7 @@ export default function App() {
         // Lazy Load: Non-critical data
         setTimeout(() => {
           fetchPerformance(data.token);
-          if (['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(data.user.role)) {
+          if (['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER', 'TECHNICIAN'].includes(data.user.role)) {
             fetchStaff(data.token);
             fetchAttendance(data.token);
           }
@@ -4192,8 +4204,8 @@ export default function App() {
     if (!tech) return { status: 'Free', color: 'text-emerald-400', bg: 'bg-emerald-400/10', task: null };
 
     const techTasks = tasks.filter(t => {
-      // Completed, rejected, cancelled, requested, or pending tasks are not active working tasks
-      if (t.status === 'COMPLETED' || t.status === 'REJECTED' || t.status === 'REQUESTED' || t.status === 'PENDING' || (t as any).status === 'CANCELLED') return false;
+      // Completed, rejected, cancelled, requested, pending, or HOLD tasks are NOT active working tasks
+      if (t.status === 'COMPLETED' || t.status === 'REJECTED' || t.status === 'REQUESTED' || t.status === 'PENDING' || t.status === 'HOLD' || (t as any).status === 'CANCELLED') return false;
 
       const techName = (tech.name || '').toLowerCase();
       const assignedTo = (t.assignedTo || '').toLowerCase();
@@ -4205,7 +4217,8 @@ export default function App() {
       return false;
     });
 
-    const activeTask = techTasks.find(t => t.status === 'RUNNING' || t.status === 'DELAYED' || t.status === 'HOLD');
+    // ONLY RUNNING or DELAYED tasks mean the technician is actively working. HOLD tasks mean the technician is FREE.
+    const activeTask = techTasks.find(t => t.status === 'RUNNING' || t.status === 'DELAYED');
     
     // Check leave / shift off statuses from attendance or user record
     if (tech.status === 'ON_LEAVE') return { status: 'On Leave', color: 'text-red-400', bg: 'bg-red-400/10', task: null };
@@ -5391,7 +5404,7 @@ export default function App() {
                         </div>
                       </div>
                     ) : (
-                      (newTask.workType === 'SINGLE' || user?.role !== 'OFFICER') ? (
+                      (newTask.workType === 'SINGLE') ? (
                         <div>
                           <label className="block text-sm font-medium text-gray-400 mb-2">Assign To</label>
                           <select 
@@ -5908,8 +5921,8 @@ export default function App() {
             color="text-cyan-500"
           />
 
-          {/* 8. Technician Monitoring */}
-          {!['CBO', 'DCBO'].includes(user?.role || '') && ['SUPER_ADMIN', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'OFFICER', 'ENGINEER'].includes(user?.role || '') && (
+          {/* 8. Technician Monitoring - available across all authorized management and supervisory panels */}
+          {['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'OFFICER', 'ENGINEER'].includes(user?.role || '') && (
             <SidebarItem 
               icon={Activity} 
               label="Technician Monitoring" 
@@ -5919,8 +5932,8 @@ export default function App() {
             />
           )}
 
-          {/* 9. Team Requests (Supervisor Approval) */}
-          {['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(user?.role || '') && (
+          {/* 9. Team Requests (Supervisor Approval) - Hidden from CBO & DCBO as their role is executive monitoring */}
+          {!['CBO', 'DCBO'].includes(user?.role || '') && ['SUPER_ADMIN', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(user?.role || '') && (
             <SidebarItem 
               icon={Bell} 
               label="Team Requests" 
@@ -6051,7 +6064,7 @@ export default function App() {
                activeTab === 'daily_task' ? 'Daily Task' :
                activeTab === 'performance' ? 'Team Performance' :
                activeTab === 'reports' ? 'Report Management' :
-               activeTab === 'analytics' ? 'Analytics' :
+               activeTab === 'analytics' ? 'Visual Analytics & Performance Intelligence' :
                activeTab === 'technician_monitoring' ? 'Technician Monitoring' :
                activeTab === 'section' || activeTab === 'models' ? (
                  user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD' || user?.role === 'SUPER_ADMIN' ? "Department Overview" :
@@ -9307,349 +9320,24 @@ export default function App() {
             </div>
           )}
 
-          {activeTab === 'analytics' && (
-            <div className="space-y-8 pb-12">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h1 className="text-3xl font-bold">Department Analytics</h1>
-                  <p className="text-xs text-gray-400 mt-1">Real-time performance metrics, officer points, and technician stats</p>
-                </div>
-                <div className="flex items-center gap-2 text-xs text-gray-400 bg-white/5 px-3 py-1.5 rounded-xl border border-white/10">
-                  <Clock size={14} className="text-blue-400" />
-                  <span>Last updated: {new Date().toLocaleTimeString()}</span>
-                </div>
-              </div>
-
-              {/* Officer Personal Performance Banner */}
-              {user?.role === 'OFFICER' && (
-                <GlassCard className="p-5 border border-amber-500/30 bg-gradient-to-r from-amber-500/10 via-blue-500/5 to-transparent">
-                  <div className="flex flex-wrap items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400">
-                        <Award size={24} />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h2 className="text-xl font-bold text-white">{user.name}</h2>
-                          <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">Officer</span>
-                        </div>
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          Employee ID: <span className="font-mono text-gray-300">{user.employeeId}</span> &bull; Performance & Points Tracking
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-6">
-                      <div className="text-center">
-                        <p className="text-[11px] uppercase tracking-wider text-gray-400 font-semibold">Your Rank</p>
-                        <p className="text-2xl font-black text-amber-400">
-                          {(() => {
-                            const rankIdx = topOfficers.findIndex(o => o.id === user.id || o.employeeId === user.employeeId);
-                            return rankIdx !== -1 ? `#${rankIdx + 1}` : 'N/A';
-                          })()}
-                        </p>
-                      </div>
-                      <div className="h-8 w-px bg-white/10" />
-                      <div className="text-center">
-                        <p className="text-[11px] uppercase tracking-wider text-gray-400 font-semibold">Total Points</p>
-                        <p className="text-2xl font-black text-amber-400">
-                          {Math.max(getValidOfficerPoints(user.employeeId), getValidOfficerPoints(user.id), Number(user.total_point || 0))}
-                        </p>
-                      </div>
-                      <div className="h-8 w-px bg-white/10" />
-                      <div className="text-center">
-                        <p className="text-[11px] uppercase tracking-wider text-gray-400 font-semibold">Completed Tasks</p>
-                        <p className="text-2xl font-black text-blue-400">
-                          {Math.max(getValidOfficerTaskCount(user.employeeId), getValidOfficerTaskCount(user.id))}
-                        </p>
-                      </div>
-                      <div className="h-8 w-px bg-white/10" />
-                      <div className="text-center">
-                        <p className="text-[11px] uppercase tracking-wider text-gray-400 font-semibold">This Month</p>
-                        <p className="text-2xl font-black text-emerald-400">
-                          {Math.max(getValidOfficerPoints(user.employeeId, true), getValidOfficerPoints(user.id, true))} pts
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </GlassCard>
-              )}
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Task Completion Trend */}
-                <GlassCard className="h-[450px] flex flex-col">
-                  <div className="flex items-center gap-2 mb-6">
-                    <TrendingUp className="text-blue-500" size={20} />
-                    <h3 className="text-lg font-bold">Weekly Task Trend</h3>
-                  </div>
-                  <div className="flex-1 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={trend}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
-                        <XAxis 
-                          dataKey="name" 
-                          stroke="#94a3b8" 
-                          fontSize={12} 
-                          tickLine={false} 
-                          axisLine={false} 
-                        />
-                        <YAxis 
-                          stroke="#94a3b8" 
-                          fontSize={12} 
-                          tickLine={false} 
-                          axisLine={false} 
-                        />
-                        <Tooltip 
-                          contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '12px', fontSize: '12px' }}
-                          itemStyle={{ color: '#fff' }}
-                        />
-                        <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
-                        <Line 
-                          type="monotone" 
-                          dataKey="completed" 
-                          stroke="#10b981" 
-                          strokeWidth={3} 
-                          dot={{ r: 4, fill: '#10b981', strokeWidth: 2, stroke: '#fff' }}
-                          activeDot={{ r: 6 }}
-                        />
-                        <Line 
-                          type="monotone" 
-                          dataKey="pending" 
-                          stroke="#3b82f6" 
-                          strokeWidth={3} 
-                          dot={{ r: 4, fill: '#3b82f6', strokeWidth: 2, stroke: '#fff' }}
-                          activeDot={{ r: 6 }}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </GlassCard>
-
-                {/* Model Distribution */}
-                <GlassCard className="h-[450px] flex flex-col">
-                  <div className="flex items-center gap-2 mb-6">
-                    <AirVent className="text-purple-500" size={20} />
-                    <h3 className="text-lg font-bold">Model Distribution</h3>
-                  </div>
-                  <div className="flex-1 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={modelDistribution}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={60}
-                          outerRadius={100}
-                          paddingAngle={5}
-                          dataKey="value"
-                        >
-                          {modelDistribution.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'][index % 7]} />
-                          ))}
-                        </Pie>
-                        <Tooltip 
-                          contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '12px', fontSize: '12px' }}
-                          itemStyle={{ color: '#fff' }}
-                        />
-                        <Legend layout="vertical" align="right" verticalAlign="middle" />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                </GlassCard>
-
-                {/* Top Performing Officers */}
-                <GlassCard className="flex flex-col">
-                  <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center gap-2">
-                      <Award className="text-amber-500" size={20} />
-                      <h3 className="text-lg font-bold">Officer Performance & Points</h3>
-                    </div>
-                    <span className="text-xs text-amber-400 font-mono font-bold bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20">
-                      {topOfficers.length} {topOfficers.length === 1 ? 'Officer' : 'Officers'}
-                    </span>
-                  </div>
-                  
-                  {topOfficersForChart.length > 0 ? (
-                    <div className="h-[300px] w-full overflow-x-auto custom-scrollbar mb-6">
-                      <div className="min-w-[600px] h-full">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={topOfficersForChart} margin={{ bottom: 60 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
-                            <XAxis 
-                              dataKey="name" 
-                              stroke="#94a3b8" 
-                              fontSize={10} 
-                              tickLine={false} 
-                              axisLine={false} 
-                              interval={0}
-                              angle={-45}
-                              textAnchor="end"
-                              height={80}
-                            />
-                            <YAxis 
-                              stroke="#94a3b8" 
-                              fontSize={12} 
-                              tickLine={false} 
-                              axisLine={false} 
-                            />
-                            <Tooltip 
-                              cursor={{ fill: '#ffffff05' }}
-                              contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '12px', fontSize: '12px' }}
-                              itemStyle={{ color: '#fff' }}
-                              labelStyle={{ color: '#3b82f6', fontWeight: 'bold', marginBottom: '4px' }}
-                            />
-                            <Bar dataKey="points" name="Total Points" radius={[4, 4, 0, 0]} fill="#f59e0b" />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="h-44 flex flex-col items-center justify-center text-gray-400 text-sm border border-white/5 rounded-2xl mb-6 bg-white/[0.02]">
-                      <Award className="text-amber-500/40 mb-2" size={28} />
-                      <p className="font-semibold text-gray-300">No Task Points Recorded Yet</p>
-                      <p className="text-xs text-gray-500 mt-1">Only officers who have earned task points will be displayed here.</p>
-                    </div>
-                  )}
-
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                      <thead>
-                        <tr className="text-gray-500 border-b border-white/5">
-                          <th className="pb-3 font-bold uppercase tracking-wider">Rank</th>
-                          <th className="pb-3 font-bold uppercase tracking-wider">Officer Name</th>
-                          <th className="pb-3 font-bold uppercase tracking-wider">Employee ID</th>
-                          <th className="pb-3 font-bold uppercase tracking-wider text-right">Points</th>
-                          <th className="pb-3 font-bold uppercase tracking-wider text-right">Tasks</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-white/5">
-                        {topOfficers.map((off, idx) => {
-                          const isMe = user && (user.id === off.id || user.employeeId === off.employeeId);
-                          return (
-                            <tr key={off.id || off.name} className={cn(
-                              "transition-colors",
-                              isMe ? "bg-amber-500/15 border-l-2 border-amber-500 hover:bg-amber-500/20" : "hover:bg-white/5"
-                            )}>
-                              <td className="py-3 font-mono text-gray-400">
-                                {idx === 0 ? '🥇 #1' : idx === 1 ? '🥈 #2' : idx === 2 ? '🥉 #3' : `#${idx + 1}`}
-                              </td>
-                              <td className="py-3 font-bold flex items-center gap-2">
-                                <span className={isMe ? "text-amber-300 font-black" : "text-white"}>{off.name}</span>
-                                {isMe && (
-                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/30 text-amber-300 font-bold border border-amber-500/50">
-                                    You
-                                  </span>
-                                )}
-                              </td>
-                              <td className="py-3 font-mono text-xs text-gray-400">{off.employeeId || '-'}</td>
-                              <td className="py-3 text-right text-amber-500 font-black text-base">{off.points}</td>
-                              <td className="py-3 text-right text-gray-400 font-mono">{off.count}</td>
-                            </tr>
-                          );
-                        })}
-                        {topOfficers.length === 0 && (
-                          <tr>
-                            <td colSpan={5} className="py-8 text-center text-gray-500">
-                              No officers with task points recorded yet. Only officers with active points are shown.
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </GlassCard>
-
-                {/* Top Performing Technicians */}
-                <GlassCard className="flex flex-col">
-                  <div className="flex items-center gap-2 mb-6">
-                    <Award className="text-blue-500" size={20} />
-                    <h3 className="text-lg font-bold">Top Performing Technicians (by Tasks)</h3>
-                  </div>
-                  
-                  <div className="h-[300px] w-full overflow-x-auto custom-scrollbar mb-6">
-                    <div className="min-w-[600px] h-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={topTechnicians} margin={{ bottom: 60 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
-                          <XAxis 
-                            dataKey="name" 
-                            stroke="#94a3b8" 
-                            fontSize={10} 
-                            tickLine={false} 
-                            axisLine={false} 
-                            interval={0}
-                            angle={-45}
-                            textAnchor="end"
-                            height={80}
-                          />
-                          <YAxis 
-                            stroke="#94a3b8" 
-                            fontSize={12} 
-                            tickLine={false} 
-                            axisLine={false} 
-                          />
-                          <Tooltip 
-                            cursor={{ fill: '#ffffff05' }}
-                            contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '12px', fontSize: '12px' }}
-                            itemStyle={{ color: '#fff' }}
-                            labelStyle={{ color: '#10b981', fontWeight: 'bold', marginBottom: '4px' }}
-                          />
-                          <Bar dataKey="tasks" name="Completed Tasks" radius={[4, 4, 0, 0]} fill="#3b82f6" />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                      <thead>
-                        <tr className="text-gray-500 border-b border-white/5">
-                          <th className="pb-3 font-bold uppercase tracking-wider">Rank</th>
-                          <th className="pb-3 font-bold uppercase tracking-wider">Technician Name</th>
-                          <th className="pb-3 font-bold uppercase tracking-wider text-right">Completed Tasks</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-white/5">
-                        {topTechnicians.map((tech, idx) => (
-                          <tr key={tech.name} className="hover:bg-white/5 transition-colors">
-                            <td className="py-3 font-mono text-gray-400">#{idx + 1}</td>
-                            <td className="py-3 font-bold">{tech.name}</td>
-                            <td className="py-3 text-right text-blue-500 font-black">{tech.tasks}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </GlassCard>
-
-                {/* Summary Stats */}
-                <div className="grid grid-cols-2 gap-4 lg:col-span-2">
-                  <GlassCard className="p-6 flex flex-col items-center justify-center text-center">
-                    <p className="text-xs text-gray-500 uppercase tracking-widest mb-2">Total Tasks</p>
-                    <p className="text-5xl font-black">{filteredTasks.length}</p>
-                  </GlassCard>
-                  <GlassCard className="p-6 flex flex-col items-center justify-center text-center">
-                    <p className="text-xs text-gray-500 uppercase tracking-widest mb-2">Completion Rate</p>
-                    <p className="text-5xl font-black text-green-500">
-                      {filteredTasks.length > 0 ? Math.round((filteredTasks.filter(t => t.status === 'COMPLETED').length / filteredTasks.length) * 100) : 0}%
-                    </p>
-                  </GlassCard>
-                  <GlassCard className="p-6 flex flex-col items-center justify-center text-center">
-                    <p className="text-xs text-gray-500 uppercase tracking-widest mb-2">Avg. Progress</p>
-                    <p className="text-5xl font-black text-blue-500">
-                      {filteredTasks.length > 0 ? Math.round(filteredTasks.reduce((acc, t) => acc + t.progress, 0) / filteredTasks.length) : 0}%
-                    </p>
-                  </GlassCard>
-                  <GlassCard className="p-6 flex flex-col items-center justify-center text-center">
-                    <p className="text-xs text-gray-500 uppercase tracking-widest mb-2">Active Staff</p>
-                    <p className="text-5xl font-black text-purple-500">
-                      {user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD'
-                        ? staffList.length 
-                        : staffList.filter(s => s.supervisorId === user?.id || s.id === user?.id).length}
-                    </p>
-                  </GlassCard>
-                </div>
-              </div>
-            </div>
+          {activeTab === 'analytics' && user && (
+            <RoleBasedAnalytics
+              user={user}
+              staffList={staffList}
+              tasks={tasks}
+              attendance={attendance}
+              pointTransactions={pointTransactions}
+              technicianPerformance={technicianPerformance}
+              onSelectTask={(task) => {
+                setSelectedTask(task);
+                setIsTaskDetailsModalOpen(true);
+              }}
+              getValidOfficerPoints={getValidOfficerPoints}
+              getValidOfficerTaskCount={getValidOfficerTaskCount}
+              getInChargeConcernEngineers={getInChargeConcernEngineers}
+              getInChargeConcernOfficers={getInChargeConcernOfficers}
+              isStaffInScope={isStaffInScope}
+            />
           )}
           {/* Reject Request Modal */}
       <AnimatePresence>
