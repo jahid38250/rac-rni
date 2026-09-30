@@ -57,6 +57,7 @@ async function startServer() {
   let users: User[] = [];
   let tasks: Task[] = [];
   let deletedTaskIds: string[] = [];
+  let deletedUserIds: string[] = [];
   let attendanceRecords: Attendance[] = [];
   let notifications: any[] = [];
   let pointTransactions: any[] = [];
@@ -120,6 +121,21 @@ async function startServer() {
     console.error("Error creating system directories:", err);
   }
 
+  function isDummyTask(t: any): boolean {
+    if (!t) return false;
+    if (t.isDummy === true || t.dummy === true) return true;
+    const title = String(t.title || '').trim().toLowerCase();
+    const details = String(t.details || '').trim().toLowerCase();
+    const id = String(t.id || '').trim();
+    const taskId = String(t.taskId || '').trim();
+
+    if (id === '1790076036607' || taskId === '20260922-1120-406') return true;
+    if (/^(\d)\1{2,}$/.test(title) || /^([a-zA-Z])\1{3,}$/.test(title)) return true;
+    if (/^(\d)\1{2,}$/.test(details) || /^([a-zA-Z])\1{3,}$/.test(details)) return true;
+    if (title === 'dummy' || title.startsWith('dummy task') || title === 'test' || title.startsWith('test task') || title === 'sample task' || title === 'temp task') return true;
+    return false;
+  }
+
   async function loadData() {
     const candidateSources: { name: string; path: string }[] = [];
 
@@ -155,6 +171,7 @@ async function startServer() {
     const usersMap = new Map<string, any>();
     const tasksMap = new Map<string, any>();
     const deletedTaskIdsSet = new Set<string>();
+    const deletedUserIdsSet = new Set<string>();
     const attendanceMap = new Map<string, any>();
     const notificationsMap = new Map<string, any>();
     const pointTransactionsMap = new Map<string, any>();
@@ -176,11 +193,17 @@ async function startServer() {
 
         validSourcesRead++;
 
-        // 1. Collect deletedTaskIds tombstones first so we don't resurrect intentionally deleted tasks
+        // 1. Collect deletedTaskIds and deletedUserIds tombstones first so we don't resurrect intentionally deleted records
         if (Array.isArray(parsed.deletedTaskIds)) {
           for (const id of parsed.deletedTaskIds) {
             const sId = String(id || '').trim();
             if (sId) deletedTaskIdsSet.add(sId);
+          }
+        }
+        if (Array.isArray(parsed.deletedUserIds)) {
+          for (const id of parsed.deletedUserIds) {
+            const sId = String(id || '').toLowerCase().trim();
+            if (sId) deletedUserIdsSet.add(sId);
           }
         }
 
@@ -192,6 +215,11 @@ async function startServer() {
             const uId = String(u.id || '').trim();
             const key = empId || uId;
             if (!key) continue;
+
+            // Skip if explicitly deleted or test artifact
+            if ((empId && deletedUserIdsSet.has(empId)) || (uId && deletedUserIdsSet.has(uId.toLowerCase())) || empId.includes('permtest')) {
+              continue;
+            }
 
             const existing = usersMap.get(key);
             if (!existing) {
@@ -215,8 +243,10 @@ async function startServer() {
             const key = tId || tTaskId;
             if (!key) continue;
 
-            // Check if explicitly deleted
-            if ((tId && deletedTaskIdsSet.has(tId)) || (tTaskId && deletedTaskIdsSet.has(tTaskId))) {
+            // Check if explicitly deleted or dummy
+            if ((tId && deletedTaskIdsSet.has(tId)) || (tTaskId && deletedTaskIdsSet.has(tTaskId)) || isDummyTask(t)) {
+              if (tId) deletedTaskIdsSet.add(tId);
+              if (tTaskId) deletedTaskIdsSet.add(tTaskId);
               continue;
             }
 
@@ -318,6 +348,7 @@ async function startServer() {
         users: unifiedUsers,
         tasks: unifiedTasks,
         deletedTaskIds: unifiedDeletedTaskIds,
+        deletedUserIds: Array.from(deletedUserIdsSet.values()),
         attendanceRecords: Array.from(attendanceMap.values()),
         notifications: Array.from(notificationsMap.values()),
         pointTransactions: Array.from(pointTransactionsMap.values()),
@@ -362,6 +393,7 @@ async function startServer() {
       users: [], 
       tasks: [], 
       deletedTaskIds: [],
+      deletedUserIds: [],
       attendanceRecords: [], 
       notifications: [], 
       pointTransactions: [], 
@@ -989,6 +1021,50 @@ async function startServer() {
       await fs.mkdir(BACKUPS_DIR, { recursive: true });
 
       // --- CRITICAL PERSISTENCE SAFEGUARD ---
+      // 1. Strictly deduplicate tasks in memory before saving, omitting any dummy or deleted tasks
+      const seenTaskIds = new Set<string>();
+      const deduplicatedTasks: any[] = [];
+      for (const t of tasks) {
+        if (!t) continue;
+        const tId = String(t.id || '').trim();
+        const tTaskId = String(t.taskId || '').trim();
+        const key = tId || tTaskId;
+        if (!key) continue;
+        const isDel = (tId && deletedTaskIds.includes(tId)) || (tTaskId && deletedTaskIds.includes(tTaskId));
+        if (isDel || isDummyTask(t)) continue;
+        if ((tId && seenTaskIds.has(tId)) || (tTaskId && seenTaskIds.has(tTaskId))) {
+          continue; // duplicate, skip
+        }
+        if (tId) seenTaskIds.add(tId);
+        if (tTaskId) seenTaskIds.add(tTaskId);
+        deduplicatedTasks.push(t);
+      }
+      tasks.length = 0;
+      tasks.push(...deduplicatedTasks);
+
+      // 2. Strictly deduplicate users in memory before saving, omitting any deleted users
+      const deletedUserIdsSet = new Set(deletedUserIds.map(id => String(id || '').toLowerCase().trim()));
+      const seenEmpIds = new Set<string>();
+      const deduplicatedUsers: any[] = [];
+      for (const u of users) {
+        if (!u) continue;
+        const empId = String(u.employeeId || '').toLowerCase().trim();
+        const uId = String(u.id || '').toLowerCase().trim();
+        const key = empId || uId;
+        if (!key) continue;
+        if ((empId && deletedUserIdsSet.has(empId)) || (uId && deletedUserIdsSet.has(uId)) || empId.includes('permtest')) {
+          continue; // deleted user, omit
+        }
+        if ((empId && seenEmpIds.has(empId)) || (uId && seenEmpIds.has(uId))) {
+          continue; // duplicate, skip
+        }
+        if (empId) seenEmpIds.add(empId);
+        if (uId) seenEmpIds.add(uId);
+        deduplicatedUsers.push(u);
+      }
+      users.length = 0;
+      users.push(...deduplicatedUsers);
+
       // Read currently stored data from disk before write to guarantee zero accidental data loss
       let diskData: any = null;
       try {
@@ -1005,19 +1081,37 @@ async function startServer() {
 
       // Safeguard 1: NEVER save empty users array if disk has valid users
       if (users.length === 0 && diskData && Array.isArray(diskData.users) && diskData.users.length > 0) {
-        console.error(`[CRITICAL SAFEGUARD] Blocked attempt to overwrite ${diskData.users.length} users with 0 users! Restoring users from disk.`);
-        users.push(...diskData.users);
+        const nonDeletedDiskUsers = diskData.users.filter((du: any) => {
+          const eId = String(du?.employeeId || '').toLowerCase().trim();
+          const uId = String(du?.id || '').toLowerCase().trim();
+          return !deletedUserIdsSet.has(eId) && !deletedUserIdsSet.has(uId) && !eId.includes('permtest');
+        });
+        if (nonDeletedDiskUsers.length > 0) {
+          console.error(`[CRITICAL SAFEGUARD] Blocked attempt to overwrite users with empty array! Restoring ${nonDeletedDiskUsers.length} non-deleted users from disk.`);
+          users.push(...nonDeletedDiskUsers);
+        }
       }
 
-      // Safeguard 2: Merge in any users that exist on disk but might be missing in memory
-      if (diskData && Array.isArray(diskData.users) && diskData.users.length > 0) {
-        const inMemoryEmpIds = new Set(users.map(u => String(u.employeeId || '').toLowerCase().trim()));
+      // Safeguard 2: Merge in any users that exist on disk but might be missing in memory ONLY if memory was empty
+      if (users.length === 0 && diskData && Array.isArray(diskData.users) && diskData.users.length > 0) {
+        const inMemoryEmpIds = new Set<string>();
+        for (const u of users) {
+          if (u.employeeId) inMemoryEmpIds.add(String(u.employeeId).toLowerCase().trim());
+          if (u.id) inMemoryEmpIds.add(String(u.id).toLowerCase().trim());
+        }
         let mergedUserCount = 0;
         for (const diskUser of diskData.users) {
+          if (!diskUser) continue;
           const empId = String(diskUser.employeeId || '').toLowerCase().trim();
-          if (empId && !inMemoryEmpIds.has(empId)) {
+          const uId = String(diskUser.id || '').toLowerCase().trim();
+          if ((empId && deletedUserIdsSet.has(empId)) || (uId && deletedUserIdsSet.has(uId)) || empId.includes('permtest')) {
+            continue; // Skip deleted users
+          }
+          const alreadyExists = (empId && inMemoryEmpIds.has(empId)) || (uId && inMemoryEmpIds.has(uId));
+          if (!alreadyExists) {
             users.push(diskUser);
-            inMemoryEmpIds.add(empId);
+            if (empId) inMemoryEmpIds.add(empId);
+            if (uId) inMemoryEmpIds.add(uId);
             mergedUserCount++;
           }
         }
@@ -1028,13 +1122,19 @@ async function startServer() {
 
       // Safeguard 3: Merge in any non-deleted tasks that exist on disk but might be missing in memory
       if (diskData && Array.isArray(diskData.tasks) && diskData.tasks.length > 0) {
-        const inMemoryTaskIds = new Set(tasks.map(t => String(t.id || t.taskId || '').trim()));
+        const inMemoryTaskIds = new Set<string>();
+        for (const t of tasks) {
+          if (t.id) inMemoryTaskIds.add(String(t.id).trim());
+          if (t.taskId) inMemoryTaskIds.add(String(t.taskId).trim());
+        }
         let mergedTaskCount = 0;
         for (const diskTask of diskData.tasks) {
+          if (!diskTask) continue;
           const tId = String(diskTask.id || '').trim();
           const tTaskId = String(diskTask.taskId || '').trim();
-          const isDeleted = (tId && deletedTaskIds.includes(tId)) || (tTaskId && deletedTaskIds.includes(tTaskId));
-          if (!isDeleted && ((tId && !inMemoryTaskIds.has(tId)) || (tTaskId && !inMemoryTaskIds.has(tTaskId)))) {
+          const isDeleted = (tId && deletedTaskIds.includes(tId)) || (tTaskId && deletedTaskIds.includes(tTaskId)) || isDummyTask(diskTask);
+          const alreadyExists = (tId && inMemoryTaskIds.has(tId)) || (tTaskId && inMemoryTaskIds.has(tTaskId));
+          if (!isDeleted && !alreadyExists) {
             tasks.push(diskTask);
             if (tId) inMemoryTaskIds.add(tId);
             if (tTaskId) inMemoryTaskIds.add(tTaskId);
@@ -1050,6 +1150,7 @@ async function startServer() {
         users,
         tasks,
         deletedTaskIds,
+        deletedUserIds,
         attendanceRecords,
         notifications,
         pointTransactions,
@@ -1300,6 +1401,9 @@ async function startServer() {
   deletedTaskIds = Array.isArray(initialData.deletedTaskIds) 
     ? (Array.from(new Set(initialData.deletedTaskIds.map((id: any) => String(id).trim()))).filter(Boolean) as string[])
     : [];
+  deletedUserIds = Array.isArray(initialData.deletedUserIds)
+    ? (Array.from(new Set(initialData.deletedUserIds.map((id: any) => String(id).toLowerCase().trim()))).filter(Boolean) as string[])
+    : [];
   
   // All tasks in persistent database are kept permanently
   tasks = Array.isArray(initialData.tasks) ? initialData.tasks.filter(Boolean) : [];
@@ -1319,6 +1423,7 @@ async function startServer() {
 
   let updated = false;
   for (const user of defaultUsers) {
+    if (user.employeeId && deletedUserIds.includes(user.employeeId.toLowerCase())) continue;
     const existingUser = users.find((u: any) => (u.employeeId && user.employeeId && u.employeeId.toLowerCase() === user.employeeId.toLowerCase()));
     if (!existingUser) {
       console.log(`Initializing missing default user: ${user.employeeId}`);
@@ -1823,6 +1928,18 @@ async function startServer() {
       formattedPhone = '0' + formattedPhone;
     }
 
+    const cleanEmpId = String(employeeId || '').toLowerCase().trim();
+    if (!cleanEmpId) {
+      return res.status(400).json({ error: "Employee ID is required" });
+    }
+
+    if (users.some(u => String(u.employeeId || '').toLowerCase().trim() === cleanEmpId)) {
+      return res.status(400).json({ error: `User with Employee ID "${employeeId}" already exists.` });
+    }
+
+    // If this employee was previously deleted, remove from tombstone
+    deletedUserIds = deletedUserIds.filter(id => id !== cleanEmpId);
+
     const newUser: User = {
       id: Date.now().toString(),
       employeeId,
@@ -1899,19 +2016,43 @@ async function startServer() {
 
   app.delete("/api/users/:id", authenticate, async (req: Request, res: Response) => {
     if (req.user.role !== 'SUPER_ADMIN' && req.user.role !== 'HOD' && req.user.role !== 'DHOD' && req.user.role !== 'CBO' && req.user.role !== 'DCBO') {
-      return res.status(403).json({ error: "Forbidden" });
+      return res.status(403).json({ error: "Forbidden: You do not have permission to delete users" });
     }
     const { id } = req.params;
-    const index = users.findIndex(u => u.id === id);
-    if (index !== -1) {
-      const deletedUser = users[index];
-      users.splice(index, 1);
-      await logAdminAction(req.user, 'USER_DELETED', `Deleted user ${deletedUser.name} (${deletedUser.employeeId})`, deletedUser.id);
-      await saveData();
-      res.status(204).send();
-    } else {
-      res.status(404).json({ error: "User not found" });
+    const cleanId = decodeURIComponent(String(id || '').trim());
+    const index = users.findIndex(u => 
+      String(u.id).trim() === cleanId || 
+      String(u.employeeId || '').toLowerCase().trim() === cleanId.toLowerCase()
+    );
+    if (index === -1) {
+      return res.status(404).json({ error: "User not found" });
     }
+
+    const deletedUser = users[index];
+    const delEmpId = String(deletedUser.employeeId || '').toLowerCase().trim();
+    const delUId = String(deletedUser.id || '').trim();
+
+    // Prevent deleting the primary super admin
+    if (delEmpId === 'jhfboss' || (deletedUser.role === 'SUPER_ADMIN' && users.filter(u => u.role === 'SUPER_ADMIN').length <= 1)) {
+      return res.status(400).json({ error: "Cannot delete the primary Super Admin account" });
+    }
+
+    // Record in deletedUserIds tombstone so they NEVER resurrect from backups or disk
+    if (delEmpId && !deletedUserIds.includes(delEmpId)) deletedUserIds.push(delEmpId);
+    if (delUId && !deletedUserIds.includes(delUId.toLowerCase())) deletedUserIds.push(delUId.toLowerCase());
+
+    // Remove from in-memory array
+    users.splice(index, 1);
+
+    // Clean up active sessions and notifications for this user
+    userSessions = userSessions.filter(s => s.userId !== delUId && String(s.employeeId || '').toLowerCase().trim() !== delEmpId);
+    notifications = notifications.filter(n => n.userId !== delUId && String(n.employeeId || '').toLowerCase().trim() !== delEmpId);
+
+    rebuildTechnicianStatuses();
+    await logAdminAction(req.user, 'USER_DELETED', `Deleted user ${deletedUser.name} (${deletedUser.employeeId})`, deletedUser.id);
+    await saveData();
+    console.log(`[USER DELETED] Successfully removed user ${deletedUser.name} (${deletedUser.employeeId}). Remaining active users: ${users.length}`);
+    res.json({ success: true, message: "User deleted successfully", deletedUser: { id: deletedUser.id, name: deletedUser.name, employeeId: deletedUser.employeeId } });
   });
 
   // --- Notifications ---
@@ -2278,7 +2419,80 @@ async function startServer() {
   });
 
   app.post("/api/system/clear-tasks", authenticate, async (req: Request, res: Response) => {
-    return res.status(403).json({ error: "Bulk deletion of tasks is permanently disabled by policy. All tasks are permanent records." });
+    if (req.user.role !== 'SUPER_ADMIN') {
+      return res.status(403).json({ error: "Only Super Admin can clear dummy tasks" });
+    }
+
+    try {
+      const dummyTasksList: any[] = [];
+      for (const t of tasks) {
+        if (isDummyTask(t)) {
+          dummyTasksList.push(t);
+        }
+      }
+
+      if (dummyTasksList.length === 0) {
+        return res.json({
+          success: true,
+          message: "No dummy tasks found in the system. All production tasks and user accounts are permanently active.",
+          clearedCount: 0,
+          remainingTasks: tasks.length
+        });
+      }
+
+      // Add dummy tasks to deletedTaskIds tombstone so they never resurrect from any backup
+      for (const dt of dummyTasksList) {
+        const tId = String(dt.id || '').trim();
+        const tTaskId = String(dt.taskId || '').trim();
+        if (tId && !deletedTaskIds.includes(tId)) deletedTaskIds.push(tId);
+        if (tTaskId && !deletedTaskIds.includes(tTaskId)) deletedTaskIds.push(tTaskId);
+      }
+
+      // Remove dummy tasks from memory
+      for (let i = tasks.length - 1; i >= 0; i--) {
+        if (isDummyTask(tasks[i])) {
+          tasks.splice(i, 1);
+        }
+      }
+
+      // Clean up points, assignment requests, notifications associated with dummy tasks
+      const deletedSet = new Set(deletedTaskIds);
+      for (let i = pointTransactions.length - 1; i >= 0; i--) {
+        const pt = pointTransactions[i];
+        if (deletedSet.has(String(pt.taskId || '').trim())) {
+          pointTransactions.splice(i, 1);
+        }
+      }
+      for (let i = assignmentRequests.length - 1; i >= 0; i--) {
+        const ar = assignmentRequests[i];
+        if (deletedSet.has(String(ar.taskId || '').trim())) {
+          assignmentRequests.splice(i, 1);
+        }
+      }
+      for (let i = notifications.length - 1; i >= 0; i--) {
+        const notif = notifications[i];
+        if (deletedSet.has(String(notif.taskId || '').trim())) {
+          notifications.splice(i, 1);
+        }
+      }
+
+      recalculateAllPoints();
+      rebuildTechnicianStatuses();
+      await logAdminAction(req.user, 'CLEAR_DUMMY_TASKS', `Cleared ${dummyTasksList.length} dummy task(s) from system`);
+      await saveData();
+
+      console.log(`[CLEAR DUMMY TASKS] Successfully cleared ${dummyTasksList.length} dummy tasks. Remaining production tasks: ${tasks.length}`);
+
+      res.json({
+        success: true,
+        message: `Successfully cleared ${dummyTasksList.length} dummy task(s). All production tasks and user accounts preserved!`,
+        clearedCount: dummyTasksList.length,
+        remainingTasks: tasks.length
+      });
+    } catch (err: any) {
+      console.error("Error clearing dummy tasks:", err);
+      res.status(500).json({ error: "Failed to clear dummy tasks: " + err.message });
+    }
   });
 
   app.get("/api/system/backup", authenticate, (req: Request, res: Response) => {

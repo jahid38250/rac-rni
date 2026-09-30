@@ -2109,5 +2109,13 @@
     "tasksCount": 0,
     "usersCount": 82,
     "source": "AUTO_BACKUP_SERVICE"
-  }
+  },
+  "deletedTaskIds": [
+    "1790076036607",
+    "20260922-1120-406"
+  ],
+  "deletedUserIds": [
+    "permtest_1790740872206",
+    "1790740872213"
+  ]
 }

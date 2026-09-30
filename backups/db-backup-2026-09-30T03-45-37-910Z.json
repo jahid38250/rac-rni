@@ -1,0 +1,157 @@
+{
+  "users": [
+    {
+      "id": "1790739931746mv146",
+      "employeeId": "jhfboss",
+      "name": "JHF Boss",
+      "password": "$2b$10$RGWa/fA1CqgVDh43tHcWCucTfljO2Dnzoavr22M406690gF8iGUCq",
+      "role": "SUPER_ADMIN",
+      "designation": "",
+      "department": "",
+      "supervisorId": "",
+      "assignedEngineers": [],
+      "total_point": 0,
+      "completedTask": 0
+    },
+    {
+      "id": "1790739931861ofmrk",
+      "employeeId": "1007",
+      "name": "Chief Business Officer",
+      "password": "$2b$10$QOKiYfTbkPEuIu8Rk7Antu.Q6TqNIBpn4PhOedzexaBZdryNsKHuC",
+      "role": "CBO",
+      "designation": "Chief Business Officer",
+      "department": "Executive Management",
+      "supervisorId": "",
+      "assignedEngineers": [],
+      "total_point": 0,
+      "completedTask": 0
+    },
+    {
+      "id": "1790739931962gm1xa",
+      "employeeId": "12467",
+      "name": "Deputy Chief Business Officer",
+      "password": "$2b$10$cddw8zxNk9EBGqdB81KaHOPY2YNYT56.KwWY9KTZ9H.ksUWYof7Om",
+      "role": "DCBO",
+      "designation": "Deputy Chief Business Officer",
+      "department": "Executive Management",
+      "supervisorId": "",
+      "assignedEngineers": [],
+      "total_point": 0,
+      "completedTask": 0
+    },
+    {
+      "id": "1790739932068gsm7p",
+      "employeeId": "17668",
+      "name": "Abdul Aowal",
+      "password": "$2b$10$MF34R77WIwleiT.j9I0.rOCbqSbwXg1zlrsK93FmfYAaT3sKO7viK",
+      "role": "DHOD",
+      "designation": "Deputy Head",
+      "department": "RAC R&I",
+      "supervisorId": "",
+      "assignedEngineers": [],
+      "total_point": 0,
+      "completedTask": 0
+    },
+    {
+      "id": "1790739932172t4wvd",
+      "employeeId": "19219",
+      "name": "Ariful Islam",
+      "password": "$2b$10$7ac/bjklkGciy68LzeE.jOIr.ocLu/StSEnQAZ1RM8dIaotI0HOtG",
+      "role": "HOD",
+      "designation": "HOD",
+      "department": "RAC R&I",
+      "supervisorId": "",
+      "assignedEngineers": [],
+      "total_point": 0,
+      "completedTask": 0
+    },
+    {
+      "id": "17907399322714t2zp",
+      "employeeId": "54589",
+      "name": "Md. Shofikul Islam",
+      "password": "$2b$10$TryzWyvARDLH7whdzsB.qeqFVtTkMDvpP6kWGkLqH5LKSNLkqIptS",
+      "role": "IN_CHARGE",
+      "designation": "IN CHARGE",
+      "department": "Chemical & Polymer",
+      "supervisorId": "",
+      "assignedEngineers": [],
+      "total_point": 0,
+      "completedTask": 0
+    },
+    {
+      "id": "1790739932373hsrex",
+      "employeeId": "58175",
+      "name": "Mohammad Alik Pramanik",
+      "password": "$2b$10$lYIK8t46is/DHdHr091Qi.jDzGUS7zlqQKBxNJY3s5jiw0uIbMyVu",
+      "role": "OFFICER",
+      "designation": "OFFICER",
+      "department": "",
+      "supervisorId": "",
+      "assignedEngineers": [],
+      "total_point": 0,
+      "completedTask": 0
+    },
+    {
+      "id": "1790739932480w46vs",
+      "employeeId": "48566",
+      "name": "Mahmudul Hasan",
+      "password": "$2b$10$WsiOJMxoB8KeJZX24ayzS.KT.k4RJIPnvg7TB/0XxB7ZWjlIfKv7W",
+      "role": "TECHNICIAN",
+      "designation": "TECHNICIAN",
+      "department": "",
+      "supervisorId": "",
+      "assignedEngineers": [],
+      "status": "FREE",
+      "total_point": 0,
+      "completedTask": 0
+    },
+    {
+      "id": "1790739932592d3pm9",
+      "employeeId": "63195",
+      "name": "Bijoy Kumar Haolader",
+      "password": "$2b$10$jACN.1wG7ypKp67XzL662uWYguo6nhG8MKTtQp56JYdPxUlNruFl2",
+      "role": "TECHNICIAN",
+      "designation": "TECHNICIAN",
+      "department": "",
+      "supervisorId": "",
+      "assignedEngineers": [],
+      "status": "FREE",
+      "total_point": 0,
+      "completedTask": 0
+    }
+  ],
+  "tasks": [],
+  "deletedTaskIds": [
+    "1790076036607",
+    "20260922-1120-406"
+  ],
+  "attendanceRecords": [],
+  "notifications": [],
+  "pointTransactions": [],
+  "technicianPerformance": [],
+  "assignmentRequests": [],
+  "activityLogs": [],
+  "adminAuditLogs": [],
+  "userSessions": [],
+  "failedLoginAttempts": [],
+  "lockedDevices": [],
+  "autoBackupSettings": {
+    "enabled": true,
+    "intervalMinutes": 60,
+    "lastBackupTime": null,
+    "nextBackupTime": null,
+    "retentionCount": 72
+  },
+  "lastSavedAt": "2026-09-30T03:45:37.910Z",
+  "backupMeta": {
+    "type": "HOURLY_AUTO",
+    "timestamp": "2026-09-30T03:45:37.910Z",
+    "tasksCount": 0,
+    "usersCount": 9,
+    "source": "AUTO_BACKUP_SERVICE"
+  },
+  "deletedUserIds": [
+    "permtest_1790740872206",
+    "1790740872213"
+  ]
+}

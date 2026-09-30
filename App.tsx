@@ -657,8 +657,8 @@ const ReportingPanel = ({ tasks, staff, user }: { tasks: Task[], staff: User[], 
               </tr>
             </thead>
             <tbody>
-              {filtered.map(t => (
-                <tr key={t.id} className="border-b border-white/5 hover:bg-white/5 transition-all">
+              {filtered.map((t, tIdx) => (
+                <tr key={`${t.id || t.taskId}-${tIdx}`} className="border-b border-white/5 hover:bg-white/5 transition-all">
                   <td className="py-4 px-4 text-sm font-mono text-gray-400">{t.taskId}</td>
                   <td className="py-4 px-4 text-sm font-bold">{t.title}</td>
                   <td className="py-4 px-4 text-sm text-gray-400">
@@ -1604,7 +1604,18 @@ export default function App() {
         toast.success('Task points updated successfully');
         // Refresh data
         const updatedTasks = await fetchJson('/api/tasks', { headers: { 'Authorization': `Bearer ${token}` } });
-        setTasks(updatedTasks);
+        if (Array.isArray(updatedTasks)) {
+          const seenIds = new Set<string>();
+          const deduped: Task[] = [];
+          for (const t of updatedTasks) {
+            if (!t) continue;
+            const k = String(t.id || t.taskId || '').trim();
+            if (!k || seenIds.has(k)) continue;
+            seenIds.add(k);
+            deduped.push(t);
+          }
+          setTasks(deduped);
+        }
         const updatedPoints = await fetchJson('/api/points', { headers: { 'Authorization': `Bearer ${token}` } });
         setPointTransactions(updatedPoints);
         const updatedUsers = await fetchJson('/api/users', { headers: { 'Authorization': `Bearer ${token}` } });
@@ -3156,7 +3167,16 @@ export default function App() {
       });
       // Never treat empty data as valid replacement if we already have tasks
       if (Array.isArray(data) && (data.length > 0 || tasks.length === 0)) {
-        setTasks(data);
+        const seenIds = new Set<string>();
+        const deduped: Task[] = [];
+        for (const t of data) {
+          if (!t) continue;
+          const k = String(t.id || t.taskId || '').trim();
+          if (!k || seenIds.has(k)) continue;
+          seenIds.add(k);
+          deduped.push(t);
+        }
+        setTasks(deduped);
       }
     } catch (err) {
       console.error('Fetch tasks error:', err);
@@ -6312,7 +6332,7 @@ export default function App() {
                   </div>
                   <div className="space-y-4">
                     {dashboardTasks.length > 0 ? dashboardTasks.slice(0, 5).map((task, i) => (
-                      <div key={task.id} className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-all group">
+                      <div key={`${task.id || task.taskId}-${i}`} className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-all group">
                         <div className="flex items-center gap-4 flex-1">
                           <div className={cn(
                             "w-12 h-12 rounded-xl flex items-center justify-center shrink-0",
@@ -6548,7 +6568,7 @@ export default function App() {
                         <p className="text-gray-500">No pending recommendations from your Officers.</p>
                       </div>
                     ) : (
-                      tasks.filter(isTaskPendingRecommendation).map(task => {
+                      tasks.filter(isTaskPendingRecommendation).map((task, idx) => {
                         const creator = staffList.find(s => s.employeeId === task.createdBy || s.id === task.createdBy);
                         const assignedPoint = recPoints[task.id] !== undefined 
                           ? recPoints[task.id] 
@@ -6563,7 +6583,7 @@ export default function App() {
                         }
 
                         return (
-                          <GlassCard key={task.id} className="p-6 border-amber-500/20">
+                          <GlassCard key={`${task.id || task.taskId}-${idx}`} className="p-6 border-amber-500/20">
                             <div className="flex justify-between items-start mb-3">
                               <div>
                                 <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -6942,8 +6962,8 @@ export default function App() {
                       {filteredTasks
                         .filter(t => activeTaskTab === 'ALL' || (activeTaskTab === 'Hold Task' ? t.status === 'HOLD' : t.status === activeTaskTab))
                         .slice(0, taskLimit)
-                        .map(task => (
-                        <tr key={task.id} className="hover:bg-white/5 transition-all group">
+                        .map((task, idx) => (
+                        <tr key={`${task.id || task.taskId}-${idx}`} className="hover:bg-white/5 transition-all group">
                           <td className="px-4 py-4 text-sm font-mono text-blue-400 font-bold whitespace-nowrap">{task.taskId}</td>
                           <td className="px-4 py-4">
                             <p className="text-sm font-bold text-white group-hover:text-blue-400 transition-colors">{task.title}</p>
@@ -7373,8 +7393,8 @@ export default function App() {
                         </div>
 
                         <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-6 bg-gray-50">
-                          {techTasks.map(task => (
-                            <div key={task.id} className="p-6 bg-white rounded-2xl border border-gray-200 shadow-sm space-y-4">
+                          {techTasks.map((task, idx) => (
+                            <div key={`${task.id || task.taskId}-${idx}`} className="p-6 bg-white rounded-2xl border border-gray-200 shadow-sm space-y-4">
                               <div className="flex justify-between items-start">
                                 <h4 className="text-xl font-black text-gray-900 leading-tight">{task.title}</h4>
                                 <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
@@ -7488,7 +7508,7 @@ export default function App() {
                       }
 
                       return (
-                        <GlassCard key={task.id} delay={idx * 0.05} className="p-6 border-l-4 border-amber-500">
+                        <GlassCard key={`${task.id || task.taskId}-${idx}`} delay={idx * 0.05} className="p-6 border-l-4 border-amber-500">
                           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
                             <div className="flex-1 space-y-3">
                               <div className="flex items-center gap-3">
@@ -7587,12 +7607,12 @@ export default function App() {
                   </div>
 
                   <div className="grid grid-cols-1 gap-4">
-                    {tasks.filter(t => (t.createdBy === user?.employeeId || t.assignedBy === user?.employeeId) && (t.status === 'REQUESTED' || t.requestStatus === 'PENDING')).map(task => {
+                    {tasks.filter(t => (t.createdBy === user?.employeeId || t.assignedBy === user?.employeeId) && (t.status === 'REQUESTED' || t.requestStatus === 'PENDING')).map((task, idx) => {
                       const assignedTechObj = staffList.find(s => s.id === task.assignedTo || s.employeeId === task.assignedTo);
                       const supervisor = staffList.find(s => s.id === assignedTechObj?.supervisorId || s.employeeId === assignedTechObj?.supervisorId);
 
                       return (
-                        <GlassCard key={task.id} className="p-4 bg-white/5">
+                        <GlassCard key={`${task.id || task.taskId}-${idx}`} className="p-4 bg-white/5">
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                             <div>
                               <div className="flex items-center gap-2 mb-1">
@@ -7953,8 +7973,8 @@ export default function App() {
                             <div className="w-full mt-2">
                               {tasks
                                 .filter(t => (t.assignedTo === staff.name || t.assignedTo === staff.employeeId || t.assignedTo === staff.id) && (t.status === 'RUNNING' || t.status === 'DELAYED' || t.status === 'HOLD'))
-                                .map(t => (
-                                  <div key={t.id} className="mb-2">
+                                .map((t, tIdx) => (
+                                  <div key={`${t.id || t.taskId}-${tIdx}`} className="mb-2">
                                     <p className="text-[10px] text-blue-400 font-bold truncate mb-1">{t.title}</p>
                                     <CountdownTimer task={t} />
                                   </div>
@@ -8431,8 +8451,8 @@ export default function App() {
             <div className="space-y-6">
               <h1 className="text-3xl font-bold">My Assigned Tasks</h1>
               <div className="grid grid-cols-1 gap-6">
-                {tasks.filter(t => t.assignedTo === user?.name || t.assignedTo === user?.id).map(task => (
-                  <GlassCard key={task.id} className="flex flex-col md:flex-row gap-6 items-center">
+                {tasks.filter(t => t.assignedTo === user?.name || t.assignedTo === user?.id).map((task, idx) => (
+                  <GlassCard key={`${task.id || task.taskId}-${idx}`} className="flex flex-col md:flex-row gap-6 items-center">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
                         <span className="text-xs font-mono text-blue-400">{task.taskId}</span>
@@ -8833,8 +8853,8 @@ export default function App() {
 
                         <div className="space-y-3">
                            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Recent Tasks</p>
-                           {modelTasks.slice(0, 3).map(t => (
-                             <div key={t.id} className="p-3 rounded-xl bg-white/5 border border-white/5 flex justify-between items-center hover:bg-white/10 transition-all cursor-pointer" onClick={() => { setSelectedTask(t); setIsTaskDetailsModalOpen(true); }}>
+                           {modelTasks.slice(0, 3).map((t, tIdx) => (
+                             <div key={`${t.id || t.taskId}-${tIdx}`} className="p-3 rounded-xl bg-white/5 border border-white/5 flex justify-between items-center hover:bg-white/10 transition-all cursor-pointer" onClick={() => { setSelectedTask(t); setIsTaskDetailsModalOpen(true); }}>
                                <div className="min-w-0">
                                  <p className="text-xs font-bold truncate">{t.title}</p>
                                  <p className="text-[9px] text-gray-500">{t.taskId}</p>
@@ -9036,8 +9056,8 @@ export default function App() {
                             Pending Tasks
                           </h4>
                           <div className="space-y-3">
-                            {engineerTasks.filter(t => t.status === 'PENDING').map(task => (
-                              <div key={task.id} className="p-4 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-all cursor-pointer group" onClick={() => { setSelectedTask(task); setIsTaskDetailsModalOpen(true); }}>
+                            {engineerTasks.filter(t => t.status === 'PENDING').map((task, idx) => (
+                              <div key={`${task.id || task.taskId}-${idx}`} className="p-4 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-all cursor-pointer group" onClick={() => { setSelectedTask(task); setIsTaskDetailsModalOpen(true); }}>
                                 <div className="flex justify-between items-start mb-2">
                                   <div>
                                     <h5 className="text-base font-bold truncate pr-2">{task.title}</h5>
@@ -9098,8 +9118,8 @@ export default function App() {
                             Running Tasks
                           </h4>
                           <div className="space-y-3">
-                            {engineerTasks.filter(t => t.status === 'RUNNING').map(task => (
-                              <div key={task.id} className="p-3 rounded-xl bg-blue-500/5 border border-blue-500/10 hover:border-blue-500/20 transition-all cursor-pointer group" onClick={() => { setSelectedTask(task); setIsTaskDetailsModalOpen(true); }}>
+                            {engineerTasks.filter(t => t.status === 'RUNNING').map((task, idx) => (
+                              <div key={`${task.id || task.taskId}-${idx}`} className="p-3 rounded-xl bg-blue-500/5 border border-blue-500/10 hover:border-blue-500/20 transition-all cursor-pointer group" onClick={() => { setSelectedTask(task); setIsTaskDetailsModalOpen(true); }}>
                                 <div className="flex justify-between items-start mb-2">
                                   <h5 className="text-sm font-bold truncate pr-2">{task.title}</h5>
                                   <Info size={14} className="text-blue-400" />
@@ -9143,8 +9163,8 @@ export default function App() {
                             Completed Tasks
                           </h4>
                           <div className="space-y-3">
-                            {engineerTasks.filter(t => t.status === 'COMPLETED').map(task => (
-                              <div key={task.id} className="p-3 rounded-xl bg-green-500/5 border border-green-500/10 hover:border-green-500/20 transition-all cursor-pointer group" onClick={() => { setSelectedTask(task); setIsTaskDetailsModalOpen(true); }}>
+                            {engineerTasks.filter(t => t.status === 'COMPLETED').map((task, idx) => (
+                              <div key={`${task.id || task.taskId}-${idx}`} className="p-3 rounded-xl bg-green-500/5 border border-green-500/10 hover:border-green-500/20 transition-all cursor-pointer group" onClick={() => { setSelectedTask(task); setIsTaskDetailsModalOpen(true); }}>
                                 <div className="flex justify-between items-start mb-2">
                                   <h5 className="text-sm font-bold truncate pr-2">{task.title}</h5>
                                   <CheckCircle size={14} className="text-green-500" />
@@ -9208,8 +9228,8 @@ export default function App() {
                     General Work Monitoring
                   </h2>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {tasks.filter(t => t.model === 'General Work').map(task => (
-                      <GlassCard key={task.id} className="p-4 border-blue-500/20">
+                    {tasks.filter(t => t.model === 'General Work').map((task, idx) => (
+                      <GlassCard key={`${task.id || task.taskId}-${idx}`} className="p-4 border-blue-500/20">
                          <div className="flex justify-between items-start mb-3">
                            <h3 className="font-bold text-white">{task.title}</h3>
                            <span className={cn(
@@ -9253,8 +9273,8 @@ export default function App() {
             <div className="space-y-6">
               <h1 className="text-3xl font-bold">Technician Workspace</h1>
               <div className="grid grid-cols-1 gap-6">
-                {tasks.filter(t => t.assignedTo === user?.id || t.assignedTo.toLowerCase() === user?.name?.toLowerCase()).map(task => (
-                  <GlassCard key={task.id} className="flex flex-col md:flex-row gap-6 items-center">
+                {tasks.filter(t => t.assignedTo === user?.id || t.assignedTo.toLowerCase() === user?.name?.toLowerCase()).map((task, idx) => (
+                  <GlassCard key={`${task.id || task.taskId}-${idx}`} className="flex flex-col md:flex-row gap-6 items-center">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
                         <h3 className="text-xl font-bold">{task.title}</h3>
