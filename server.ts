@@ -102,13 +102,13 @@ async function startServer() {
   const BACKUPS_DIR = path.join(process.cwd(), "backups");
   const UPLOADS_DIR = path.join(process.cwd(), "uploads");
 
-  // Auto-backup configuration state
+  // Auto-backup configuration state (5-minute continuous auto-backup)
   let autoBackupSettings = {
     enabled: true,
-    intervalMinutes: 60,
+    intervalMinutes: 5,
     lastBackupTime: null as string | null,
     nextBackupTime: null as string | null,
-    retentionCount: 72
+    retentionCount: 288 // 24 hours of 5-minute snapshots
   };
 
   // Ensure necessary directories exist synchronously or on boot
@@ -121,103 +121,243 @@ async function startServer() {
   }
 
   async function loadData() {
-    let loadedContent: any = null;
-    let loadedFrom: string = '';
+    const candidateSources: { name: string; path: string }[] = [];
 
-    // 1. Attempt to load from primary DATA_FILE (data.json)
+    // Collect all candidate persistence files
+    if (fsSync.existsSync(DATA_FILE)) candidateSources.push({ name: 'DATA_FILE', path: DATA_FILE });
+    if (fsSync.existsSync(DB_FILE)) candidateSources.push({ name: 'DB_FILE', path: DB_FILE });
+    const bakFile = DATA_FILE + ".bak";
+    if (fsSync.existsSync(bakFile)) candidateSources.push({ name: 'BAK_FILE', path: bakFile });
+
+    const latestHourly = path.join(BACKUPS_DIR, 'latest-hourly-db.json');
+    if (fsSync.existsSync(latestHourly)) candidateSources.push({ name: 'LATEST_HOURLY', path: latestHourly });
+
+    const latestBackup = path.join(BACKUPS_DIR, 'latest-backup.json');
+    if (fsSync.existsSync(latestBackup)) candidateSources.push({ name: 'LATEST_BACKUP', path: latestBackup });
+
     try {
-      if (fsSync.existsSync(DATA_FILE)) {
-        console.log(`Checking data from primary file: ${DATA_FILE}`);
-        const content = await fs.readFile(DATA_FILE, "utf-8");
-        const parsed = JSON.parse(content);
-        if (parsed && typeof parsed === 'object') {
-          loadedContent = parsed;
-          loadedFrom = DATA_FILE;
+      if (fsSync.existsSync(BACKUPS_DIR)) {
+        const backupFiles = (await fs.readdir(BACKUPS_DIR))
+          .filter(f => f.startsWith('db-backup-') && f.endsWith('.json'))
+          .sort()
+          .reverse()
+          .slice(0, 10);
+        for (const bf of backupFiles) {
+          candidateSources.push({ name: `BACKUP_${bf}`, path: path.join(BACKUPS_DIR, bf) });
         }
       }
-    } catch (err: any) {
-      console.error(`Error reading ${DATA_FILE}:`, err.message);
+    } catch (e: any) {
+      console.warn("Could not scan backup directory:", e.message);
     }
 
-    // 2. Inspect DB_FILE (data/db.json). Compare timestamps to pick the freshest version
-    try {
-      if (fsSync.existsSync(DB_FILE)) {
-        console.log(`Checking data from database file: ${DB_FILE}`);
-        const dbContent = await fs.readFile(DB_FILE, "utf-8");
-        const parsedDb = JSON.parse(dbContent);
-        if (parsedDb && typeof parsedDb === 'object') {
-          if (!loadedContent) {
-            loadedContent = parsedDb;
-            loadedFrom = DB_FILE;
-          } else {
-            const dataTasks = Array.isArray(loadedContent.tasks) ? loadedContent.tasks.length : 0;
-            const dbTasks = Array.isArray(parsedDb.tasks) ? parsedDb.tasks.length : 0;
-            const dataTime = loadedContent.lastSavedAt ? new Date(loadedContent.lastSavedAt).getTime() : 0;
-            const dbTime = parsedDb.lastSavedAt ? new Date(parsedDb.lastSavedAt).getTime() : 0;
+    console.log(`Inspecting ${candidateSources.length} candidate persistent database sources for boot recovery...`);
 
-            if (dataTasks > 0 && dbTasks === 0) {
-              console.log(`[DATA PROTECTION] Keeping DATA_FILE (${dataTasks} tasks) over empty DB_FILE.`);
-            } else if (dbTasks > 0 && dataTasks === 0) {
-              console.log(`[DATA RECOVERY] DB_FILE has ${dbTasks} tasks while DATA_FILE has 0. Using DB_FILE.`);
-              loadedContent = parsedDb;
-              loadedFrom = DB_FILE;
-            } else if (dbTime > dataTime) {
-              console.log(`[DATA RECOVERY] DB_FILE has fresher timestamp (${parsedDb.lastSavedAt}) than DATA_FILE (${loadedContent.lastSavedAt}). Using DB_FILE.`);
-              loadedContent = parsedDb;
-              loadedFrom = DB_FILE;
+    const usersMap = new Map<string, any>();
+    const tasksMap = new Map<string, any>();
+    const deletedTaskIdsSet = new Set<string>();
+    const attendanceMap = new Map<string, any>();
+    const notificationsMap = new Map<string, any>();
+    const pointTransactionsMap = new Map<string, any>();
+    const performanceMap = new Map<string, any>();
+    const requestsMap = new Map<string, any>();
+    const activityLogsMap = new Map<string, any>();
+    const adminAuditLogsMap = new Map<string, any>();
+    const userSessionsMap = new Map<string, any>();
+    const failedLoginsMap = new Map<string, any>();
+    const lockedDevicesMap = new Map<string, any>();
+
+    let validSourcesRead = 0;
+
+    for (const src of candidateSources) {
+      try {
+        const raw = await fs.readFile(src.path, 'utf-8');
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') continue;
+
+        validSourcesRead++;
+
+        // 1. Collect deletedTaskIds tombstones first so we don't resurrect intentionally deleted tasks
+        if (Array.isArray(parsed.deletedTaskIds)) {
+          for (const id of parsed.deletedTaskIds) {
+            const sId = String(id || '').trim();
+            if (sId) deletedTaskIdsSet.add(sId);
+          }
+        }
+
+        // 2. Merge users
+        if (Array.isArray(parsed.users)) {
+          for (const u of parsed.users) {
+            if (!u) continue;
+            const empId = String(u.employeeId || '').toLowerCase().trim();
+            const uId = String(u.id || '').trim();
+            const key = empId || uId;
+            if (!key) continue;
+
+            const existing = usersMap.get(key);
+            if (!existing) {
+              usersMap.set(key, u);
+            } else {
+              // Merge/preserve richer data (e.g. hashed passwords, designations, departments)
+              const hasHash = u.password && u.password.startsWith('$2');
+              const existingHasHash = existing.password && existing.password.startsWith('$2');
+              const preferNew = (!existingHasHash && hasHash) || (!existing.designation && u.designation) || (!existing.department && u.department);
+              usersMap.set(key, preferNew ? { ...existing, ...u } : { ...u, ...existing });
             }
           }
         }
-      }
-    } catch (err: any) {
-      console.error(`Error reading ${DB_FILE}:`, err.message);
-    }
 
-    // 3. Fallback to DATA_FILE.bak if primary files could not be loaded
-    if (!loadedContent) {
-      try {
-        const bakFile = DATA_FILE + ".bak";
-        if (fsSync.existsSync(bakFile)) {
-          const content = await fs.readFile(bakFile, "utf-8");
-          const parsed = JSON.parse(content);
-          if (parsed && typeof parsed === 'object') {
-            loadedContent = parsed;
-            loadedFrom = bakFile;
-            console.log(`[AUTO-RECOVERY] Recovered database state from backup ${bakFile}!`);
+        // 3. Merge tasks (strictly preserving all records not in deletedTaskIds)
+        if (Array.isArray(parsed.tasks)) {
+          for (const t of parsed.tasks) {
+            if (!t) continue;
+            const tId = String(t.id || '').trim();
+            const tTaskId = String(t.taskId || '').trim();
+            const key = tId || tTaskId;
+            if (!key) continue;
+
+            // Check if explicitly deleted
+            if ((tId && deletedTaskIdsSet.has(tId)) || (tTaskId && deletedTaskIdsSet.has(tTaskId))) {
+              continue;
+            }
+
+            if (!tasksMap.has(key)) {
+              tasksMap.set(key, t);
+            } else {
+              // Keep the latest version if both have it
+              const cur = tasksMap.get(key);
+              const curTime = cur.updatedAt ? new Date(cur.updatedAt).getTime() : 0;
+              const newTime = t.updatedAt ? new Date(t.updatedAt).getTime() : 0;
+              if (newTime > curTime) {
+                tasksMap.set(key, t);
+              }
+            }
           }
         }
-      } catch (bakErr: any) {
-        console.warn("Could not check backup file:", bakErr.message);
-      }
-    }
 
-    // 4. ONLY if neither DATA_FILE, DB_FILE, nor .bak could be loaded, inspect recent backups
-    if (!loadedContent) {
-      try {
-        const latestBackup = path.join(BACKUPS_DIR, 'latest-hourly-db.json');
-        if (fsSync.existsSync(latestBackup)) {
-          const content = await fs.readFile(latestBackup, "utf-8");
-          const parsed = JSON.parse(content);
-          if (parsed && typeof parsed === 'object') {
-            loadedContent = parsed;
-            loadedFrom = latestBackup;
-            console.log(`[AUTO-RECOVERY] Recovered database state from backup ${latestBackup}!`);
+        // 4. Merge attendance records
+        if (Array.isArray(parsed.attendanceRecords || parsed.assignments)) {
+          const list = parsed.attendanceRecords || parsed.assignments;
+          for (const a of list) {
+            if (!a) continue;
+            const aKey = `${a.technicianId || a.employeeId || a.id}_${a.date}`;
+            if (!attendanceMap.has(aKey)) attendanceMap.set(aKey, a);
           }
         }
-      } catch (backupErr: any) {
-        console.warn("Could not check latest backup:", backupErr.message);
+
+        // 5. Merge point transactions
+        if (Array.isArray(parsed.pointTransactions)) {
+          for (const pt of parsed.pointTransactions) {
+            if (pt && pt.id) pointTransactionsMap.set(String(pt.id), pt);
+          }
+        }
+
+        // 6. Merge notifications
+        if (Array.isArray(parsed.notifications)) {
+          for (const n of parsed.notifications) {
+            if (n && n.id) notificationsMap.set(String(n.id), n);
+          }
+        }
+
+        // 7. Merge technicianPerformance
+        if (Array.isArray(parsed.technicianPerformance)) {
+          for (const tp of parsed.technicianPerformance) {
+            if (tp && (tp.id || tp.employeeId)) performanceMap.set(String(tp.id || tp.employeeId), tp);
+          }
+        }
+
+        // 8. Merge assignmentRequests
+        if (Array.isArray(parsed.assignmentRequests)) {
+          for (const ar of parsed.assignmentRequests) {
+            if (ar && ar.id) requestsMap.set(String(ar.id), ar);
+          }
+        }
+
+        // 9. Merge activity logs
+        if (Array.isArray(parsed.activityLogs)) {
+          for (const al of parsed.activityLogs) {
+            if (al && al.id) activityLogsMap.set(String(al.id), al);
+          }
+        }
+
+        // 10. Merge adminAuditLogs
+        if (Array.isArray(parsed.adminAuditLogs)) {
+          for (const aal of parsed.adminAuditLogs) {
+            if (aal && aal.id) adminAuditLogsMap.set(String(aal.id), aal);
+          }
+        }
+
+        // 11. Merge userSessions
+        if (Array.isArray(parsed.userSessions)) {
+          for (const s of parsed.userSessions) {
+            if (s && s.id) userSessionsMap.set(String(s.id), s);
+          }
+        }
+
+        // 12. Auto backup settings
+        if (parsed.autoBackupSettings && typeof parsed.autoBackupSettings === 'object') {
+          autoBackupSettings = {
+            ...autoBackupSettings,
+            ...parsed.autoBackupSettings,
+            intervalMinutes: 5 // Enforce 5-minute auto backup
+          };
+        }
+
+      } catch (err: any) {
+        console.warn(`[PERSISTENCE RECOVERY] Warning reading ${src.name} (${src.path}):`, err.message);
       }
     }
 
-    if (loadedContent) {
-      console.log(`Successfully loaded database state from ${loadedFrom} (Tasks: ${loadedContent.tasks?.length || 0}, Users: ${loadedContent.users?.length || 0})`);
-      if (loadedContent.autoBackupSettings) {
-        autoBackupSettings = { ...autoBackupSettings, ...loadedContent.autoBackupSettings };
+    const unifiedUsers = Array.from(usersMap.values());
+    const unifiedTasks = Array.from(tasksMap.values());
+    const unifiedDeletedTaskIds = Array.from(deletedTaskIdsSet.values());
+
+    console.log(`[PERSISTENCE UNIFIED] Loaded database state across ${validSourcesRead} storage files: ${unifiedUsers.length} Users, ${unifiedTasks.length} Tasks, ${attendanceMap.size} Attendance records.`);
+
+    if (unifiedUsers.length > 0 || unifiedTasks.length > 0) {
+      const unifiedState = {
+        users: unifiedUsers,
+        tasks: unifiedTasks,
+        deletedTaskIds: unifiedDeletedTaskIds,
+        attendanceRecords: Array.from(attendanceMap.values()),
+        notifications: Array.from(notificationsMap.values()),
+        pointTransactions: Array.from(pointTransactionsMap.values()),
+        technicianPerformance: Array.from(performanceMap.values()),
+        assignmentRequests: Array.from(requestsMap.values()),
+        activityLogs: Array.from(activityLogsMap.values()),
+        adminAuditLogs: Array.from(adminAuditLogsMap.values()),
+        userSessions: Array.from(userSessionsMap.values()),
+        failedLoginAttempts: Array.from(failedLoginsMap.values()),
+        lockedDevices: Array.from(lockedDevicesMap.values()),
+        autoBackupSettings,
+        lastSavedAt: new Date().toISOString()
+      };
+
+      // Synchronize unified state immediately to disk
+      try {
+        const jsonStr = JSON.stringify(unifiedState, null, 2);
+        const uniqueSuffix = `${process.pid}.${Date.now()}`;
+        
+        const tmp1 = `${DATA_FILE}.${uniqueSuffix}.boot.tmp`;
+        await fs.writeFile(tmp1, jsonStr, 'utf-8');
+        await fs.rename(tmp1, DATA_FILE);
+
+        const tmp2 = `${DB_FILE}.${uniqueSuffix}.boot.tmp`;
+        await fs.writeFile(tmp2, jsonStr, 'utf-8');
+        await fs.rename(tmp2, DB_FILE);
+
+        const tmp3 = `${bakFile}.${uniqueSuffix}.boot.tmp`;
+        await fs.writeFile(tmp3, jsonStr, 'utf-8');
+        await fs.rename(tmp3, bakFile);
+
+        console.log(`[PERSISTENCE SYNC] Unified state successfully persisted to primary files.`);
+      } catch (syncErr: any) {
+        console.error("[PERSISTENCE SYNC ERROR] Could not persist boot unified state:", syncErr.message);
       }
-      return loadedContent;
+
+      return unifiedState;
     }
 
-    console.warn("No existing data found in data.json, data/db.json, or backups. Initializing with empty state.");
+    console.warn("No existing data found in any storage files. Initializing clean state.");
     return { 
       users: [], 
       tasks: [], 
@@ -848,6 +988,64 @@ async function startServer() {
       await fs.mkdir(DATA_DIR, { recursive: true });
       await fs.mkdir(BACKUPS_DIR, { recursive: true });
 
+      // --- CRITICAL PERSISTENCE SAFEGUARD ---
+      // Read currently stored data from disk before write to guarantee zero accidental data loss
+      let diskData: any = null;
+      try {
+        if (fsSync.existsSync(DATA_FILE)) {
+          const raw = await fs.readFile(DATA_FILE, "utf-8");
+          diskData = JSON.parse(raw);
+        } else if (fsSync.existsSync(DB_FILE)) {
+          const raw = await fs.readFile(DB_FILE, "utf-8");
+          diskData = JSON.parse(raw);
+        }
+      } catch (readErr: any) {
+        console.warn("[PERSISTENCE SAFEGUARD] Warning reading disk data before write:", readErr.message);
+      }
+
+      // Safeguard 1: NEVER save empty users array if disk has valid users
+      if (users.length === 0 && diskData && Array.isArray(diskData.users) && diskData.users.length > 0) {
+        console.error(`[CRITICAL SAFEGUARD] Blocked attempt to overwrite ${diskData.users.length} users with 0 users! Restoring users from disk.`);
+        users.push(...diskData.users);
+      }
+
+      // Safeguard 2: Merge in any users that exist on disk but might be missing in memory
+      if (diskData && Array.isArray(diskData.users) && diskData.users.length > 0) {
+        const inMemoryEmpIds = new Set(users.map(u => String(u.employeeId || '').toLowerCase().trim()));
+        let mergedUserCount = 0;
+        for (const diskUser of diskData.users) {
+          const empId = String(diskUser.employeeId || '').toLowerCase().trim();
+          if (empId && !inMemoryEmpIds.has(empId)) {
+            users.push(diskUser);
+            inMemoryEmpIds.add(empId);
+            mergedUserCount++;
+          }
+        }
+        if (mergedUserCount > 0) {
+          console.log(`[PERSISTENCE SAFEGUARD] Preserved ${mergedUserCount} disk users into memory before saving.`);
+        }
+      }
+
+      // Safeguard 3: Merge in any non-deleted tasks that exist on disk but might be missing in memory
+      if (diskData && Array.isArray(diskData.tasks) && diskData.tasks.length > 0) {
+        const inMemoryTaskIds = new Set(tasks.map(t => String(t.id || t.taskId || '').trim()));
+        let mergedTaskCount = 0;
+        for (const diskTask of diskData.tasks) {
+          const tId = String(diskTask.id || '').trim();
+          const tTaskId = String(diskTask.taskId || '').trim();
+          const isDeleted = (tId && deletedTaskIds.includes(tId)) || (tTaskId && deletedTaskIds.includes(tTaskId));
+          if (!isDeleted && ((tId && !inMemoryTaskIds.has(tId)) || (tTaskId && !inMemoryTaskIds.has(tTaskId)))) {
+            tasks.push(diskTask);
+            if (tId) inMemoryTaskIds.add(tId);
+            if (tTaskId) inMemoryTaskIds.add(tTaskId);
+            mergedTaskCount++;
+          }
+        }
+        if (mergedTaskCount > 0) {
+          console.log(`[PERSISTENCE SAFEGUARD] Preserved ${mergedTaskCount} disk tasks into memory before saving.`);
+        }
+      }
+
       const dataToSave = {
         users,
         tasks,
@@ -869,7 +1067,10 @@ async function startServer() {
       const jsonStr = JSON.stringify(dataToSave, null, 2);
 
       // Verify serialization integrity before touching disk
-      JSON.parse(jsonStr);
+      const parsedVerification = JSON.parse(jsonStr);
+      if (!parsedVerification || !Array.isArray(parsedVerification.users)) {
+        throw new Error("Serialization verification failed: corrupted JSON output");
+      }
 
       const uniqueSuffix = `${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}`;
 
@@ -898,6 +1099,7 @@ async function startServer() {
   function saveData(_allowEmpty?: boolean): Promise<void> {
     savePromise = savePromise.then(() => performDiskSave()).catch(err => {
       console.error("[DATABASE ERROR] Error in sequential save queue:", err);
+      throw err; // Propagate error so caller is aware of save status
     });
     return savePromise;
   }
@@ -929,7 +1131,7 @@ async function startServer() {
         autoBackupSettings,
         lastSavedAt: now.toISOString(),
         backupMeta: {
-          type: isManual ? 'MANUAL' : 'HOURLY_AUTO',
+          type: isManual ? 'MANUAL' : 'FIVE_MIN_AUTO',
           timestamp: now.toISOString(),
           tasksCount: tasks.length,
           usersCount: users.length,
@@ -945,23 +1147,28 @@ async function startServer() {
       await fs.writeFile(tmpFile, jsonStr, 'utf-8');
       await fs.rename(tmpFile, filepath);
 
-      // 2. Update backups/latest-hourly-db.json
+      // 2. Update backups/latest-hourly-db.json and backups/latest-backup.json
       const latestPath = path.join(BACKUPS_DIR, 'latest-hourly-db.json');
       const tmpLatest = `${latestPath}.${uniqueSuffix}.tmp`;
       await fs.writeFile(tmpLatest, jsonStr, 'utf-8');
       await fs.rename(tmpLatest, latestPath);
 
+      const latestGenPath = path.join(BACKUPS_DIR, 'latest-backup.json');
+      const tmpLatestGen = `${latestGenPath}.${uniqueSuffix}.tmp`;
+      await fs.writeFile(tmpLatestGen, jsonStr, 'utf-8');
+      await fs.rename(tmpLatestGen, latestGenPath);
+
       autoBackupSettings.lastBackupTime = now.toISOString();
-      autoBackupSettings.nextBackupTime = new Date(now.getTime() + (autoBackupSettings.intervalMinutes || 60) * 60 * 1000).toISOString();
+      autoBackupSettings.nextBackupTime = new Date(now.getTime() + (autoBackupSettings.intervalMinutes || 5) * 60 * 1000).toISOString();
 
       await pruneOldBackups();
 
-      console.log(`[BACKUP SUCCESS] ${isManual ? 'Manual' : 'Hourly Auto'} Backup created: ${filename} (Tasks: ${tasks.length}, Users: ${users.length}, Size: ${Buffer.byteLength(jsonStr)} bytes)`);
+      console.log(`[BACKUP SUCCESS] ${isManual ? 'Manual' : '5-Minute Auto'} Backup created: ${filename} (Tasks: ${tasks.length}, Users: ${users.length}, Size: ${Buffer.byteLength(jsonStr)} bytes)`);
 
       return {
         filename,
         timestamp: now.toISOString(),
-        type: isManual ? 'MANUAL' : 'HOURLY_AUTO',
+        type: isManual ? 'MANUAL' : 'FIVE_MIN_AUTO',
         size: Buffer.byteLength(jsonStr),
         tasksCount: tasks.length,
         usersCount: users.length
@@ -996,26 +1203,26 @@ async function startServer() {
   function startAutoBackupSchedule() {
     if (autoBackupInterval) clearInterval(autoBackupInterval);
 
-    // Initial snapshot 5s after startup to guarantee a starting point
+    // Initial snapshot 3s after startup to guarantee a starting point
     setTimeout(async () => {
       try {
         await createHourlyBackup(false);
       } catch (e) {
         console.error("Initial auto-backup snapshot failed:", e);
       }
-    }, 5000);
+    }, 3000);
 
-    const intervalMs = Math.max(5, autoBackupSettings.intervalMinutes || 60) * 60 * 1000;
+    const intervalMs = Math.max(5, autoBackupSettings.intervalMinutes || 5) * 60 * 1000;
     autoBackupInterval = setInterval(async () => {
       if (!autoBackupSettings.enabled) return;
       try {
-        console.log(`[AUTO-BACKUP] Triggering scheduled hourly backup...`);
+        console.log(`[AUTO-BACKUP] Triggering scheduled 5-minute backup...`);
         await createHourlyBackup(false);
       } catch (err) {
-        console.error("[AUTO-BACKUP] Scheduled hourly backup error:", err);
+        console.error("[AUTO-BACKUP] Scheduled 5-minute backup error:", err);
       }
     }, intervalMs);
-    console.log(`[AUTO-BACKUP] Hourly auto-backup scheduler initialized (Every ${autoBackupSettings.intervalMinutes}m / 1 hour).`);
+    console.log(`[AUTO-BACKUP] 5-minute auto-backup scheduler initialized (Every ${autoBackupSettings.intervalMinutes}m).`);
   }
 
   function rebuildTechnicianStatuses() {
@@ -1088,14 +1295,8 @@ async function startServer() {
     { employeeId: "63195", name: "Bijoy Kumar Haolader", password: "3624", role: "TECHNICIAN", designation: "TECHNICIAN" }
   ];
 
-  const excludedEmployeeIds = ["42274", "ADMIN001", "jhfadmin@jhf.com", "CBO001", "DCBO001"];
-
-  if (!initialData.users) initialData.users = [];
-  
-  users = (initialData.users || []).filter((u: any) => 
-    !excludedEmployeeIds.includes(String(u.employeeId || '').trim()) && 
-    !excludedEmployeeIds.includes(String(u.email || '').trim())
-  );
+  // Preserve all users permanently without automatic deletion or exclusions
+  users = Array.isArray(initialData.users) ? initialData.users.filter(Boolean) : [];
   deletedTaskIds = Array.isArray(initialData.deletedTaskIds) 
     ? (Array.from(new Set(initialData.deletedTaskIds.map((id: any) => String(id).trim()))).filter(Boolean) as string[])
     : [];
@@ -1103,7 +1304,7 @@ async function startServer() {
   // All tasks in persistent database are kept permanently
   tasks = Array.isArray(initialData.tasks) ? initialData.tasks.filter(Boolean) : [];
   
-  attendanceRecords = initialData.attendanceRecords || initialData.assignments || [];
+  attendanceRecords = initialData.attendanceRecords || (initialData as any).assignments || [];
   notifications = initialData.notifications || [];
   pointTransactions = initialData.pointTransactions || [];
   technicianPerformance = initialData.technicianPerformance || [];
@@ -1118,9 +1319,9 @@ async function startServer() {
 
   let updated = false;
   for (const user of defaultUsers) {
-    const existingUser = users.find((u: any) => u.employeeId.toLowerCase() === user.employeeId.toLowerCase());
+    const existingUser = users.find((u: any) => (u.employeeId && user.employeeId && u.employeeId.toLowerCase() === user.employeeId.toLowerCase()));
     if (!existingUser) {
-      console.log(`Initializing default user: ${user.employeeId}`);
+      console.log(`Initializing missing default user: ${user.employeeId}`);
       const hashedPassword = await bcrypt.hash(user.password, 10);
       users.push({
         id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
@@ -1135,19 +1336,15 @@ async function startServer() {
       });
       updated = true;
     } else {
-      // Ensure executive roles and DHOD designations are properly enforced
-      if (['CBO', 'DCBO', 'SUPER_ADMIN', 'DHOD', 'HOD'].includes(user.role) && existingUser.role !== user.role) {
-        console.log(`Updating role for ${user.employeeId} to ${user.role}`);
+      // PRESERVE user customizations (name, designation, department). Only set role if completely missing.
+      if (!existingUser.role) {
         existingUser.role = user.role as Role;
-        existingUser.name = user.name || existingUser.name;
-        existingUser.designation = (user as any).designation || existingUser.designation;
-        existingUser.department = (user as any).department || existingUser.department;
         updated = true;
       }
       
       if (!existingUser.password || !existingUser.password.startsWith('$2')) {
         // If user exists but has no valid bcrypt password hash, set it
-        console.log(`Setting missing/unhashed password for default user: ${user.employeeId}`);
+        console.log(`Setting missing password hash for user: ${user.employeeId}`);
         existingUser.password = await bcrypt.hash(user.password, 10);
         updated = true;
       }
@@ -2030,7 +2227,6 @@ async function startServer() {
         }
 
         if (!employeeId) continue;
-        if (excludedEmployeeIds.includes(employeeId) || excludedEmployeeIds.includes(email)) continue;
 
         const existingUser = users.find(u => u.employeeId.toString().toLowerCase() === employeeId.toLowerCase());
         const hashedPassword = await bcrypt.hash(employeeId, 10);
@@ -2223,6 +2419,13 @@ async function startServer() {
     try {
       const content = await fs.readFile(filePath, "utf-8");
       const data = JSON.parse(content);
+      if (!data || typeof data !== 'object') {
+        return res.status(400).json({ error: "Invalid backup file contents" });
+      }
+
+      if (!Array.isArray(data.users) || data.users.length === 0) {
+        return res.status(400).json({ error: "Restore rejected: Backup contains zero user records. Overwriting database with empty users is blocked." });
+      }
       
       const replaceArray = (target: any[], source: any) => {
         if (Array.isArray(source)) {
@@ -2285,6 +2488,10 @@ async function startServer() {
     
     if (!data || typeof data !== 'object') {
       return res.status(400).json({ error: "Invalid backup data" });
+    }
+
+    if (!Array.isArray(data.users) || data.users.length === 0) {
+      return res.status(400).json({ error: "Restore rejected: Backup payload contains zero user records. Overwriting database with empty users is blocked." });
     }
 
     try {
@@ -4199,19 +4406,10 @@ Output JSON format:
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running at http://localhost:${PORT}`);
     
-    // Run initial recalculation, default password verification, and status rebuild after server is up
+    // Run initial recalculation and status rebuild after server is up (without overwriting user passwords or profiles)
     setTimeout(async () => {
       try {
         console.log("Running initial data synchronization...");
-        for (const user of defaultUsers) {
-          const existingUser = users.find((u: any) => u.employeeId.toLowerCase() === user.employeeId.toLowerCase());
-          if (existingUser && existingUser.password) {
-            const isMatch = await bcrypt.compare(user.password, existingUser.password);
-            if (!isMatch) {
-              existingUser.password = await bcrypt.hash(user.password, 10);
-            }
-          }
-        }
         recalculateAllPoints();
         rebuildTechnicianStatuses();
         await saveData();

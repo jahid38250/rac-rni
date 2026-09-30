@@ -2053,16 +2053,8 @@ export default function App() {
   }, [tasks, user, staffList, globalFilters]);
 
   const dashboardTasks = useMemo(() => {
-    const now = new Date();
-    // Default to last 30 days / 1 month + all active/non-completed tasks so tasks NEVER disappear
-    const oneMonthAgo = new Date(now.getTime() - 31 * 24 * 60 * 60 * 1000);
-    
-    return filteredTasks.filter(t => {
-      const taskDate = new Date(t.createdAt);
-      const isRecent = !isNaN(taskDate.getTime()) && taskDate >= oneMonthAgo;
-      const isNotCompleted = t.status !== 'COMPLETED';
-      return isRecent || isNotCompleted;
-    });
+    // All tasks remain permanently visible on the dashboard without artificial time-based truncation
+    return filteredTasks;
   }, [filteredTasks]);
 
   const [isProcessingEmployees, setIsProcessingEmployees] = useState(false);
@@ -2194,7 +2186,8 @@ export default function App() {
       const data = await fetchJson('/api/users', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      if (Array.isArray(data)) {
+      // Never treat empty data as valid replacement if we already have staff
+      if (Array.isArray(data) && (data.length > 0 || staffList.length === 0)) {
         setStaffList(data);
         // Update current user state if found in the list to reflect live mapping changes
         // But skip it if a modal is open to avoid a full-app re-render that might disrupt typing
@@ -3161,7 +3154,10 @@ export default function App() {
       const data = await fetchJson(url, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      if (data && Array.isArray(data)) setTasks(data);
+      // Never treat empty data as valid replacement if we already have tasks
+      if (Array.isArray(data) && (data.length > 0 || tasks.length === 0)) {
+        setTasks(data);
+      }
     } catch (err) {
       console.error('Fetch tasks error:', err);
     }
@@ -8154,17 +8150,17 @@ export default function App() {
                         </div>
                         <div>
                           <div className="flex items-center gap-3">
-                            <h2 className="text-2xl font-bold">Auto Data Backup (DB File)</h2>
+                            <h2 className="text-2xl font-bold">Auto Data Backup (5-Min Auto-Backup)</h2>
                             <span className={cn(
                               "px-3 py-0.5 rounded-full text-xs font-bold flex items-center gap-1.5",
                               backupSettings?.autoBackupEnabled ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40" : "bg-amber-500/20 text-amber-400 border border-amber-500/40"
                             )}>
                               <span className={cn("w-2 h-2 rounded-full", backupSettings?.autoBackupEnabled ? "bg-emerald-400 animate-pulse" : "bg-amber-400")} />
-                              {backupSettings?.autoBackupEnabled ? "AUTO-BACKUP ACTIVE" : "PAUSED"}
+                              {backupSettings?.autoBackupEnabled ? "5-MIN AUTO-BACKUP ACTIVE" : "PAUSED"}
                             </span>
                           </div>
                           <p className="text-gray-400 text-sm mt-1">
-                            Per-hour automated snapshot of all operational data & employees directly into persistent DB files (<span className="font-mono text-emerald-400">data/db.json</span> & <span className="font-mono text-emerald-400">backups/</span>).
+                            Continuous 5-minute automated snapshot of all operational data & employees directly into persistent DB files (<span className="font-mono text-emerald-400">data/db.json</span> & <span className="font-mono text-emerald-400">backups/</span>).
                           </p>
                         </div>
                       </div>
@@ -8181,7 +8177,7 @@ export default function App() {
                         )}
                       >
                         <Zap size={18} />
-                        {backupSettings?.autoBackupEnabled ? "Hourly Backup: ON" : "Hourly Backup: OFF"}
+                        {backupSettings?.autoBackupEnabled ? "5-Min Backup: ON" : "5-Min Backup: OFF"}
                       </button>
                     </div>
 
@@ -8189,8 +8185,8 @@ export default function App() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                       <div className="bg-white/5 rounded-xl p-4 border border-white/5">
                         <p className="text-xs text-gray-400 font-medium">Backup Schedule</p>
-                        <p className="text-lg font-bold text-white mt-1">Every 1 Hour</p>
-                        <p className="text-[11px] text-emerald-400/80 mt-0.5">Automated Per-Hour Snapshot</p>
+                        <p className="text-lg font-bold text-white mt-1">Every 5 Minutes</p>
+                        <p className="text-[11px] text-emerald-400/80 mt-0.5">Automated 5-Min Continuous Snapshot</p>
                       </div>
                       <div className="bg-white/5 rounded-xl p-4 border border-white/5">
                         <p className="text-xs text-gray-400 font-medium">Last Saved Backup</p>
@@ -8208,9 +8204,9 @@ export default function App() {
                         <p className="text-sm font-bold text-white mt-1">
                           {backupSettings?.nextBackupTime 
                             ? new Date(backupSettings.nextBackupTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-                            : 'Within 1 hour'}
+                            : 'Within 5 minutes'}
                         </p>
-                        <p className="text-[11px] text-gray-400 mt-0.5">Continuous auto-timer</p>
+                        <p className="text-[11px] text-gray-400 mt-0.5">Continuous auto-timer (5 min)</p>
                       </div>
                       <div className="bg-white/5 rounded-xl p-4 border border-white/5">
                         <p className="text-xs text-gray-400 font-medium">Live Protected Data</p>
