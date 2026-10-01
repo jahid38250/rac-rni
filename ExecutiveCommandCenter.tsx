@@ -692,7 +692,7 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
         <div className="bg-white/5 border border-white/10 rounded-2xl p-4 hover:border-blue-500/30 transition-all backdrop-blur-md">
           <div className="flex items-center justify-between text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">
-            <span>Total Employees Monitored</span>
+            <span>Workforce</span>
             <Users size={16} className="text-blue-400" />
           </div>
           <div className="text-2xl font-black text-white">{overallEnterpriseMetrics.totalStaff}</div>
@@ -710,11 +710,11 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
 
         <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 hover:border-emerald-500/40 transition-all backdrop-blur-md">
           <div className="flex items-center justify-between text-emerald-400 text-xs font-bold uppercase tracking-wider mb-2">
-            <span>Overall Completion %</span>
+            <span>Completed</span>
             <CheckCircle2 size={16} className="text-emerald-400" />
           </div>
-          <div className="text-2xl font-black text-emerald-300">{overallEnterpriseMetrics.overallPerformance}%</div>
-          <div className="text-[11px] text-emerald-400/80 mt-1 font-semibold">{overallEnterpriseMetrics.totalCompleted} of {overallEnterpriseMetrics.totalTasks} tasks</div>
+          <div className="text-2xl font-black text-emerald-300">{overallEnterpriseMetrics.totalCompleted}</div>
+          <div className="text-[11px] text-emerald-400/80 mt-1 font-semibold">{overallEnterpriseMetrics.overallPerformance}% Completion</div>
         </div>
 
         <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 hover:border-amber-500/40 transition-all backdrop-blur-md">
@@ -739,11 +739,131 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
 
         <div className="bg-purple-500/10 border border-purple-500/20 rounded-2xl p-4 hover:border-purple-500/40 transition-all backdrop-blur-md">
           <div className="flex items-center justify-between text-purple-400 text-xs font-bold uppercase tracking-wider mb-2">
-            <span>Total Verified Task Points</span>
+            <span>Total Points</span>
             <Award size={16} className="text-purple-400" />
           </div>
           <div className="text-2xl font-black text-purple-300">{overallEnterpriseMetrics.totalVerifiedPoints}</div>
           <div className="text-[11px] text-purple-400/80 mt-1">Verified source points</div>
+        </div>
+      </div>
+
+      {/* Associated HOD Attendance & Operational Overview (Section 4 & 14) */}
+      <div className="bg-slate-900/80 border border-white/10 rounded-3xl p-6 shadow-xl backdrop-blur-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5 pb-4 border-b border-white/10">
+          <div>
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-blue-400 mb-1">
+              <Building2 size={16} />
+              <span>Hierarchical HOD Monitoring</span>
+            </div>
+            <h2 className="text-xl font-bold text-white">Associated HOD Attendance & Department Operations</h2>
+          </div>
+          <div className="text-xs text-slate-400">
+            Source of Truth: Real-time system attendance records ({todayDateStr})
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {hodStaffList.length === 0 ? (
+            <div className="col-span-full py-8 text-center text-slate-500 text-sm">
+              No HOD personnel currently registered in system.
+            </div>
+          ) : (
+            hodStaffList.map(hod => {
+              const status = getPersonTodayAttendance(hod.employeeId);
+              const hodMetrics = getPersonPeriodMetrics(hod);
+              
+              // Status color mapping
+              let statusBadgeClass = "bg-emerald-500/20 text-emerald-400 border-emerald-500/30";
+              if (status === 'ABSENT') statusBadgeClass = "bg-red-500/20 text-red-400 border-red-500/30";
+              else if (status === 'LEAVE') statusBadgeClass = "bg-amber-500/20 text-amber-400 border-amber-500/30";
+              else if (status === 'SHORT_LEAVE') statusBadgeClass = "bg-purple-500/20 text-purple-400 border-purple-500/30";
+
+              return (
+                <div 
+                  key={hod.id}
+                  className="bg-white/5 border border-white/10 hover:border-blue-500/40 rounded-2xl p-5 transition-all group relative overflow-hidden"
+                >
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <div className="min-w-0">
+                      <div className="font-bold text-white text-base truncate group-hover:text-blue-300 transition-colors">
+                        {hod.name}
+                      </div>
+                      <div className="text-xs text-slate-400 truncate">
+                        ID: {hod.employeeId} • {hod.department || 'Executive Department'}
+                      </div>
+                    </div>
+                    <span className={cn("px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border shrink-0", statusBadgeClass)}>
+                      {status}
+                    </span>
+                  </div>
+
+                  {/* Department metrics summary */}
+                  <div className="grid grid-cols-3 gap-2 py-3 border-y border-white/5 text-center my-3">
+                    <div>
+                      <div className="text-xs text-slate-400">Tasks</div>
+                      <div className="text-sm font-bold text-white">{hodMetrics.totalTasksGiven}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-slate-400">Done</div>
+                      <div className="text-sm font-bold text-emerald-400">{hodMetrics.completedTasks}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-slate-400">Perf %</div>
+                      <div className="text-sm font-bold text-blue-400">{hodMetrics.performancePercentage}%</div>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center justify-between gap-2 mt-3 pt-1">
+                    <button
+                      onClick={() => {
+                        setSelectedPerson(hod);
+                        setIsDetailDrawerOpen(true);
+                      }}
+                      className="text-xs text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1 transition-colors"
+                    >
+                      <Eye size={13} />
+                      View Details
+                    </button>
+                    {onUpdateAttendance && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => onUpdateAttendance(hod.employeeId, 'PRESENT')}
+                          title="Mark Present"
+                          className={cn(
+                            "px-2 py-0.5 rounded text-[10px] font-bold transition-all",
+                            status === 'PRESENT' ? "bg-emerald-500 text-white" : "bg-white/5 hover:bg-emerald-500/20 text-slate-400"
+                          )}
+                        >
+                          P
+                        </button>
+                        <button
+                          onClick={() => onUpdateAttendance(hod.employeeId, 'LEAVE')}
+                          title="Mark Leave"
+                          className={cn(
+                            "px-2 py-0.5 rounded text-[10px] font-bold transition-all",
+                            status === 'LEAVE' ? "bg-amber-500 text-white" : "bg-white/5 hover:bg-amber-500/20 text-slate-400"
+                          )}
+                        >
+                          L
+                        </button>
+                        <button
+                          onClick={() => onUpdateAttendance(hod.employeeId, 'ABSENT')}
+                          title="Mark Absent"
+                          className={cn(
+                            "px-2 py-0.5 rounded text-[10px] font-bold transition-all",
+                            status === 'ABSENT' ? "bg-red-500 text-white" : "bg-white/5 hover:bg-red-500/20 text-slate-400"
+                          )}
+                        >
+                          A
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
 
@@ -1123,13 +1243,9 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
 
                       {/* Attendance */}
                       <td className="py-3 px-3">
-                        {person.role === 'TECHNICIAN' ? (
-                          <span className="text-slate-500 text-[11px] font-mono" title="Technician attendance managed by Officers">—</span>
-                        ) : (
-                          <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider inline-block", attClass)}>
-                            {attendanceStatus}
-                          </span>
-                        )}
+                        <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider inline-block", attClass)}>
+                          {attendanceStatus}
+                        </span>
                       </td>
 
                       {/* Total Tasks Given */}

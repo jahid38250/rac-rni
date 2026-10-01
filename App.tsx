@@ -34,8 +34,6 @@ import {
   Database,
   Award,
   Activity,
-  Briefcase,
-  Building2,
   Phone,
   PhoneOff,
   Edit2,
@@ -67,7 +65,9 @@ import {
   Save,
   FileDown,
   Check,
-  RotateCcw
+  RotateCcw,
+  FolderDown,
+  PlusCircle
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -91,9 +91,6 @@ import { cn } from './utils';
 import { Role, User, Task, Attendance, TaskLog, TaskStatus, PointTransaction, TechnicianPerformance } from './types';
 import { toast, Toaster } from 'sonner';
 import { ExecutiveCommandCenter } from './ExecutiveCommandCenter';
-import { CBODashboard } from './CBODashboard';
-import { AssociateAttendanceManagement } from './AssociateAttendanceManagement';
-import { RoleBasedAnalytics } from './RoleBasedAnalytics';
 
 // --- Context ---
 const ThemeContext = React.createContext('dark');
@@ -657,8 +654,8 @@ const ReportingPanel = ({ tasks, staff, user }: { tasks: Task[], staff: User[], 
               </tr>
             </thead>
             <tbody>
-              {filtered.map((t, tIdx) => (
-                <tr key={`${t.id || t.taskId}-${tIdx}`} className="border-b border-white/5 hover:bg-white/5 transition-all">
+              {filtered.map(t => (
+                <tr key={t.id} className="border-b border-white/5 hover:bg-white/5 transition-all">
                   <td className="py-4 px-4 text-sm font-mono text-gray-400">{t.taskId}</td>
                   <td className="py-4 px-4 text-sm font-bold">{t.title}</td>
                   <td className="py-4 px-4 text-sm text-gray-400">
@@ -1211,7 +1208,6 @@ export default function App() {
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
   const [rejectTaskId, setRejectTaskId] = useState<string | null>(null);
   const [rejectRemarks, setRejectRemarks] = useState('');
-  const [executiveSubView, setExecutiveSubView] = useState<'CBO' | 'DCBO'>('CBO');
 
   // Track if any modal is open to prevent interruptions
   const isAnyModalOpen = isTaskModalOpen || isStaffModalOpen || isTaskDetailsModalOpen || isStatusUpdateModalOpen || isChangePasswordModalOpen || isResetPasswordModalOpen || isRejectModalOpen;
@@ -1340,16 +1336,10 @@ export default function App() {
             continue;
           }
           console.warn(`Non-JSON response from ${url} (Status ${res.status}):`, text.slice(0, 200));
-          if (res.status === 403) {
-            throw new Error(`Access Denied (Status: 403): You do not have permission to access this resource.`);
-          }
-          if (res.status === 401) {
-            throw new Error(`Unauthorized (Status: 401): Please log in again.`);
-          }
           throw new Error(
             text.includes('Starting Server')
               ? 'Server is starting up. Please try again in a few seconds.'
-              : `Server error (Status: ${res.status}). Please try again.`
+              : `Server is temporarily busy (Status: ${res.status}). Please try again.`
           );
         }
 
@@ -1366,12 +1356,7 @@ export default function App() {
           errMsg.toLowerCase().includes('failed to fetch') ||
           errMsg.toLowerCase().includes('networkerror') ||
           errMsg.toLowerCase().includes('load failed');
-        const isAuthOrForbidden =
-          errMsg.includes('403') ||
-          errMsg.includes('401') ||
-          errMsg.includes('Forbidden') ||
-          errMsg.includes('Access Denied');
-        const isSafeToRetry = (!options.method || options.method === 'GET') && !isAuthOrForbidden;
+        const isSafeToRetry = !options.method || options.method === 'GET';
         if (attempt < retries && (isNetworkErr || isSafeToRetry)) {
           await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
           continue;
@@ -1412,42 +1397,6 @@ export default function App() {
     return null;
   };
 
-  // Helper functions for IN_CHARGE concern engineers & officers
-  const getInChargeConcernEngineers = (inChargeUser: User): User[] => {
-    if (!inChargeUser) return [];
-    const myId = inChargeUser.id;
-    const myEmpId = (inChargeUser.employeeId || '').toString().trim();
-    const hodEmpIds = ['19219', '17668'];
-    const inChargeEngList = (inChargeUser.assignedEngineers || []).filter(id => !hodEmpIds.includes(id));
-    return staffList.filter(u => u.role === 'ENGINEER' && (
-      u.supervisorId === myId ||
-      u.supervisorId === myEmpId ||
-      (Array.isArray(u.supervisor_ids) && (u.supervisor_ids.includes(myId) || u.supervisor_ids.includes(myEmpId))) ||
-      inChargeEngList.includes(u.employeeId) ||
-      inChargeEngList.includes(u.id)
-    ));
-  };
-
-  const getInChargeConcernOfficers = (inChargeUser: User): User[] => {
-    if (!inChargeUser) return [];
-    const myEmpId = (inChargeUser.employeeId || '').toString().trim();
-    const myId = inChargeUser.id;
-    const hodEmpIds = ['19219', '17668'];
-    const concernEngs = getInChargeConcernEngineers(inChargeUser);
-    const concernEngEmpIds = concernEngs.map(e => e.employeeId);
-    const concernEngIds = concernEngs.map(e => e.id);
-
-    return staffList.filter(u => u.role === 'OFFICER' && (
-      u.supervisorId === myId ||
-      u.supervisorId === myEmpId ||
-      (Array.isArray(u.supervisor_ids) && (u.supervisor_ids.includes(myId) || u.supervisor_ids.includes(myEmpId))) ||
-      (u.assignedEngineers || []).includes(myEmpId) ||
-      (u.assignedEngineers || []).includes(myId) ||
-      (u.assignedEngineers || []).some(id => !hodEmpIds.includes(id) && (concernEngEmpIds.includes(id) || concernEngIds.includes(id))) ||
-      (Boolean(u.supervisorId) && (concernEngIds.includes(u.supervisorId) || concernEngEmpIds.includes(u.supervisorId)))
-    ));
-  };
-
   const isStaffInScope = (staff: User): boolean => {
     if (!user) return false;
     
@@ -1457,42 +1406,11 @@ export default function App() {
     
     if (currentUserData.role === 'SUPER_ADMIN' || currentUserData.role === 'CBO' || currentUserData.role === 'DCBO' || currentUserData.role === 'HOD' || currentUserData.role === 'DHOD') return true;
     
-    if (currentUserData.role === 'IN_CHARGE') {
-      const concernEngs = getInChargeConcernEngineers(currentUserData);
-      const concernOfficers = getInChargeConcernOfficers(currentUserData);
-      const concernEngEmpIds = concernEngs.map(e => e.employeeId);
-      const concernEngIds = concernEngs.map(e => e.id);
-      const concernOfficerIds = concernOfficers.map(o => o.id);
-      const concernOfficerEmpIds = concernOfficers.map(o => o.employeeId);
-
-      if (staff.role === 'ENGINEER') {
-        return concernEngs.some(e => e.id === staff.id || e.employeeId === staff.employeeId);
-      }
-
-      if (staff.role === 'OFFICER') {
-        return concernOfficers.some(o => o.id === staff.id || o.employeeId === staff.employeeId);
-      }
-
-      if (staff.role === 'TECHNICIAN') {
-        const officer = staffList.find(s => s.id === staff.supervisorId || (staff.supervisor_ids || []).includes(s.employeeId));
-        if (officer?.role === 'OFFICER') {
-          return concernOfficerIds.includes(officer.id) || concernOfficerEmpIds.includes(officer.employeeId);
-        }
-        if (officer?.role === 'ENGINEER') {
-          return concernEngIds.includes(officer.id) || concernEngEmpIds.includes(officer.employeeId);
-        }
-      }
-      return false;
-    }
-
-    if (currentUserData.role === 'MODEL_MANAGER') {
+    if (currentUserData.role === 'IN_CHARGE' || currentUserData.role === 'MODEL_MANAGER') {
       const myAssignedEngs = currentUserData.assignedEngineers || [];
       
-      // If it's an engineer, check if assigned to me
-      if (staff.role === 'ENGINEER') {
-        return myAssignedEngs.includes(staff.employeeId) || 
-               myAssignedEngs.includes(staff.id);
-      }
+      // If it's an engineer, check if they are assigned to me
+      if (staff.role === 'ENGINEER') return myAssignedEngs.includes(staff.employeeId);
       
       // If it's an officer, check if any of their assigned engineers are assigned to me
       if (staff.role === 'OFFICER') {
@@ -1604,18 +1522,7 @@ export default function App() {
         toast.success('Task points updated successfully');
         // Refresh data
         const updatedTasks = await fetchJson('/api/tasks', { headers: { 'Authorization': `Bearer ${token}` } });
-        if (Array.isArray(updatedTasks)) {
-          const seenIds = new Set<string>();
-          const deduped: Task[] = [];
-          for (const t of updatedTasks) {
-            if (!t) continue;
-            const k = String(t.id || t.taskId || '').trim();
-            if (!k || seenIds.has(k)) continue;
-            seenIds.add(k);
-            deduped.push(t);
-          }
-          setTasks(deduped);
-        }
+        setTasks(updatedTasks);
         const updatedPoints = await fetchJson('/api/points', { headers: { 'Authorization': `Bearer ${token}` } });
         setPointTransactions(updatedPoints);
         const updatedUsers = await fetchJson('/api/users', { headers: { 'Authorization': `Bearer ${token}` } });
@@ -1951,39 +1858,22 @@ export default function App() {
         }
 
         if (currentUserData.role === 'IN_CHARGE') {
-          const isCreatedByMe = t.createdBy === myEmpId || t.createdBy === currentUserData.id;
-          const isAssignedByMe = t.assignedBy === myEmpId || t.assignedBy === currentUserData.id;
-          if (isCreatedByMe || isAssignedByMe) return true;
-
-          const concernEngs = getInChargeConcernEngineers(currentUserData);
-          const concernOfficers = getInChargeConcernOfficers(currentUserData);
-          const concernEngEmpIds = concernEngs.map(e => e.employeeId);
-          const concernEngIds = concernEngs.map(e => e.id);
-          const concernOfficerEmpIds = concernOfficers.map(o => o.employeeId);
-          const concernOfficerIds = concernOfficers.map(o => o.id);
-          const allConcernIds = [...concernEngEmpIds, ...concernEngIds, ...concernOfficerEmpIds, ...concernOfficerIds];
-
-          const isDirectMatch = allConcernIds.includes(t.createdBy) ||
-                                allConcernIds.includes(t.assignedBy) ||
-                                allConcernIds.includes(t.assignedTo) ||
-                                (t.concernEngineerId && concernEngEmpIds.includes(t.concernEngineerId)) ||
-                                (t.responsibleOfficerId && concernOfficerEmpIds.includes(t.responsibleOfficerId)) ||
-                                (t.inChargeId && (t.inChargeId === myEmpId || t.inChargeId === currentUserData.id));
-          if (isDirectMatch) return true;
-
-          const creator = staffList.find(s => s.employeeId === t.createdBy || s.id === t.createdBy);
-          const assigner = staffList.find(s => s.employeeId === t.assignedBy || s.id === t.assignedBy);
-          const assignee = staffList.find(s => s.id === t.assignedTo || s.name.toLowerCase().trim() === (t.assignedTo || '').toLowerCase().trim() || s.employeeId === t.assignedTo);
+          const creator = staffList.find(s => s.employeeId === t.createdBy);
+          const assigner = staffList.find(s => s.employeeId === t.assignedBy);
+          const assignee = staffList.find(s => s.id === t.assignedTo || s.name.toLowerCase().trim() === t.assignedTo.toLowerCase().trim());
           
           const creatorEngId = getResponsibleEngineerId(creator);
           const assignerEngId = getResponsibleEngineerId(assigner);
           const assigneeEngId = getResponsibleEngineerId(assignee);
           
-          const isCreatorInScope = creatorEngId && concernEngEmpIds.includes(creatorEngId);
-          const isAssignerInScope = assignerEngId && concernEngEmpIds.includes(assignerEngId);
-          const isAssigneeInScope = assigneeEngId && concernEngEmpIds.includes(assigneeEngId);
-
-          return isCreatorInScope || isAssignerInScope || isAssigneeInScope;
+          const isCreatorInScope = creatorEngId && myAssignedEngs.includes(creatorEngId);
+          const isAssignerInScope = assignerEngId && myAssignedEngs.includes(assignerEngId);
+          const isAssigneeInScope = assigneeEngId && myAssignedEngs.includes(assigneeEngId);
+          
+          const isCreatedByMe = t.createdBy === myEmpId;
+          const isAssignedByMe = t.assignedBy === myEmpId;
+          
+          return isCreatorInScope || isAssignerInScope || isAssigneeInScope || isCreatedByMe || isAssignedByMe;
         }
 
         const assignedTo = (t.assignedTo || '').toLowerCase();
@@ -2064,8 +1954,14 @@ export default function App() {
   }, [tasks, user, staffList, globalFilters]);
 
   const dashboardTasks = useMemo(() => {
-    // All tasks remain permanently visible on the dashboard without artificial time-based truncation
-    return filteredTasks;
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    
+    return filteredTasks.filter(t => {
+      const taskDate = new Date(t.createdAt);
+      return taskDate.getMonth() === currentMonth && taskDate.getFullYear() === currentYear;
+    });
   }, [filteredTasks]);
 
   const [isProcessingEmployees, setIsProcessingEmployees] = useState(false);
@@ -2197,8 +2093,7 @@ export default function App() {
       const data = await fetchJson('/api/users', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      // Never treat empty data as valid replacement if we already have staff
-      if (Array.isArray(data) && (data.length > 0 || staffList.length === 0)) {
+      if (Array.isArray(data)) {
         setStaffList(data);
         // Update current user state if found in the list to reflect live mapping changes
         // But skip it if a modal is open to avoid a full-app re-render that might disrupt typing
@@ -2900,7 +2795,7 @@ export default function App() {
     fetchNotifications(token);
     fetchPoints(token);
     fetchPerformance(token);
-    if (['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER', 'TECHNICIAN'].includes(user?.role || '')) {
+    if (['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(user?.role || '')) {
       fetchStaff(token);
       fetchAttendance(token);
     }
@@ -2916,7 +2811,7 @@ export default function App() {
       fetchNotifications(token);
       fetchPoints(token);
       fetchPerformance(token);
-      if (['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER', 'TECHNICIAN'].includes(user?.role || '')) {
+      if (['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(user?.role || '')) {
         // Background fetch staff but skip full user state update if modal is open
         fetchStaff(token, isAnyModalOpen);
         fetchAttendance(token);
@@ -2934,7 +2829,7 @@ export default function App() {
       fetchNotifications(token);
       fetchPoints(token);
       fetchPerformance(token);
-      if (['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER', 'TECHNICIAN'].includes(user?.role || '')) {
+      if (['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(user?.role || '')) {
         fetchStaff(token, isAnyModalOpen);
         fetchAttendance(token);
       }
@@ -3141,7 +3036,7 @@ export default function App() {
         // Lazy Load: Non-critical data
         setTimeout(() => {
           fetchPerformance(data.token);
-          if (['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER', 'TECHNICIAN'].includes(data.user.role)) {
+          if (['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(data.user.role)) {
             fetchStaff(data.token);
             fetchAttendance(data.token);
           }
@@ -3159,25 +3054,14 @@ export default function App() {
   const [notifications, setNotifications] = useState<{id: string, message: string, read: boolean, timestamp: string}[]>([]);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
 
-  const fetchTasks = async (token: string, _all = true) => {
+  const fetchTasks = async (token: string, all = false) => {
     try {
-      const url = '/api/tasks?all=true';
+      // Performance Boost: Limit initial load to current month or last 100 tasks
+      const url = all ? '/api/tasks?all=true&limit=100' : `/api/tasks?month=${new Date().getMonth() + 1}&year=${new Date().getFullYear()}`;
       const data = await fetchJson(url, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      // Never treat empty data as valid replacement if we already have tasks
-      if (Array.isArray(data) && (data.length > 0 || tasks.length === 0)) {
-        const seenIds = new Set<string>();
-        const deduped: Task[] = [];
-        for (const t of data) {
-          if (!t) continue;
-          const k = String(t.id || t.taskId || '').trim();
-          if (!k || seenIds.has(k)) continue;
-          seenIds.add(k);
-          deduped.push(t);
-        }
-        setTasks(deduped);
-      }
+      if (data) setTasks(data);
     } catch (err) {
       console.error('Fetch tasks error:', err);
     }
@@ -3214,6 +3098,7 @@ export default function App() {
     intervalMinutes: number;
     lastBackupTime: string | null;
     nextBackupTime: string | null;
+    sourceFolder?: string;
     liveStats?: { tasksCount: number; usersCount: number; attendanceCount: number };
     backups: Array<{
       filename: string;
@@ -3222,6 +3107,8 @@ export default function App() {
       tasksCount: number;
       usersCount: number;
       type: string;
+      details?: any;
+      sourceFolder?: string;
     }>;
   } | null>(null);
   const [isLoadingBackupSettings, setIsLoadingBackupSettings] = useState(false);
@@ -3571,7 +3458,7 @@ export default function App() {
       return;
     }
 
-    if (['HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(user?.role || '')) {
+    if (['HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(user?.role || '') && !editingTask) {
       // Strict Assignment Rule Validation for all hierarchical roles
       const assignedStaff = staffList.find(s => s.id === newTask.assignedTo || s.name === newTask.assignedTo || s.employeeId === newTask.assignedTo);
       if (assignedStaff) {
@@ -3598,30 +3485,20 @@ export default function App() {
             toast.error("Access Denied: Engineers can only assign tasks to Officers who are mapped to them.");
             return;
           }
-        } else if (currentUserData?.role === 'IN_CHARGE') {
-          const concernEngs = getInChargeConcernEngineers(currentUserData);
-          const concernOfficers = getInChargeConcernOfficers(currentUserData);
-          const isConcernEng = concernEngs.some(e => e.id === assignedStaff.id || e.employeeId === assignedStaff.employeeId);
-          const isConcernOfficer = concernOfficers.some(o => o.id === assignedStaff.id || o.employeeId === assignedStaff.employeeId);
-
-          if (!isConcernEng && !isConcernOfficer) {
-            toast.error("Access Denied: In-Charge can only assign tasks to their concern Engineers and concern Officers.");
-            return;
-          }
-        } else if (['HOD', 'DHOD', 'MODEL_MANAGER'].includes(currentUserData?.role || '')) {
+        } else if (['HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER'].includes(currentUserData?.role || '')) {
           // Hierarchical roles check
           if (assignedStaff.role === 'OFFICER') {
-            const isAssigned = (assignedStaff.assignedEngineers || []).includes(myEmpId || '') || 
-                               (assignedStaff.assignedEngineers || []).some(id => myAssignedEngs.includes(id));
-            const isSameDept = Boolean(currentUserData?.department) && Boolean(assignedStaff.department) && currentUserData.department.toLowerCase() === assignedStaff.department.toLowerCase();
-            if (!isAssigned && !isSameDept && currentUserData?.role !== 'HOD' && currentUserData?.role !== 'DHOD') {
-              toast.error("Access Denied: You are not authorized to assign tasks to this Officer.");
+            const isAuthorized = ['HOD', 'DHOD'].includes(currentUserData?.role || '') ||
+                                 (assignedStaff.assignedEngineers || []).includes(myEmpId || '') ||
+                                 myAssignedEngs.includes(assignedStaff.employeeId);
+            if (!isAuthorized) {
+              toast.error("Access Denied: You are not authorized to assign tasks to this Officer. (Mapping required)");
               return;
             }
           } else if (assignedStaff.role === 'ENGINEER') {
-            const isAssigned = myAssignedEngs.includes(assignedStaff.employeeId) || myAssignedEngs.includes(assignedStaff.id);
-            const isSameDept = Boolean(currentUserData?.department) && Boolean(assignedStaff.department) && currentUserData.department.toLowerCase() === assignedStaff.department.toLowerCase();
-            if (!isAssigned && !isSameDept && currentUserData?.role !== 'HOD' && currentUserData?.role !== 'DHOD') {
+            const isAuthorized = ['HOD', 'DHOD'].includes(currentUserData?.role || '') ||
+                                 myAssignedEngs.includes(assignedStaff.employeeId);
+            if (!isAuthorized) {
               toast.error("Access Denied: You are not authorized to assign tasks to this Engineer.");
               return;
             }
@@ -3643,7 +3520,7 @@ export default function App() {
       
       const finalAssignedTo = newTask.assignedTo;
 
-      const finalWorkType = user?.role !== 'OFFICER' ? 'SINGLE' : newTask.workType;
+      const finalWorkType = user?.role === 'ENGINEER' ? 'SINGLE' : newTask.workType;
 
       const hasOtherTeamTech = finalWorkType === 'TEAM' && selectedTechs.some((at: any) => {
         const tech = staffList.find(s => s.employeeId === at.employeeId);
@@ -3691,6 +3568,9 @@ export default function App() {
       await fetchTasks(token!);
       await fetchStaff(token!);
       await fetchPoints(token!);
+      if (user?.role === 'SUPER_ADMIN') {
+        fetchBackupSettings();
+      }
       setIsTaskModalOpen(false);
       setEditingTask(null);
       setNewTask({ title: '', model: 'Portable', details: '', urgency: 'REGULAR', assignedTo: '', deadline: '', points: 1, customStartTime: '', estimatedDuration: '', workType: 'SINGLE', assignedTechnicians: [] });
@@ -3751,6 +3631,10 @@ export default function App() {
         if (viewingStaff && updatedUsers) {
           const updated = updatedUsers.find((u: any) => u.id === viewingStaff.id);
           if (updated) setViewingStaff(updated);
+        }
+
+        if (user?.role === 'SUPER_ADMIN') {
+          fetchBackupSettings();
         }
       }
     } catch (err) {
@@ -4220,8 +4104,8 @@ export default function App() {
     if (!tech) return { status: 'Free', color: 'text-emerald-400', bg: 'bg-emerald-400/10', task: null };
 
     const techTasks = tasks.filter(t => {
-      // Completed, rejected, cancelled, requested, pending, or HOLD tasks are NOT active working tasks
-      if (t.status === 'COMPLETED' || t.status === 'REJECTED' || t.status === 'REQUESTED' || t.status === 'PENDING' || t.status === 'HOLD' || (t as any).status === 'CANCELLED') return false;
+      // Completed, rejected, cancelled, requested, or pending tasks are not active working tasks
+      if (t.status === 'COMPLETED' || t.status === 'REJECTED' || t.status === 'REQUESTED' || t.status === 'PENDING' || (t as any).status === 'CANCELLED') return false;
 
       const techName = (tech.name || '').toLowerCase();
       const assignedTo = (t.assignedTo || '').toLowerCase();
@@ -4233,8 +4117,7 @@ export default function App() {
       return false;
     });
 
-    // ONLY RUNNING or DELAYED tasks mean the technician is actively working. HOLD tasks mean the technician is FREE.
-    const activeTask = techTasks.find(t => t.status === 'RUNNING' || t.status === 'DELAYED');
+    const activeTask = techTasks.find(t => t.status === 'RUNNING' || t.status === 'DELAYED' || t.status === 'HOLD');
     
     // Check leave / shift off statuses from attendance or user record
     if (tech.status === 'ON_LEAVE') return { status: 'On Leave', color: 'text-red-400', bg: 'bg-red-400/10', task: null };
@@ -4357,7 +4240,7 @@ export default function App() {
                 No Number
               </div>
             )}
-            {['OFFICER', 'SUPER_ADMIN'].includes(user?.role || '') && statusInfo.status === 'Free' && isAvailable && (
+            {['OFFICER', 'SUPER_ADMIN', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER'].includes(user?.role || '') && statusInfo.status === 'Free' && isAvailable && (
               <button 
                 onClick={() => {
                   setNewTask({ ...newTask, assignedTo: tech.id, workType: 'SINGLE', assignedTechnicians: [] });
@@ -5235,7 +5118,7 @@ export default function App() {
                               if (myEmpId === '41053') return ['24K', '30K', '36K'].includes(m);
                               return false;
                             }
-                            if (m === 'General Work') return user?.role === 'HOD' || user?.role === 'DHOD' || user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'IN_CHARGE';
+                            if (m === 'General Work') return user?.role === 'HOD' || user?.role === 'DHOD' || user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO';
                             return true;
                           }).map(m => (
                             <button
@@ -5405,7 +5288,7 @@ export default function App() {
                               </button>
                             </div>
                           )}
-                          {newTask.workType === 'TEAM' && user?.role === 'OFFICER' && selectedTechs.map(t => (
+                          {newTask.workType === 'TEAM' && selectedTechs.map(t => (
                             <div key={t.employeeId} className="flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 px-3 py-1.5 rounded-lg">
                               <span className="text-xs text-blue-400 font-medium">{t.name} ({t.employeeId})</span>
                               <button
@@ -5420,7 +5303,7 @@ export default function App() {
                         </div>
                       </div>
                     ) : (
-                      (newTask.workType === 'SINGLE') ? (
+                      newTask.workType === 'SINGLE' ? (
                         <div>
                           <label className="block text-sm font-medium text-gray-400 mb-2">Assign To</label>
                           <select 
@@ -5445,22 +5328,10 @@ export default function App() {
                                   // DCBO can assign to HOD, DHOD, and all lower roles
                                   return s.role === 'HOD' || s.role === 'DHOD' || s.role === 'IN_CHARGE' || s.role === 'MODEL_MANAGER' || s.role === 'ENGINEER' || s.role === 'OFFICER';
                                 }
-                                if (['HOD', 'DHOD'].includes(currentUserData?.role || '')) {
-                                  return s.role === 'IN_CHARGE' || s.role === 'MODEL_MANAGER' || s.role === 'ENGINEER' || s.role === 'OFFICER';
-                                }
-                                if (currentUserData?.role === 'IN_CHARGE') {
-                                  const concernEngs = getInChargeConcernEngineers(currentUserData);
-                                  const concernOfficers = getInChargeConcernOfficers(currentUserData);
-                                  return concernEngs.some(e => e.id === s.id || e.employeeId === s.employeeId) ||
-                                         concernOfficers.some(o => o.id === s.id || o.employeeId === s.employeeId);
-                                }
-                                if (currentUserData?.role === 'MODEL_MANAGER') {
-                                  const isConcernEng = s.role === 'ENGINEER' && (
-                                    myAssignedEngs.includes(s.employeeId) || 
-                                    myAssignedEngs.includes(s.id)
-                                  );
-                                  const isConcernOfficer = s.role === 'OFFICER' && (s.assignedEngineers || []).some(id => myAssignedEngs.includes(id));
-                                  return isConcernEng || isConcernOfficer;
+                                if (['HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER'].includes(currentUserData?.role || '')) {
+                                  const isMyOfficer = s.role === 'OFFICER' && (s.assignedEngineers || []).some(id => id.toString().trim() === myEmpId);
+                                  const isMyEngineer = s.role === 'ENGINEER' && myAssignedEngs.includes(s.employeeId);
+                                  return isMyOfficer || isMyEngineer || s.role === 'HOD' || s.role === 'DHOD' || s.role === 'IN_CHARGE' || s.role === 'MODEL_MANAGER';
                                 }
                                 if (currentUserData?.role === 'ENGINEER') {
                                   return s.role === 'OFFICER' && (s.assignedEngineers || []).some(id => id.toString().trim() === myEmpId);
@@ -5469,9 +5340,7 @@ export default function App() {
                               });
 
                               return filteredStaff.map(s => (
-                                <option key={s.id} value={s.id} className="bg-[#0f0f12]">
-                                  {s.name} ({s.employeeId}){currentUserData?.role === 'IN_CHARGE' ? ` - ${s.role === 'ENGINEER' ? 'Concern Engineer' : 'Concern Officer'}` : ''}
-                                </option>
+                                <option key={s.id} value={s.id} className="bg-[#0f0f12]">{s.name} ({s.employeeId})</option>
                               ));
                             })()}
                           </select>
@@ -5851,17 +5720,7 @@ export default function App() {
           {['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'OFFICER', 'ENGINEER', 'TECHNICIAN'].includes(user?.role || '') && (
             <SidebarItem 
               icon={CheckCircle2} 
-              label={
-                user?.role === 'CBO' ? "Associate Attendance (DCBO & HOD)" :
-                user?.role === 'DCBO' ? "Associate Attendance (HOD)" :
-                user?.role === 'HOD' || user?.role === 'DHOD' ? "In-Charge Attendance" :
-                user?.role === 'IN_CHARGE' ? "Model & Eng Attendance" :
-                user?.role === 'MODEL_MANAGER' ? "Eng & Officer Attendance" :
-                user?.role === 'ENGINEER' ? "Officer Attendance" :
-                user?.role === 'OFFICER' ? "Technician Attendance" :
-                user?.role === 'TECHNICIAN' ? "My Attendance" :
-                "Attendance"
-              } 
+              label="Attendance" 
               active={activeTab === 'attendance'} 
               onClick={() => setActiveTab('attendance')} 
               color="text-green-500"
@@ -5876,17 +5735,6 @@ export default function App() {
             onClick={() => setActiveTab('dashboard')} 
             color="text-blue-500"
           />
-
-          {/* 2.5. Executive Management (Super Admin, HOD, DHOD) */}
-          {['SUPER_ADMIN', 'HOD', 'DHOD'].includes(user?.role || '') && (
-            <SidebarItem 
-              icon={Briefcase} 
-              label="Executive Management" 
-              active={activeTab === 'executive_management'} 
-              onClick={() => setActiveTab('executive_management')} 
-              color="text-amber-400"
-            />
-          )}
 
           {/* 3. Task Management */}
           <SidebarItem 
@@ -5937,7 +5785,7 @@ export default function App() {
             color="text-cyan-500"
           />
 
-          {/* 8. Technician Monitoring - available across all authorized management and supervisory panels */}
+          {/* 8. Technician Monitoring */}
           {['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'OFFICER', 'ENGINEER'].includes(user?.role || '') && (
             <SidebarItem 
               icon={Activity} 
@@ -5948,8 +5796,8 @@ export default function App() {
             />
           )}
 
-          {/* 9. Team Requests (Supervisor Approval) - Hidden from CBO & DCBO as their role is executive monitoring */}
-          {!['CBO', 'DCBO'].includes(user?.role || '') && ['SUPER_ADMIN', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(user?.role || '') && (
+          {/* 9. Team Requests (Supervisor Approval) */}
+          {['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(user?.role || '') && (
             <SidebarItem 
               icon={Bell} 
               label="Team Requests" 
@@ -6015,8 +5863,8 @@ export default function App() {
             color="text-amber-500"
           />
 
-          {/* 15. Backup & Restore */}
-          {['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'OFFICER', 'ENGINEER'].includes(user?.role || '') && (
+          {/* 15. Backup & Restore (Super Admin Only) */}
+          {user?.role === 'SUPER_ADMIN' && (
             <SidebarItem 
               icon={Database} 
               label="Backup & Restore" 
@@ -6074,13 +5922,12 @@ export default function App() {
             </button>
             <h2 className="text-xl font-bold capitalize">
               {activeTab === 'dashboard' ? (user?.role === 'CBO' || user?.role === 'DCBO' ? 'Executive Business & Workforce Command Center' : 'Dashboard') :
-               activeTab === 'executive_management' ? 'Executive Management Panel (CBO & DCBO Command)' :
                activeTab === 'tasks' || activeTab === 'officer_tasks' || activeTab === 'mywork' ? 'Task Management' :
                activeTab === 'attendance' ? 'Attendance' :
                activeTab === 'daily_task' ? 'Daily Task' :
                activeTab === 'performance' ? 'Team Performance' :
                activeTab === 'reports' ? 'Report Management' :
-               activeTab === 'analytics' ? 'Visual Analytics & Performance Intelligence' :
+               activeTab === 'analytics' ? 'Analytics' :
                activeTab === 'technician_monitoring' ? 'Technician Monitoring' :
                activeTab === 'section' || activeTab === 'models' ? (
                  user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD' || user?.role === 'SUPER_ADMIN' ? "Department Overview" :
@@ -6162,38 +6009,7 @@ export default function App() {
 
         <div className="p-8 max-w-7xl mx-auto space-y-8">
           {activeTab === 'dashboard' && (
-            user?.role === 'CBO' ? (
-              <CBODashboard
-                currentUser={user!}
-                staffList={staffList}
-                tasks={tasks}
-                attendance={attendance}
-                onOpenNewTaskModal={(preselectedAssignee) => {
-                  setEditingTask(null);
-                  setNewTask({ 
-                    title: '', 
-                    model: 'General Work', 
-                    details: '', 
-                    urgency: 'REGULAR', 
-                    assignedTo: preselectedAssignee || '', 
-                    deadline: '', 
-                    points: 1, 
-                    customStartTime: '', 
-                    estimatedDuration: '',
-                    workType: 'SINGLE',
-                    assignedTechnicians: []
-                  });
-                  setSelectedTechs([]);
-                  setIsTaskModalOpen(true);
-                }}
-                onRefreshData={handleRecalculate}
-                onUpdateAttendance={handleUpdateAttendance}
-                onSelectTask={(task) => {
-                  setSelectedTask(task);
-                  setIsTaskDetailsModalOpen(true);
-                }}
-              />
-            ) : user?.role === 'DCBO' ? (
+            (user?.role === 'CBO' || user?.role === 'DCBO') ? (
               <ExecutiveCommandCenter
                 currentUser={user!}
                 staffList={staffList}
@@ -6226,31 +6042,6 @@ export default function App() {
               />
             ) : (
             <>
-              {/* Executive Management Quick Access for Super Admin, HOD, DHOD */}
-              {['SUPER_ADMIN', 'HOD', 'DHOD'].includes(user?.role || '') && (
-                <div className="bg-gradient-to-r from-amber-500/10 via-purple-500/10 to-blue-500/10 border border-amber-500/20 rounded-3xl p-5 backdrop-blur-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 font-bold shrink-0">
-                      <Briefcase size={20} />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase">Executive Suite</span>
-                      </div>
-                      <h3 className="font-bold text-white text-base mt-0.5">Executive Management Panel (CBO & DCBO)</h3>
-                      <p className="text-xs text-slate-400">Institutional CBO KPI tracking, DCBO workforce oversight, and executive delegation</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setActiveTab('executive_management')}
-                    className="px-5 py-2.5 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white font-bold text-xs rounded-xl transition-all shadow-lg shadow-amber-500/20 flex items-center gap-2 shrink-0 cursor-pointer"
-                  >
-                    <span>Open Executive Panel</span>
-                    <ChevronRight size={14} />
-                  </button>
-                </div>
-              )}
-
               {/* Welcome Section */}
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
@@ -6332,7 +6123,7 @@ export default function App() {
                   </div>
                   <div className="space-y-4">
                     {dashboardTasks.length > 0 ? dashboardTasks.slice(0, 5).map((task, i) => (
-                      <div key={`${task.id || task.taskId}-${i}`} className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-all group">
+                      <div key={task.id} className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-all group">
                         <div className="flex items-center gap-4 flex-1">
                           <div className={cn(
                             "w-12 h-12 rounded-xl flex items-center justify-center shrink-0",
@@ -6422,127 +6213,6 @@ export default function App() {
             )
           )}
 
-          {activeTab === 'executive_management' && (
-            <div className="space-y-6 animate-in fade-in duration-300">
-              {/* Executive Suite Header & Command Switcher */}
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-slate-900/90 border border-white/10 p-6 rounded-3xl backdrop-blur-xl shadow-2xl">
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 bg-gradient-to-tr from-amber-600 to-orange-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-amber-500/20 shrink-0">
-                    <Briefcase size={28} />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="px-2.5 py-0.5 bg-amber-500/10 border border-amber-500/20 rounded-full text-[10px] font-bold text-amber-400 uppercase tracking-wider">
-                        {user?.role === 'SUPER_ADMIN' ? 'Super Admin Executive Suite' : user?.role === 'HOD' ? 'HOD Executive Suite' : 'DHOD Executive Suite'}
-                      </span>
-                      <span className="px-2 py-0.5 bg-blue-500/10 border border-blue-500/20 rounded-full text-[10px] font-semibold text-blue-400">
-                        {executiveSubView === 'CBO' ? 'Active: CBO Dashboard' : 'Active: DCBO Command Center'}
-                      </span>
-                    </div>
-                    <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight">
-                      Executive Management Panel
-                    </h1>
-                    <p className="text-slate-400 text-xs md:text-sm mt-0.5">
-                      Full institutional oversight over Chief Business Officer (CBO) & Deputy CBO command hierarchies
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center bg-white/5 border border-white/10 p-1.5 rounded-2xl shrink-0">
-                  <button
-                    onClick={() => setExecutiveSubView('CBO')}
-                    className={cn(
-                      "px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer",
-                      executiveSubView === 'CBO' 
-                        ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30" 
-                        : "text-slate-400 hover:text-white hover:bg-white/5"
-                    )}
-                  >
-                    <Award size={15} />
-                    <span>CBO Executive Dashboard</span>
-                  </button>
-                  <button
-                    onClick={() => setExecutiveSubView('DCBO')}
-                    className={cn(
-                      "px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer",
-                      executiveSubView === 'DCBO' 
-                        ? "bg-purple-600 text-white shadow-lg shadow-purple-600/30" 
-                        : "text-slate-400 hover:text-white hover:bg-white/5"
-                    )}
-                  >
-                    <Building2 size={15} />
-                    <span>DCBO Command Center</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Active Executive Component */}
-              {executiveSubView === 'CBO' ? (
-                <CBODashboard
-                  currentUser={user!}
-                  staffList={staffList}
-                  tasks={tasks}
-                  attendance={attendance}
-                  onOpenNewTaskModal={(preselectedAssignee) => {
-                    setEditingTask(null);
-                    setNewTask({ 
-                      title: '', 
-                      model: 'General Work', 
-                      details: '', 
-                      urgency: 'REGULAR', 
-                      assignedTo: preselectedAssignee || '', 
-                      deadline: '', 
-                      points: 1, 
-                      customStartTime: '', 
-                      estimatedDuration: '',
-                      workType: 'SINGLE',
-                      assignedTechnicians: []
-                    });
-                    setSelectedTechs([]);
-                    setIsTaskModalOpen(true);
-                  }}
-                  onRefreshData={handleRecalculate}
-                  onUpdateAttendance={handleUpdateAttendance}
-                  onSelectTask={(task) => {
-                    setSelectedTask(task);
-                    setIsTaskDetailsModalOpen(true);
-                  }}
-                />
-              ) : (
-                <ExecutiveCommandCenter
-                  currentUser={user!}
-                  staffList={staffList}
-                  tasks={tasks}
-                  attendance={attendance}
-                  onOpenNewTaskModal={(preselectedAssignee) => {
-                    setEditingTask(null);
-                    setNewTask({ 
-                      title: '', 
-                      model: 'General Work', 
-                      details: '', 
-                      urgency: 'REGULAR', 
-                      assignedTo: preselectedAssignee || '', 
-                      deadline: '', 
-                      points: 1, 
-                      customStartTime: '', 
-                      estimatedDuration: '',
-                      workType: 'SINGLE',
-                      assignedTechnicians: []
-                    });
-                    setSelectedTechs([]);
-                    setIsTaskModalOpen(true);
-                  }}
-                  onRefreshData={handleRecalculate}
-                  onUpdateAttendance={handleUpdateAttendance}
-                  onSelectTask={(task) => {
-                    setSelectedTask(task);
-                    setIsTaskDetailsModalOpen(true);
-                  }}
-                />
-              )}
-            </div>
-          )}
-
           {activeTab === 'tasks' && (
             <div className="space-y-6">
               {user?.role === 'ENGINEER' && (
@@ -6568,7 +6238,7 @@ export default function App() {
                         <p className="text-gray-500">No pending recommendations from your Officers.</p>
                       </div>
                     ) : (
-                      tasks.filter(isTaskPendingRecommendation).map((task, idx) => {
+                      tasks.filter(isTaskPendingRecommendation).map(task => {
                         const creator = staffList.find(s => s.employeeId === task.createdBy || s.id === task.createdBy);
                         const assignedPoint = recPoints[task.id] !== undefined 
                           ? recPoints[task.id] 
@@ -6583,7 +6253,7 @@ export default function App() {
                         }
 
                         return (
-                          <GlassCard key={`${task.id || task.taskId}-${idx}`} className="p-6 border-amber-500/20">
+                          <GlassCard key={task.id} className="p-6 border-amber-500/20">
                             <div className="flex justify-between items-start mb-3">
                               <div>
                                 <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -6865,7 +6535,7 @@ export default function App() {
                   <option value="ALL">All Users</option>
                   <option value="MY_SCOPE">My Tasks & Team</option>
                   <optgroup label="Staff Members">
-                    {staffList.filter(s => isStaffInScope(s)).map(s => (
+                    {staffList.map(s => (
                       <option key={s.id} value={s.employeeId || s.id} className="bg-[#0f0f12]">
                         {s.name} ({s.employeeId}) - {s.role}
                       </option>
@@ -6962,8 +6632,8 @@ export default function App() {
                       {filteredTasks
                         .filter(t => activeTaskTab === 'ALL' || (activeTaskTab === 'Hold Task' ? t.status === 'HOLD' : t.status === activeTaskTab))
                         .slice(0, taskLimit)
-                        .map((task, idx) => (
-                        <tr key={`${task.id || task.taskId}-${idx}`} className="hover:bg-white/5 transition-all group">
+                        .map(task => (
+                        <tr key={task.id} className="hover:bg-white/5 transition-all group">
                           <td className="px-4 py-4 text-sm font-mono text-blue-400 font-bold whitespace-nowrap">{task.taskId}</td>
                           <td className="px-4 py-4">
                             <p className="text-sm font-bold text-white group-hover:text-blue-400 transition-colors">{task.title}</p>
@@ -7317,7 +6987,7 @@ export default function App() {
                   <option value="ALL">All Users</option>
                   <option value="MY_SCOPE">My Tasks & Team</option>
                   <optgroup label="Staff Members">
-                    {staffList.filter(s => isStaffInScope(s)).map(s => (
+                    {staffList.map(s => (
                       <option key={s.id} value={s.employeeId || s.id} className="bg-[#0f0f12]">
                         {s.name} ({s.employeeId}) - {s.role}
                       </option>
@@ -7393,8 +7063,8 @@ export default function App() {
                         </div>
 
                         <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-6 bg-gray-50">
-                          {techTasks.map((task, idx) => (
-                            <div key={`${task.id || task.taskId}-${idx}`} className="p-6 bg-white rounded-2xl border border-gray-200 shadow-sm space-y-4">
+                          {techTasks.map(task => (
+                            <div key={task.id} className="p-6 bg-white rounded-2xl border border-gray-200 shadow-sm space-y-4">
                               <div className="flex justify-between items-start">
                                 <h4 className="text-xl font-black text-gray-900 leading-tight">{task.title}</h4>
                                 <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
@@ -7508,7 +7178,7 @@ export default function App() {
                       }
 
                       return (
-                        <GlassCard key={`${task.id || task.taskId}-${idx}`} delay={idx * 0.05} className="p-6 border-l-4 border-amber-500">
+                        <GlassCard key={task.id} delay={idx * 0.05} className="p-6 border-l-4 border-amber-500">
                           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
                             <div className="flex-1 space-y-3">
                               <div className="flex items-center gap-3">
@@ -7607,12 +7277,12 @@ export default function App() {
                   </div>
 
                   <div className="grid grid-cols-1 gap-4">
-                    {tasks.filter(t => (t.createdBy === user?.employeeId || t.assignedBy === user?.employeeId) && (t.status === 'REQUESTED' || t.requestStatus === 'PENDING')).map((task, idx) => {
+                    {tasks.filter(t => (t.createdBy === user?.employeeId || t.assignedBy === user?.employeeId) && (t.status === 'REQUESTED' || t.requestStatus === 'PENDING')).map(task => {
                       const assignedTechObj = staffList.find(s => s.id === task.assignedTo || s.employeeId === task.assignedTo);
                       const supervisor = staffList.find(s => s.id === assignedTechObj?.supervisorId || s.employeeId === assignedTechObj?.supervisorId);
 
                       return (
-                        <GlassCard key={`${task.id || task.taskId}-${idx}`} className="p-4 bg-white/5">
+                        <GlassCard key={task.id} className="p-4 bg-white/5">
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                             <div>
                               <div className="flex items-center gap-2 mb-1">
@@ -7973,8 +7643,8 @@ export default function App() {
                             <div className="w-full mt-2">
                               {tasks
                                 .filter(t => (t.assignedTo === staff.name || t.assignedTo === staff.employeeId || t.assignedTo === staff.id) && (t.status === 'RUNNING' || t.status === 'DELAYED' || t.status === 'HOLD'))
-                                .map((t, tIdx) => (
-                                  <div key={`${t.id || t.taskId}-${tIdx}`} className="mb-2">
+                                .map(t => (
+                                  <div key={t.id} className="mb-2">
                                     <p className="text-[10px] text-blue-400 font-bold truncate mb-1">{t.title}</p>
                                     <CountdownTimer task={t} />
                                   </div>
@@ -8049,13 +7719,7 @@ export default function App() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {staffList.filter(s => {
                     if (user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD') return true;
-                    if (user?.role === 'IN_CHARGE') {
-                      const concernEngs = getInChargeConcernEngineers(user);
-                      const concernOfficers = getInChargeConcernOfficers(user);
-                      return concernEngs.some(ce => ce.id === s.id || ce.employeeId === s.employeeId) ||
-                             concernOfficers.some(co => co.id === s.id || co.employeeId === s.employeeId);
-                    }
-                    if (user?.role === 'MODEL_MANAGER') {
+                    if (user?.role === 'IN_CHARGE' || user?.role === 'MODEL_MANAGER') {
                       return s.role === 'ENGINEER' && (user.assignedEngineers || []).includes(s.employeeId);
                     }
                     return false;
@@ -8149,18 +7813,81 @@ export default function App() {
             </div>
           )}
 
-          {activeTab === 'backup_restore' && (
-            <div className="space-y-8 max-w-4xl mx-auto">
+          {activeTab === 'backup_restore' && user?.role === 'SUPER_ADMIN' && (
+            <div className="space-y-8 max-w-5xl mx-auto">
               <motion.div
                 initial={{ opacity: 0, y: -20 }}
                 animate={{ opacity: 1, y: 0 }}
               >
-                <h1 className="text-3xl font-bold">Backup & Restore</h1>
-                <p className="text-gray-500 mt-2">Manage your panel-specific data backups and restoration.</p>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div>
+                    <h1 className="text-3xl font-bold">Backup & Restore (Super Admin)</h1>
+                    <p className="text-gray-400 mt-1">Automatic real-time snapshot engine & source backup folder management.</p>
+                  </div>
+                  <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/30 px-4 py-2 rounded-xl">
+                    <FolderDown className="text-emerald-400" size={18} />
+                    <div className="text-left">
+                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Source Backup Folder</p>
+                      <p className="font-mono text-xs text-emerald-400 font-bold">backups/</p>
+                    </div>
+                  </div>
+                </div>
               </motion.div>
 
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <GlassCard className="p-5 border-emerald-500/30 bg-emerald-950/15">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="p-2.5 bg-emerald-500/20 text-emerald-400 rounded-xl">
+                      <PlusCircle size={20} />
+                    </span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                      LIVE ACTIVE
+                    </span>
+                  </div>
+                  <h3 className="font-bold text-white text-base">Task Entry Auto-Backup</h3>
+                  <p className="text-gray-400 text-xs mt-1">
+                    Triggers instant auto-backup snapshot whenever a new task is added into the system.
+                  </p>
+                </GlassCard>
+
+                <GlassCard className="p-5 border-rose-500/30 bg-rose-950/15">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="p-2.5 bg-rose-500/20 text-rose-400 rounded-xl">
+                      <Trash2 size={20} />
+                    </span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                      LIVE ACTIVE
+                    </span>
+                  </div>
+                  <h3 className="font-bold text-white text-base">Task Deleted Auto-Backup</h3>
+                  <p className="text-gray-400 text-xs mt-1">
+                    Triggers instant auto-backup snapshot whenever any task is deleted by user or admin.
+                  </p>
+                </GlassCard>
+
+                <GlassCard className="p-5 border-blue-500/30 bg-blue-950/15">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="p-2.5 bg-blue-500/20 text-blue-400 rounded-xl">
+                      <Clock size={20} />
+                    </span>
+                    <span className={cn(
+                      "px-2 py-0.5 rounded text-[10px] font-bold border",
+                      backupSettings?.autoBackupEnabled 
+                        ? "bg-blue-500/20 text-blue-400 border-blue-500/30" 
+                        : "bg-amber-500/20 text-amber-400 border-amber-500/30"
+                    )}>
+                      {backupSettings?.autoBackupEnabled ? "HOURLY ACTIVE" : "PAUSED"}
+                    </span>
+                  </div>
+                  <h3 className="font-bold text-white text-base">Hourly Scheduled Backup</h3>
+                  <p className="text-gray-400 text-xs mt-1">
+                    Periodic background snapshots taken every hour for disaster recovery.
+                  </p>
+                </GlassCard>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {/* SUPER ADMIN HOURLY AUTO-BACKUP & DATABASE ENGINE */}
+                {/* SUPER ADMIN AUTO-BACKUP & DATABASE ENGINE */}
                 {user?.role === 'SUPER_ADMIN' && (
                   <GlassCard className="p-6 md:p-8 md:col-span-2 border-emerald-500/40 bg-emerald-950/15">
                     <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 border-b border-white/10 pb-6 mb-6">
@@ -8170,17 +7897,17 @@ export default function App() {
                         </div>
                         <div>
                           <div className="flex items-center gap-3">
-                            <h2 className="text-2xl font-bold">Auto Data Backup (5-Min Auto-Backup)</h2>
+                            <h2 className="text-2xl font-bold">Auto Data Backup (DB File)</h2>
                             <span className={cn(
                               "px-3 py-0.5 rounded-full text-xs font-bold flex items-center gap-1.5",
                               backupSettings?.autoBackupEnabled ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40" : "bg-amber-500/20 text-amber-400 border border-amber-500/40"
                             )}>
                               <span className={cn("w-2 h-2 rounded-full", backupSettings?.autoBackupEnabled ? "bg-emerald-400 animate-pulse" : "bg-amber-400")} />
-                              {backupSettings?.autoBackupEnabled ? "5-MIN AUTO-BACKUP ACTIVE" : "PAUSED"}
+                              {backupSettings?.autoBackupEnabled ? "AUTO-BACKUP ACTIVE" : "PAUSED"}
                             </span>
                           </div>
                           <p className="text-gray-400 text-sm mt-1">
-                            Continuous 5-minute automated snapshot of all operational data & employees directly into persistent DB files (<span className="font-mono text-emerald-400">data/db.json</span> & <span className="font-mono text-emerald-400">backups/</span>).
+                            Snapshots stored to source folder <span className="font-mono text-emerald-400 font-bold bg-white/5 px-2 py-0.5 rounded">backups/</span> on task creation, task deletion, and hourly timer.
                           </p>
                         </div>
                       </div>
@@ -8197,7 +7924,7 @@ export default function App() {
                         )}
                       >
                         <Zap size={18} />
-                        {backupSettings?.autoBackupEnabled ? "5-Min Backup: ON" : "5-Min Backup: OFF"}
+                        {backupSettings?.autoBackupEnabled ? "Hourly Backup: ON" : "Hourly Backup: OFF"}
                       </button>
                     </div>
 
@@ -8205,8 +7932,8 @@ export default function App() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                       <div className="bg-white/5 rounded-xl p-4 border border-white/5">
                         <p className="text-xs text-gray-400 font-medium">Backup Schedule</p>
-                        <p className="text-lg font-bold text-white mt-1">Every 5 Minutes</p>
-                        <p className="text-[11px] text-emerald-400/80 mt-0.5">Automated 5-Min Continuous Snapshot</p>
+                        <p className="text-lg font-bold text-white mt-1">Every 1 Hour</p>
+                        <p className="text-[11px] text-emerald-400/80 mt-0.5">Automated Per-Hour Snapshot</p>
                       </div>
                       <div className="bg-white/5 rounded-xl p-4 border border-white/5">
                         <p className="text-xs text-gray-400 font-medium">Last Saved Backup</p>
@@ -8224,9 +7951,9 @@ export default function App() {
                         <p className="text-sm font-bold text-white mt-1">
                           {backupSettings?.nextBackupTime 
                             ? new Date(backupSettings.nextBackupTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-                            : 'Within 5 minutes'}
+                            : 'Within 1 hour'}
                         </p>
-                        <p className="text-[11px] text-gray-400 mt-0.5">Continuous auto-timer (5 min)</p>
+                        <p className="text-[11px] text-gray-400 mt-0.5">Continuous auto-timer</p>
                       </div>
                       <div className="bg-white/5 rounded-xl p-4 border border-white/5">
                         <p className="text-xs text-gray-400 font-medium">Live Protected Data</p>
@@ -8279,7 +8006,7 @@ export default function App() {
                       <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-2">
                           <History size={18} className="text-emerald-400" />
-                          <h3 className="font-bold text-white text-base">Hourly Backup History & Snapshots</h3>
+                          <h3 className="font-bold text-white text-base">Source Backup Snapshots (backups/)</h3>
                         </div>
                         <button
                           onClick={fetchBackupSettings}
@@ -8295,12 +8022,13 @@ export default function App() {
                           No snapshot files created yet. An automated hourly backup runs every hour, or you can click "Backup Now" above.
                         </div>
                       ) : (
-                        <div className="overflow-x-auto max-h-72 overflow-y-auto rounded-xl border border-white/10">
+                        <div className="overflow-x-auto max-h-80 overflow-y-auto rounded-xl border border-white/10">
                           <table className="w-full text-left text-xs text-gray-300">
                             <thead className="bg-white/10 text-gray-400 uppercase text-[10px] tracking-wider sticky top-0 backdrop-blur-md">
                               <tr>
                                 <th className="p-3">Snapshot Timestamp</th>
-                                <th className="p-3">Type</th>
+                                <th className="p-3">Event / Type</th>
+                                <th className="p-3">Details</th>
                                 <th className="p-3">Protected Records</th>
                                 <th className="p-3">File Size</th>
                                 <th className="p-3 text-right">Actions</th>
@@ -8318,10 +8046,32 @@ export default function App() {
                                   <td className="p-3">
                                     <span className={cn(
                                       "px-2 py-0.5 rounded text-[10px] font-bold uppercase",
-                                      b.type === 'MANUAL' ? "bg-purple-500/20 text-purple-400 border border-purple-500/30" : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                                      b.type === 'TASK_ENTRY' 
+                                        ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30" 
+                                        : b.type === 'TASK_DELETED' 
+                                        ? "bg-rose-500/20 text-rose-400 border border-rose-500/30" 
+                                        : b.type === 'MANUAL' 
+                                        ? "bg-purple-500/20 text-purple-400 border border-purple-500/30" 
+                                        : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
                                     )}>
-                                      {b.type === 'MANUAL' ? 'Manual' : 'Hourly Auto'}
+                                      {b.type === 'TASK_ENTRY' 
+                                        ? 'Task Entry' 
+                                        : b.type === 'TASK_DELETED' 
+                                        ? 'Task Deleted' 
+                                        : b.type === 'MANUAL' 
+                                        ? 'Manual' 
+                                        : 'Hourly Auto'}
                                     </span>
+                                  </td>
+                                  <td className="p-3 text-gray-300">
+                                    {b.details?.title ? (
+                                      <div>
+                                        <span className="font-medium text-white">{b.details.title}</span>
+                                        {b.details.taskId && <span className="text-[10px] text-gray-400 block font-mono">ID: {b.details.taskId}</span>}
+                                      </div>
+                                    ) : (
+                                      <span className="text-gray-500 font-mono text-[10px]">Folder: {b.sourceFolder || 'backups/'}</span>
+                                    )}
                                   </td>
                                   <td className="p-3 text-gray-300">
                                     <span className="font-bold text-emerald-400">{b.tasksCount}</span> tasks • <span className="font-bold text-blue-400">{b.usersCount}</span> users
@@ -8451,8 +8201,8 @@ export default function App() {
             <div className="space-y-6">
               <h1 className="text-3xl font-bold">My Assigned Tasks</h1>
               <div className="grid grid-cols-1 gap-6">
-                {tasks.filter(t => t.assignedTo === user?.name || t.assignedTo === user?.id).map((task, idx) => (
-                  <GlassCard key={`${task.id || task.taskId}-${idx}`} className="flex flex-col md:flex-row gap-6 items-center">
+                {tasks.filter(t => t.assignedTo === user?.name || t.assignedTo === user?.id).map(task => (
+                  <GlassCard key={task.id} className="flex flex-col md:flex-row gap-6 items-center">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
                         <span className="text-xs font-mono text-blue-400">{task.taskId}</span>
@@ -8500,12 +8250,79 @@ export default function App() {
           )}
 
           {activeTab === 'attendance' && (
-            <AssociateAttendanceManagement
-              currentUser={user}
-              staffList={staffList}
-              attendance={attendance}
-              onUpdateAttendance={handleUpdateAttendance}
-            />
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-3xl font-bold">Technician Attendance</h1>
+                  <p className="text-gray-500 text-sm mt-1">Daily attendance management for technicians</p>
+                </div>
+                <div className="px-4 py-2 bg-blue-500/10 border border-blue-500/20 rounded-xl flex items-center gap-2">
+                  <Calendar size={14} className="text-blue-400" />
+                  <span className="text-xs font-bold text-blue-400">
+                    {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })}
+                  </span>
+                </div>
+              </div>
+              
+              <div className="bg-blue-500/5 border border-blue-500/10 rounded-2xl p-4 flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 bg-blue-500/20 rounded-full flex items-center justify-center text-blue-400">
+                  <Info size={20} />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-blue-400">Daily Reset System Active</p>
+                  <p className="text-[10px] text-gray-500">All technicians are auto-set to "Present" at 00:00 every day. Officers can manually update status below.</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {staffList
+                  .filter(s => s.role === 'TECHNICIAN' && isStaffInScope(s))
+                  .map((tech, i) => {
+                    const techAttendance = attendance.find(a => a.technicianId === tech.employeeId);
+                    return (
+                      <GlassCard key={tech.id} className="flex flex-col">
+                        <div className="flex items-center gap-4 mb-6">
+                          <div className="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center font-bold">
+                            {tech.name[0]}
+                          </div>
+                          <div>
+                            <h3 className="font-bold">{tech.name}</h3>
+                            <p className="text-xs text-gray-500">{tech.employeeId}</p>
+                          </div>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-2">
+                          {[
+                            { label: 'Present', value: 'PRESENT' },
+                            { label: 'Leave', value: 'LEAVE' },
+                            { label: 'Short-Leave', value: 'SHORT_LEAVE' },
+                            { label: 'Shift A (6AM-2PM)', value: 'SHIFT_A' },
+                            { label: 'Shift B (2PM-10PM)', value: 'SHIFT_B' }
+                          ].map(opt => (
+                            <button 
+                              key={opt.value}
+                              onClick={() => handleUpdateAttendance(tech.employeeId, opt.value)}
+                              className={cn(
+                                "py-2 rounded-lg text-[10px] font-bold transition-all",
+                                techAttendance?.status === opt.value 
+                                  ? "bg-blue-600 text-white" 
+                                  : "bg-white/5 text-gray-500 hover:bg-white/10"
+                              )}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      </GlassCard>
+                    );
+                  })}
+                {staffList.filter(s => s.role === 'TECHNICIAN' && (user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD' || s.supervisorId === user?.id)).length === 0 && (
+                  <div className="col-span-full py-20 text-center bg-white/5 rounded-3xl border border-dashed border-white/10">
+                    <p className="text-gray-500">No technicians found in the system.</p>
+                  </div>
+                )}
+              </div>
+            </div>
           )}
 
           {activeTab === 'performance' && (
@@ -8539,11 +8356,8 @@ export default function App() {
                     <div className="space-y-4">
                       {staffList
                         .filter(s => {
-                          if (user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD') {
+                          if (user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD' || user?.role === 'IN_CHARGE' || user?.role === 'MODEL_MANAGER') {
                             return s.role === 'TECHNICIAN' || s.role === 'OFFICER' || s.role === 'ENGINEER';
-                          }
-                          if (user?.role === 'IN_CHARGE' || user?.role === 'MODEL_MANAGER') {
-                            return isStaffInScope(s) && (s.role === 'TECHNICIAN' || s.role === 'OFFICER' || s.role === 'ENGINEER');
                           }
                           if (user?.role === 'OFFICER') {
                             return s.role === 'TECHNICIAN' && s.supervisorId === user.id;
@@ -8599,15 +8413,7 @@ export default function App() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {(() => {
                           const rankedOfficers = staffList
-                            .filter(s => {
-                              if (s.role !== 'OFFICER') return false;
-                              if (user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD') return true;
-                              if (user?.role === 'IN_CHARGE') {
-                                const concernOfficers = getInChargeConcernOfficers(user);
-                                return concernOfficers.some(co => co.id === s.id || co.employeeId === s.employeeId);
-                              }
-                              return isStaffInScope(s);
-                            })
+                            .filter(s => s.role === 'OFFICER')
                             .map(s => {
                               const points = Math.max(
                                 getValidOfficerPoints(s.employeeId),
@@ -8853,8 +8659,8 @@ export default function App() {
 
                         <div className="space-y-3">
                            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Recent Tasks</p>
-                           {modelTasks.slice(0, 3).map((t, tIdx) => (
-                             <div key={`${t.id || t.taskId}-${tIdx}`} className="p-3 rounded-xl bg-white/5 border border-white/5 flex justify-between items-center hover:bg-white/10 transition-all cursor-pointer" onClick={() => { setSelectedTask(t); setIsTaskDetailsModalOpen(true); }}>
+                           {modelTasks.slice(0, 3).map(t => (
+                             <div key={t.id} className="p-3 rounded-xl bg-white/5 border border-white/5 flex justify-between items-center hover:bg-white/10 transition-all cursor-pointer" onClick={() => { setSelectedTask(t); setIsTaskDetailsModalOpen(true); }}>
                                <div className="min-w-0">
                                  <p className="text-xs font-bold truncate">{t.title}</p>
                                  <p className="text-[9px] text-gray-500">{t.taskId}</p>
@@ -8888,35 +8694,9 @@ export default function App() {
                   <h1 className="text-3xl font-bold">{user?.role === 'IN_CHARGE' ? "Section Monitoring Dashboard" : "Department Monitoring Dashboard"}</h1>
                   <p className="text-gray-400 mt-1">Real-time monitoring of Engineer activities and task progress.</p>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2 text-xs text-gray-400">
-                    <Clock size={14} />
-                    <span>Last updated: {new Date().toLocaleTimeString()}</span>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setEditingTask(null);
-                      setNewTask({
-                        title: '',
-                        model: 'General Work',
-                        details: '',
-                        urgency: 'REGULAR',
-                        assignedTo: '',
-                        deadline: new Date().toISOString().slice(0, 10),
-                        points: 1,
-                        customStartTime: '',
-                        estimatedDuration: '',
-                        workType: 'SINGLE',
-                        assignedTechnicians: []
-                      });
-                      setSelectedTechs([]);
-                      setIsTaskModalOpen(true);
-                    }}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-500/20 flex items-center gap-2 cursor-pointer"
-                  >
-                    <Plus size={15} />
-                    <span>Create Task</span>
-                  </button>
+                <div className="flex items-center gap-2 text-xs text-gray-400">
+                  <Clock size={14} />
+                  <span>Last updated: {new Date().toLocaleTimeString()}</span>
                 </div>
               </div>
 
@@ -8926,12 +8706,7 @@ export default function App() {
                   const myEngineers = staffList.filter(s => {
                     if (s.role !== 'ENGINEER') return false;
                     if (user.role === 'SUPER_ADMIN' || user.role === 'CBO' || user.role === 'DCBO' || user.role === 'HOD' || user.role === 'DHOD') return true;
-                    if (user.role === 'IN_CHARGE') {
-                      const concernEngs = getInChargeConcernEngineers(user);
-                      return concernEngs.some(ce => ce.id === s.id || ce.employeeId === s.employeeId);
-                    }
-                    return (user.assignedEngineers || []).includes(s.employeeId) || 
-                           (user.assignedEngineers || []).includes(s.id);
+                    return user.assignedEngineers?.includes(s.employeeId);
                   });
                   
                   const myTasks = filteredTasks; // Use the already scoped filteredTasks
@@ -8975,10 +8750,9 @@ export default function App() {
                   // Super Admin, CBO, DCBO, HOD, and DHOD see everyone
                   if (user.role === 'SUPER_ADMIN' || user.role === 'CBO' || user.role === 'DCBO' || user.role === 'HOD' || user.role === 'DHOD') return true;
                   
-                  // In-Charge sees concern engineers
+                  // In-Charge ONLY sees assigned engineers
                   if (user.role === 'IN_CHARGE') {
-                    const concernEngs = getInChargeConcernEngineers(user);
-                    return concernEngs.some(ce => ce.id === s.id || ce.employeeId === s.employeeId);
+                    return user.assignedEngineers?.includes(s.employeeId);
                   }
                   
                   return false;
@@ -8994,57 +8768,29 @@ export default function App() {
 
                   return (
                     <GlassCard key={engineer.id} className="overflow-hidden border-white/10">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 border-b border-white/5 pb-4">
+                      <div className="flex items-center justify-between mb-6 border-b border-white/5 pb-4">
                         <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center font-bold text-lg shrink-0">
+                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center font-bold text-lg">
                             {engineer.name[0]}
                           </div>
                           <div>
                             <h3 className="text-lg font-bold">{engineer.name}</h3>
-                            <p className="text-xs text-blue-400 font-mono">{engineer.employeeId} &bull; {engineer.department || 'RAC R&I'}</p>
+                            <p className="text-xs text-blue-400 font-mono">{engineer.employeeId}</p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-4">
-                          <div className="flex gap-4 sm:gap-6">
-                            <div className="text-center">
-                              <p className="text-[10px] text-gray-500 uppercase tracking-widest">Pending</p>
-                              <p className="text-lg font-bold text-amber-500">{engineerTasks.filter(t => t.status === 'PENDING').length}</p>
-                            </div>
-                            <div className="text-center">
-                              <p className="text-[10px] text-gray-500 uppercase tracking-widest">Running</p>
-                              <p className="text-lg font-bold text-blue-500">{engineerTasks.filter(t => t.status === 'RUNNING').length}</p>
-                            </div>
-                            <div className="text-center">
-                              <p className="text-[10px] text-gray-500 uppercase tracking-widest">Completed</p>
-                              <p className="text-lg font-bold text-green-500">{engineerTasks.filter(t => t.status === 'COMPLETED').length}</p>
-                            </div>
+                        <div className="flex gap-6">
+                          <div className="text-center">
+                            <p className="text-[10px] text-gray-500 uppercase tracking-widest">Pending</p>
+                            <p className="text-lg font-bold text-amber-500">{engineerTasks.filter(t => t.status === 'PENDING').length}</p>
                           </div>
-
-                          {/* Direct Assign Task to this Engineer */}
-                          <button
-                            onClick={() => {
-                              setEditingTask(null);
-                              setNewTask({
-                                title: '',
-                                model: 'General Work',
-                                details: '',
-                                urgency: 'REGULAR',
-                                assignedTo: engineer.id,
-                                deadline: new Date().toISOString().slice(0, 10),
-                                points: 1,
-                                customStartTime: '',
-                                estimatedDuration: '',
-                                workType: 'SINGLE',
-                                assignedTechnicians: []
-                              });
-                              setSelectedTechs([]);
-                              setIsTaskModalOpen(true);
-                            }}
-                            className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-500/20 flex items-center gap-1.5 shrink-0 cursor-pointer"
-                          >
-                            <Plus size={14} />
-                            <span>Assign Task</span>
-                          </button>
+                          <div className="text-center">
+                            <p className="text-[10px] text-gray-500 uppercase tracking-widest">Running</p>
+                            <p className="text-lg font-bold text-blue-500">{engineerTasks.filter(t => t.status === 'RUNNING').length}</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-[10px] text-gray-500 uppercase tracking-widest">Completed</p>
+                            <p className="text-lg font-bold text-green-500">{engineerTasks.filter(t => t.status === 'COMPLETED').length}</p>
+                          </div>
                         </div>
                       </div>
 
@@ -9056,8 +8802,8 @@ export default function App() {
                             Pending Tasks
                           </h4>
                           <div className="space-y-3">
-                            {engineerTasks.filter(t => t.status === 'PENDING').map((task, idx) => (
-                              <div key={`${task.id || task.taskId}-${idx}`} className="p-4 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-all cursor-pointer group" onClick={() => { setSelectedTask(task); setIsTaskDetailsModalOpen(true); }}>
+                            {engineerTasks.filter(t => t.status === 'PENDING').map(task => (
+                              <div key={task.id} className="p-4 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-all cursor-pointer group" onClick={() => { setSelectedTask(task); setIsTaskDetailsModalOpen(true); }}>
                                 <div className="flex justify-between items-start mb-2">
                                   <div>
                                     <h5 className="text-base font-bold truncate pr-2">{task.title}</h5>
@@ -9118,8 +8864,8 @@ export default function App() {
                             Running Tasks
                           </h4>
                           <div className="space-y-3">
-                            {engineerTasks.filter(t => t.status === 'RUNNING').map((task, idx) => (
-                              <div key={`${task.id || task.taskId}-${idx}`} className="p-3 rounded-xl bg-blue-500/5 border border-blue-500/10 hover:border-blue-500/20 transition-all cursor-pointer group" onClick={() => { setSelectedTask(task); setIsTaskDetailsModalOpen(true); }}>
+                            {engineerTasks.filter(t => t.status === 'RUNNING').map(task => (
+                              <div key={task.id} className="p-3 rounded-xl bg-blue-500/5 border border-blue-500/10 hover:border-blue-500/20 transition-all cursor-pointer group" onClick={() => { setSelectedTask(task); setIsTaskDetailsModalOpen(true); }}>
                                 <div className="flex justify-between items-start mb-2">
                                   <h5 className="text-sm font-bold truncate pr-2">{task.title}</h5>
                                   <Info size={14} className="text-blue-400" />
@@ -9163,8 +8909,8 @@ export default function App() {
                             Completed Tasks
                           </h4>
                           <div className="space-y-3">
-                            {engineerTasks.filter(t => t.status === 'COMPLETED').map((task, idx) => (
-                              <div key={`${task.id || task.taskId}-${idx}`} className="p-3 rounded-xl bg-green-500/5 border border-green-500/10 hover:border-green-500/20 transition-all cursor-pointer group" onClick={() => { setSelectedTask(task); setIsTaskDetailsModalOpen(true); }}>
+                            {engineerTasks.filter(t => t.status === 'COMPLETED').map(task => (
+                              <div key={task.id} className="p-3 rounded-xl bg-green-500/5 border border-green-500/10 hover:border-green-500/20 transition-all cursor-pointer group" onClick={() => { setSelectedTask(task); setIsTaskDetailsModalOpen(true); }}>
                                 <div className="flex justify-between items-start mb-2">
                                   <h5 className="text-sm font-bold truncate pr-2">{task.title}</h5>
                                   <CheckCircle size={14} className="text-green-500" />
@@ -9204,11 +8950,6 @@ export default function App() {
 
                 {staffList.filter(s => {
                   if (s.role !== 'ENGINEER') return false;
-                  if (user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD') return true;
-                  if (user?.role === 'IN_CHARGE') {
-                    const concernEngs = getInChargeConcernEngineers(user);
-                    return concernEngs.some(ce => ce.id === s.id || ce.employeeId === s.employeeId);
-                  }
                   if (user.assignedEngineers && user.assignedEngineers.length > 0) {
                     return user.assignedEngineers.includes(s.employeeId);
                   }
@@ -9228,8 +8969,8 @@ export default function App() {
                     General Work Monitoring
                   </h2>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {tasks.filter(t => t.model === 'General Work').map((task, idx) => (
-                      <GlassCard key={`${task.id || task.taskId}-${idx}`} className="p-4 border-blue-500/20">
+                    {tasks.filter(t => t.model === 'General Work').map(task => (
+                      <GlassCard key={task.id} className="p-4 border-blue-500/20">
                          <div className="flex justify-between items-start mb-3">
                            <h3 className="font-bold text-white">{task.title}</h3>
                            <span className={cn(
@@ -9273,8 +9014,8 @@ export default function App() {
             <div className="space-y-6">
               <h1 className="text-3xl font-bold">Technician Workspace</h1>
               <div className="grid grid-cols-1 gap-6">
-                {tasks.filter(t => t.assignedTo === user?.id || t.assignedTo.toLowerCase() === user?.name?.toLowerCase()).map((task, idx) => (
-                  <GlassCard key={`${task.id || task.taskId}-${idx}`} className="flex flex-col md:flex-row gap-6 items-center">
+                {tasks.filter(t => t.assignedTo === user?.id || t.assignedTo.toLowerCase() === user?.name?.toLowerCase()).map(task => (
+                  <GlassCard key={task.id} className="flex flex-col md:flex-row gap-6 items-center">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
                         <h3 className="text-xl font-bold">{task.title}</h3>
@@ -9336,24 +9077,349 @@ export default function App() {
             </div>
           )}
 
-          {activeTab === 'analytics' && user && (
-            <RoleBasedAnalytics
-              user={user}
-              staffList={staffList}
-              tasks={tasks}
-              attendance={attendance}
-              pointTransactions={pointTransactions}
-              technicianPerformance={technicianPerformance}
-              onSelectTask={(task) => {
-                setSelectedTask(task);
-                setIsTaskDetailsModalOpen(true);
-              }}
-              getValidOfficerPoints={getValidOfficerPoints}
-              getValidOfficerTaskCount={getValidOfficerTaskCount}
-              getInChargeConcernEngineers={getInChargeConcernEngineers}
-              getInChargeConcernOfficers={getInChargeConcernOfficers}
-              isStaffInScope={isStaffInScope}
-            />
+          {activeTab === 'analytics' && (
+            <div className="space-y-8 pb-12">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-3xl font-bold">Department Analytics</h1>
+                  <p className="text-xs text-gray-400 mt-1">Real-time performance metrics, officer points, and technician stats</p>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-gray-400 bg-white/5 px-3 py-1.5 rounded-xl border border-white/10">
+                  <Clock size={14} className="text-blue-400" />
+                  <span>Last updated: {new Date().toLocaleTimeString()}</span>
+                </div>
+              </div>
+
+              {/* Officer Personal Performance Banner */}
+              {user?.role === 'OFFICER' && (
+                <GlassCard className="p-5 border border-amber-500/30 bg-gradient-to-r from-amber-500/10 via-blue-500/5 to-transparent">
+                  <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400">
+                        <Award size={24} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h2 className="text-xl font-bold text-white">{user.name}</h2>
+                          <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">Officer</span>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          Employee ID: <span className="font-mono text-gray-300">{user.employeeId}</span> &bull; Performance & Points Tracking
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-6">
+                      <div className="text-center">
+                        <p className="text-[11px] uppercase tracking-wider text-gray-400 font-semibold">Your Rank</p>
+                        <p className="text-2xl font-black text-amber-400">
+                          {(() => {
+                            const rankIdx = topOfficers.findIndex(o => o.id === user.id || o.employeeId === user.employeeId);
+                            return rankIdx !== -1 ? `#${rankIdx + 1}` : 'N/A';
+                          })()}
+                        </p>
+                      </div>
+                      <div className="h-8 w-px bg-white/10" />
+                      <div className="text-center">
+                        <p className="text-[11px] uppercase tracking-wider text-gray-400 font-semibold">Total Points</p>
+                        <p className="text-2xl font-black text-amber-400">
+                          {Math.max(getValidOfficerPoints(user.employeeId), getValidOfficerPoints(user.id), Number(user.total_point || 0))}
+                        </p>
+                      </div>
+                      <div className="h-8 w-px bg-white/10" />
+                      <div className="text-center">
+                        <p className="text-[11px] uppercase tracking-wider text-gray-400 font-semibold">Completed Tasks</p>
+                        <p className="text-2xl font-black text-blue-400">
+                          {Math.max(getValidOfficerTaskCount(user.employeeId), getValidOfficerTaskCount(user.id))}
+                        </p>
+                      </div>
+                      <div className="h-8 w-px bg-white/10" />
+                      <div className="text-center">
+                        <p className="text-[11px] uppercase tracking-wider text-gray-400 font-semibold">This Month</p>
+                        <p className="text-2xl font-black text-emerald-400">
+                          {Math.max(getValidOfficerPoints(user.employeeId, true), getValidOfficerPoints(user.id, true))} pts
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </GlassCard>
+              )}
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Task Completion Trend */}
+                <GlassCard className="h-[450px] flex flex-col">
+                  <div className="flex items-center gap-2 mb-6">
+                    <TrendingUp className="text-blue-500" size={20} />
+                    <h3 className="text-lg font-bold">Weekly Task Trend</h3>
+                  </div>
+                  <div className="flex-1 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={trend}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
+                        <XAxis 
+                          dataKey="name" 
+                          stroke="#94a3b8" 
+                          fontSize={12} 
+                          tickLine={false} 
+                          axisLine={false} 
+                        />
+                        <YAxis 
+                          stroke="#94a3b8" 
+                          fontSize={12} 
+                          tickLine={false} 
+                          axisLine={false} 
+                        />
+                        <Tooltip 
+                          contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '12px', fontSize: '12px' }}
+                          itemStyle={{ color: '#fff' }}
+                        />
+                        <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
+                        <Line 
+                          type="monotone" 
+                          dataKey="completed" 
+                          stroke="#10b981" 
+                          strokeWidth={3} 
+                          dot={{ r: 4, fill: '#10b981', strokeWidth: 2, stroke: '#fff' }}
+                          activeDot={{ r: 6 }}
+                        />
+                        <Line 
+                          type="monotone" 
+                          dataKey="pending" 
+                          stroke="#3b82f6" 
+                          strokeWidth={3} 
+                          dot={{ r: 4, fill: '#3b82f6', strokeWidth: 2, stroke: '#fff' }}
+                          activeDot={{ r: 6 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </GlassCard>
+
+                {/* Model Distribution */}
+                <GlassCard className="h-[450px] flex flex-col">
+                  <div className="flex items-center gap-2 mb-6">
+                    <AirVent className="text-purple-500" size={20} />
+                    <h3 className="text-lg font-bold">Model Distribution</h3>
+                  </div>
+                  <div className="flex-1 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={modelDistribution}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={100}
+                          paddingAngle={5}
+                          dataKey="value"
+                        >
+                          {modelDistribution.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'][index % 7]} />
+                          ))}
+                        </Pie>
+                        <Tooltip 
+                          contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '12px', fontSize: '12px' }}
+                          itemStyle={{ color: '#fff' }}
+                        />
+                        <Legend layout="vertical" align="right" verticalAlign="middle" />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                </GlassCard>
+
+                {/* Top Performing Officers */}
+                <GlassCard className="flex flex-col">
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-2">
+                      <Award className="text-amber-500" size={20} />
+                      <h3 className="text-lg font-bold">Officer Performance & Points</h3>
+                    </div>
+                    <span className="text-xs text-amber-400 font-mono font-bold bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20">
+                      {topOfficers.length} {topOfficers.length === 1 ? 'Officer' : 'Officers'}
+                    </span>
+                  </div>
+                  
+                  {topOfficersForChart.length > 0 ? (
+                    <div className="h-[300px] w-full overflow-x-auto custom-scrollbar mb-6">
+                      <div className="min-w-[600px] h-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={topOfficersForChart} margin={{ bottom: 60 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
+                            <XAxis 
+                              dataKey="name" 
+                              stroke="#94a3b8" 
+                              fontSize={10} 
+                              tickLine={false} 
+                              axisLine={false} 
+                              interval={0}
+                              angle={-45}
+                              textAnchor="end"
+                              height={80}
+                            />
+                            <YAxis 
+                              stroke="#94a3b8" 
+                              fontSize={12} 
+                              tickLine={false} 
+                              axisLine={false} 
+                            />
+                            <Tooltip 
+                              cursor={{ fill: '#ffffff05' }}
+                              contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '12px', fontSize: '12px' }}
+                              itemStyle={{ color: '#fff' }}
+                              labelStyle={{ color: '#3b82f6', fontWeight: 'bold', marginBottom: '4px' }}
+                            />
+                            <Bar dataKey="points" name="Total Points" radius={[4, 4, 0, 0]} fill="#f59e0b" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="h-44 flex flex-col items-center justify-center text-gray-400 text-sm border border-white/5 rounded-2xl mb-6 bg-white/[0.02]">
+                      <Award className="text-amber-500/40 mb-2" size={28} />
+                      <p className="font-semibold text-gray-300">No Task Points Recorded Yet</p>
+                      <p className="text-xs text-gray-500 mt-1">Only officers who have earned task points will be displayed here.</p>
+                    </div>
+                  )}
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead>
+                        <tr className="text-gray-500 border-b border-white/5">
+                          <th className="pb-3 font-bold uppercase tracking-wider">Rank</th>
+                          <th className="pb-3 font-bold uppercase tracking-wider">Officer Name</th>
+                          <th className="pb-3 font-bold uppercase tracking-wider">Employee ID</th>
+                          <th className="pb-3 font-bold uppercase tracking-wider text-right">Points</th>
+                          <th className="pb-3 font-bold uppercase tracking-wider text-right">Tasks</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {topOfficers.map((off, idx) => {
+                          const isMe = user && (user.id === off.id || user.employeeId === off.employeeId);
+                          return (
+                            <tr key={off.id || off.name} className={cn(
+                              "transition-colors",
+                              isMe ? "bg-amber-500/15 border-l-2 border-amber-500 hover:bg-amber-500/20" : "hover:bg-white/5"
+                            )}>
+                              <td className="py-3 font-mono text-gray-400">
+                                {idx === 0 ? '🥇 #1' : idx === 1 ? '🥈 #2' : idx === 2 ? '🥉 #3' : `#${idx + 1}`}
+                              </td>
+                              <td className="py-3 font-bold flex items-center gap-2">
+                                <span className={isMe ? "text-amber-300 font-black" : "text-white"}>{off.name}</span>
+                                {isMe && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/30 text-amber-300 font-bold border border-amber-500/50">
+                                    You
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3 font-mono text-xs text-gray-400">{off.employeeId || '-'}</td>
+                              <td className="py-3 text-right text-amber-500 font-black text-base">{off.points}</td>
+                              <td className="py-3 text-right text-gray-400 font-mono">{off.count}</td>
+                            </tr>
+                          );
+                        })}
+                        {topOfficers.length === 0 && (
+                          <tr>
+                            <td colSpan={5} className="py-8 text-center text-gray-500">
+                              No officers with task points recorded yet. Only officers with active points are shown.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </GlassCard>
+
+                {/* Top Performing Technicians */}
+                <GlassCard className="flex flex-col">
+                  <div className="flex items-center gap-2 mb-6">
+                    <Award className="text-blue-500" size={20} />
+                    <h3 className="text-lg font-bold">Top Performing Technicians (by Tasks)</h3>
+                  </div>
+                  
+                  <div className="h-[300px] w-full overflow-x-auto custom-scrollbar mb-6">
+                    <div className="min-w-[600px] h-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={topTechnicians} margin={{ bottom: 60 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
+                          <XAxis 
+                            dataKey="name" 
+                            stroke="#94a3b8" 
+                            fontSize={10} 
+                            tickLine={false} 
+                            axisLine={false} 
+                            interval={0}
+                            angle={-45}
+                            textAnchor="end"
+                            height={80}
+                          />
+                          <YAxis 
+                            stroke="#94a3b8" 
+                            fontSize={12} 
+                            tickLine={false} 
+                            axisLine={false} 
+                          />
+                          <Tooltip 
+                            cursor={{ fill: '#ffffff05' }}
+                            contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '12px', fontSize: '12px' }}
+                            itemStyle={{ color: '#fff' }}
+                            labelStyle={{ color: '#10b981', fontWeight: 'bold', marginBottom: '4px' }}
+                          />
+                          <Bar dataKey="tasks" name="Completed Tasks" radius={[4, 4, 0, 0]} fill="#3b82f6" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead>
+                        <tr className="text-gray-500 border-b border-white/5">
+                          <th className="pb-3 font-bold uppercase tracking-wider">Rank</th>
+                          <th className="pb-3 font-bold uppercase tracking-wider">Technician Name</th>
+                          <th className="pb-3 font-bold uppercase tracking-wider text-right">Completed Tasks</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {topTechnicians.map((tech, idx) => (
+                          <tr key={tech.name} className="hover:bg-white/5 transition-colors">
+                            <td className="py-3 font-mono text-gray-400">#{idx + 1}</td>
+                            <td className="py-3 font-bold">{tech.name}</td>
+                            <td className="py-3 text-right text-blue-500 font-black">{tech.tasks}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </GlassCard>
+
+                {/* Summary Stats */}
+                <div className="grid grid-cols-2 gap-4 lg:col-span-2">
+                  <GlassCard className="p-6 flex flex-col items-center justify-center text-center">
+                    <p className="text-xs text-gray-500 uppercase tracking-widest mb-2">Total Tasks</p>
+                    <p className="text-5xl font-black">{filteredTasks.length}</p>
+                  </GlassCard>
+                  <GlassCard className="p-6 flex flex-col items-center justify-center text-center">
+                    <p className="text-xs text-gray-500 uppercase tracking-widest mb-2">Completion Rate</p>
+                    <p className="text-5xl font-black text-green-500">
+                      {filteredTasks.length > 0 ? Math.round((filteredTasks.filter(t => t.status === 'COMPLETED').length / filteredTasks.length) * 100) : 0}%
+                    </p>
+                  </GlassCard>
+                  <GlassCard className="p-6 flex flex-col items-center justify-center text-center">
+                    <p className="text-xs text-gray-500 uppercase tracking-widest mb-2">Avg. Progress</p>
+                    <p className="text-5xl font-black text-blue-500">
+                      {filteredTasks.length > 0 ? Math.round(filteredTasks.reduce((acc, t) => acc + t.progress, 0) / filteredTasks.length) : 0}%
+                    </p>
+                  </GlassCard>
+                  <GlassCard className="p-6 flex flex-col items-center justify-center text-center">
+                    <p className="text-xs text-gray-500 uppercase tracking-widest mb-2">Active Staff</p>
+                    <p className="text-5xl font-black text-purple-500">
+                      {user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD'
+                        ? staffList.length 
+                        : staffList.filter(s => s.supervisorId === user?.id || s.id === user?.id).length}
+                    </p>
+                  </GlassCard>
+                </div>
+              </div>
+            </div>
           )}
           {/* Reject Request Modal */}
       <AnimatePresence>

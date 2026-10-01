@@ -4,19 +4,21 @@
       "id": "1774775754483iyriq",
       "employeeId": "jhfboss",
       "name": "JHF Boss",
-      "password": "$2b$10$aJmgD4sg8OEx83mlOkaP8uGXl.AYsPo2te/SwwYQD5QGOyfV7wz8e",
+      "password": "$2b$10$OFDtmZogQW0vRZmzv7j4tul7JIjTNN1oy0YrswvjA0bGX1MUp6/3e",
       "role": "SUPER_ADMIN",
       "supervisorId": "",
       "assignedEngineers": [],
       "total_point": 0,
-      "completedTask": 0
+      "completedTask": 0,
+      "designation": "",
+      "department": ""
     },
     {
       "id": "1774775804446xjkgr",
       "employeeId": "17668",
       "name": "Abdul Aowal",
-      "role": "HOD",
-      "password": "$2b$10$Q038gup6t5IO8uanI6AXYuNrH/p.4GjvmmqoFkspHscAq2eU0aa3e",
+      "role": "DHOD",
+      "password": "$2b$10$uSLzl/ihnX44PjkrNvY6WOlYI.ITdh7iWPzus/PixIIuXi0F4HL2W",
       "supervisorId": "",
       "assignedEngineers": [
         "37091",
@@ -46,7 +48,7 @@
       "employeeId": "19219",
       "name": "Ariful Islam",
       "role": "HOD",
-      "password": "$2b$10$1NpHPGmNciDW3FlkZ928.uUilfjFmP4Hoad0QzkE8FlHEPBArxuda",
+      "password": "$2b$10$3jYOz/WIR8QjvN3hjnbn2edJEaRi1YeZfjxVH1rFf0DXRwr5RiUO6",
       "supervisorId": "",
       "assignedEngineers": [
         "17668",
@@ -91,7 +93,7 @@
       "employeeId": "29766",
       "name": "Md. Zweel Rana",
       "role": "IN_CHARGE",
-      "password": "$2b$10$fcrJSi3sYNlDdRTHHry3oupL7VFXcTTxifd.RmOTeDJXFGg1xyDdu",
+      "password": "$2b$10$h5RFjwUqhACLhpS9uzNHk.3ljzR8hIpA75F6dsHFWNZjKqWq/MIam",
       "supervisorId": "",
       "assignedEngineers": [
         "39301",
@@ -115,7 +117,7 @@
       "employeeId": "35866",
       "name": "Md. Khurshid Alam",
       "role": "IN_CHARGE",
-      "password": "$2b$10$bxMK0I/s9RJUBk2jRetNKOKEj3DsLobgM4DgH4L8Lh2VjAJ6EUabG",
+      "password": "$2b$10$rgF03KCyTMcgQhQLbBa8sebMLlQWW5.pELP565KdPq4NNWRRtCNze",
       "supervisorId": "",
       "assignedEngineers": [
         "45213",
@@ -139,7 +141,7 @@
       "employeeId": "37091",
       "name": "Md. Moniruzzaman Khan",
       "role": "MODEL_MANAGER",
-      "password": "$2b$10$UZgLBKiw9navvTygZuk70ulb8Q.Xq3CBs7kYstt/XQm966Svlp7ee",
+      "password": "$2b$10$0Qn2sQaeTLNRDOue3abwa.sKC5HNIUCOcSHb1YIbkTi6ZfrEkEK.e",
       "supervisorId": "",
       "assignedEngineers": [
         "43924",
@@ -164,7 +166,7 @@
       "employeeId": "38056",
       "name": "Nayan Chandra Podder",
       "role": "MODEL_MANAGER",
-      "password": "$2b$10$gL2zpImjrgGaItHAQhF2jeSEarMo2An.GurHq6iOXjxL0gkcpevD2",
+      "password": "$2b$10$8PZDtCl0eW8cRpJC8UaAIOD22gezozKwHb1gzG40Tkcq0jFqmU/2S",
       "supervisorId": "",
       "assignedEngineers": [
         "39301",
@@ -189,7 +191,7 @@
       "employeeId": "39301",
       "name": "Muzahidul Islam",
       "role": "ENGINEER",
-      "password": "$2b$10$8y7uMocLndaX0oqrDlRMrOKd29EW3uOipQmcODYqVqgPYzTvCepjy",
+      "password": "$2b$10$LCT/OC5CjsMeGryGs72ENe8qHsOsfzR67pwrEwUJU9jxS/YuwdNgy",
       "supervisorId": "1774775804637fmwyt",
       "assignedEngineers": [],
       "phone": "01678862304",
@@ -205,7 +207,7 @@
       "employeeId": "41527",
       "name": "Rakib Abdullah Shimanta",
       "role": "ENGINEER",
-      "password": "$2b$10$i4tvAVOpMRTSCWdimX0Zf.hf/xsQXBcrcCo35fOPyfesg2rejlVlO",
+      "password": "$2b$10$u1aYdY5pqMwNgh1ZV.IoT.uFhUPbmptGVJpXzCaxL.KnifCkU32Uq",
       "supervisorId": "1774775804446xjkgr",
       "assignedEngineers": [],
       "phone": "01678048167",
@@ -222,7 +224,7 @@
       "employeeId": "41053",
       "name": "Sheik Enamul Haque",
       "role": "MODEL_MANAGER",
-      "password": "$2b$10$fqHV86PRTNWL/22EuMYRwuY7UhEfpFYsS16EebagdC2F4cXgzJXE2",
+      "password": "$2b$10$x8YTWZGKQsY35PV5FKON0OXAT2ZBvP3TlJnUuOOGLUA/JOMk5vnja",
       "supervisorId": "",
       "assignedEngineers": [
         "57772",
@@ -246,7 +248,7 @@
       "employeeId": "43924",
       "name": "Md. Shafiul Alam",
       "role": "ENGINEER",
-      "password": "$2b$10$l0nP.rombXo8dZYIPvWw3.F2ZRivAQQmcG3ZcRuhAc93s26O/gvjy",
+      "password": "$2b$10$RNk6Fx4wQIgdIC6oC9sxGeD1DfHEzWJp9VRQmK0v5zZBLb98q1Vz.",
       "supervisorId": "1774775804637fmwyt",
       "assignedEngineers": [],
       "phone": "01678864134",
@@ -262,7 +264,7 @@
       "employeeId": "45213",
       "name": "Md. Sadid Hossain",
       "role": "ENGINEER",
-      "password": "$2b$10$Sb0mj2eFn6ZjjbBo6GAiBO9hBPw/B34as2eXTft6XirejXTLjj7Vy",
+      "password": "$2b$10$z6o5jA7ppcfgDVCTxCVFWeGhUoLsXr2AwzQ3puExW8p3PX7BtVM32",
       "supervisorId": "1774775804738ou56o",
       "assignedEngineers": [],
       "phone": "01678863107",
@@ -279,7 +281,7 @@
       "employeeId": "40760",
       "name": "Md. Mobassar Rahman",
       "role": "ENGINEER",
-      "password": "$2b$10$4JIpMqegNqTFeQohCIsTcOYllIi4hDHw3B2R7/NF6OoCEHBRt8E.e",
+      "password": "$2b$10$Foy3yZRsCKSEbsnLT3377e.LgvlfLPctJ/agGeys9xcVXAl2mJCz6",
       "supervisorId": "1774775804637fmwyt",
       "assignedEngineers": [],
       "phone": "01678861127",
@@ -295,7 +297,7 @@
       "employeeId": "39766",
       "name": "Rasel Ahmed",
       "role": "ENGINEER",
-      "password": "$2b$10$GGVFXMYoNO9Z0vHhITpQS.xG4BtsXda3JF7FIsKVlQhxa8gKMKS.u",
+      "password": "$2b$10$oxNj7q74z6W6gPwLDFwK0e/1zy8g5OKq5DU13YBcQ/OLW8jAT5Kni",
       "supervisorId": "1774775804446xjkgr",
       "assignedEngineers": [],
       "phone": "01678862835",
@@ -311,7 +313,7 @@
       "employeeId": "45064",
       "name": "Mohammad Rakib Hasan",
       "role": "ENGINEER",
-      "password": "$2b$10$ogN76LZzNVLjAi9kmcNW1Od25cfpJliTkd1bdQiE2MCt2O4P4y/ZW",
+      "password": "$2b$10$Yzy6Fivrv/.c1r1RUcKdy.Z.IQlf1N5nGjeMvhoN6yLf2oc2ijjcy",
       "supervisorId": "1774775804446xjkgr",
       "assignedEngineers": [],
       "phone": "01678860540",
@@ -327,7 +329,7 @@
       "employeeId": "54589",
       "name": "Md. Shofikul Islam",
       "role": "IN_CHARGE",
-      "password": "$2b$10$cSdeIMNAIaBxPRJWmTHlT.t.20HzagMeGOJJCYP7KrLvWxuTasWm6",
+      "password": "$2b$10$t9NOsMyxeu3gMmnEkM0GO.Blix2Z0y1sM.JK3KoW683rLmO8O5Co6",
       "supervisorId": "",
       "assignedEngineers": [
         "19219",
@@ -347,7 +349,7 @@
       "employeeId": "50177",
       "name": "Ariful Islam",
       "role": "ENGINEER",
-      "password": "$2b$10$QnImw9epfdugfvnfm0vrdOfOgXH315k0BHbsT2Zo0xDEtjanw1JC2",
+      "password": "$2b$10$JNoeAvb4RcK4DfHqvF7iE.OGWHg.qzH5HV28rkRvtmc9kNYYkZdFC",
       "supervisorId": "1774775804446xjkgr",
       "assignedEngineers": [],
       "phone": "01608985389",
@@ -364,7 +366,7 @@
       "employeeId": "41043",
       "name": "Md. Arif Shahriar",
       "role": "ENGINEER",
-      "password": "$2b$10$gT.Of4kUP8iT.bs.024Jn.XKfGXXNpDmRYyC8pX7LBhFt3ugIcZFu",
+      "password": "$2b$10$/WUadBNzMiMR4vbPTwCsy.1btkm84jBW6pL9iHRvA.5E8oFHLhzBu",
       "supervisorId": "1774775804446xjkgr",
       "assignedEngineers": [],
       "phone": "01678048007",
@@ -380,7 +382,7 @@
       "employeeId": "46419",
       "name": "Md. Abul Bashar",
       "role": "ENGINEER",
-      "password": "$2b$10$JTu0DmUVr793Q4Sx0d51hesn4veVRAzGIgyIeOeSyBzjEfoxfWzX6",
+      "password": "$2b$10$JEXpgsUG0DJ0UVaxGpLSIe3E3gMDVQkxMIeE9t.wW32exbvaiolzS",
       "supervisorId": "1774775804446xjkgr",
       "assignedEngineers": [],
       "phone": "01608984875",
@@ -396,7 +398,7 @@
       "employeeId": "53127",
       "name": "Mostofa Fahim Iqbal",
       "role": "ENGINEER",
-      "password": "$2b$10$l/K0AbbaB6eQNCF2q9hA.eQnx7q5xH.MjhIOVLfHql4XYjOkMbJH6",
+      "password": "$2b$10$rp6vishtsdCHTbwpitDPOunjWOjR.P5O7ZdD6gUDynJTLAmTXTZEC",
       "supervisorId": "1774775804738ou56o",
       "assignedEngineers": [],
       "phone": "01608985621",
@@ -413,7 +415,7 @@
       "employeeId": "5101",
       "name": "Md. Alamgir Hossain",
       "role": "ENGINEER",
-      "password": "$2b$10$rruzjZiZ4xAiCdG/vJn5BOMZDQoxhext8Tre1t3Agpc2Aa8qCT4wW",
+      "password": "$2b$10$oUjyGyIOjsOma3E5EFTrkeVDpgLR09A9Ph4w7djdSxMCkeoS.Ku.6",
       "supervisorId": "1774775804637fmwyt",
       "assignedEngineers": [],
       "phone": "01686695257",
@@ -429,7 +431,7 @@
       "employeeId": "57772",
       "name": "Shikder Mejbah Ahmed Mubin",
       "role": "ENGINEER",
-      "password": "$2b$10$h/gsABMaK9kTuQbUOuz6y.lADMT293AE05wMtVFEx6PW2nC00dAcS",
+      "password": "$2b$10$e0tGojxnHDr7VzDQij6Ss.NwFWrf0q..mUI9vxio1WYnCvyTJT6hG",
       "supervisorId": "1774775804637fmwyt",
       "assignedEngineers": [],
       "phone": "01678861684",
@@ -445,7 +447,7 @@
       "employeeId": "66063",
       "name": "Md. Rashed Hossain",
       "role": "ENGINEER",
-      "password": "$2b$10$xB0puRBV0CMqsA0aSda2SObTRWD8IEy6YM.DIImvbolcUxw1myzSS",
+      "password": "$2b$10$MWUtr6Kn1htuhpZW0TMIZexGdtlJ317qrLAzx6NfnF1paM2QjCUV.",
       "supervisorId": "1774775804738ou56o",
       "assignedEngineers": [],
       "phone": "01678860528",
@@ -462,7 +464,7 @@
       "employeeId": "68016",
       "name": "Jobayer Ahmed",
       "role": "ENGINEER",
-      "password": "$2b$10$Jw1NnGCsJwIR0.tOhV3O4eH8AMveTpz2ojhoOGlnkEnw4xfIeZ8cO",
+      "password": "$2b$10$3wFpKBlNbylKDTKvyVmY3OtjzyTPTnsqw6gqFXiJUjKB3EMlVFdm.",
       "supervisorId": "1774775804446xjkgr",
       "assignedEngineers": [],
       "phone": "01678864119",
@@ -478,7 +480,7 @@
       "employeeId": "39823",
       "name": "Md. Ruhul Amin",
       "role": "ENGINEER",
-      "password": "$2b$10$39ToufSlZdYtmhLl2BoJg.RMIKFGPacnnWDauBjwCDb4fVoHHlfAC",
+      "password": "$2b$10$inqH1vLu2/LR4JKRHHVQTu.ljHLUIR7BaLNnZF/7df/CAYJVWGY1y",
       "supervisorId": "1774775804446xjkgr",
       "assignedEngineers": [],
       "phone": "01678863068",
@@ -494,7 +496,7 @@
       "employeeId": "19359",
       "name": "Papon Chandra Das",
       "role": "OFFICER",
-      "password": "$2b$10$dVeh7322jl0yUiWHjjDfJO/28Af1u3NXGp71hF5sNvV7Ll8AXgBQm",
+      "password": "$2b$10$pWaMPlEoPcL1FNBjNM29u.chv4izES8UbQwSDwMjYkrY8bH3XL.zW",
       "supervisorId": "1774775806221sda2u",
       "assignedEngineers": [
         "45213",
@@ -520,7 +522,7 @@
       "employeeId": "19348",
       "name": "Md. Jubaraj",
       "role": "OFFICER",
-      "password": "$2b$10$GagR2leCN56a/BEQyQPXwe2DLM/GlpNq0kyURTmfxH58knbl/mZoy",
+      "password": "$2b$10$4YteV7yVOxnPsu0eamb/2ORS7aHtrmMRC9BjDiiAqpl.dcSMf1U.C",
       "supervisorId": "17747758056381k2v1",
       "assignedEngineers": [
         "17668",
@@ -542,7 +544,7 @@
       "employeeId": "42949",
       "name": "Rabiul Alam",
       "role": "OFFICER",
-      "password": "$2b$10$ZeW0ESc8slWPO8Cq.E9cFO1Bnjx2XXL7Db07BgJzkSYKN90GC8Mbi",
+      "password": "$2b$10$V3Mju.j/txbgI.RnsacVXe3gNEOMwQzTfWZGhyf7V.PDgpwzgus8S",
       "supervisorId": "1774775807066xh2qm",
       "assignedEngineers": [
         "17668",
@@ -563,7 +565,7 @@
       "employeeId": "4461",
       "name": "Md. Mamun",
       "role": "OFFICER",
-      "password": "$2b$10$yFwN9RjCcJSxkjRH96fah.Xd6NUP6YYrsZu7FSGgR0NrmcfHFpqMm",
+      "password": "$2b$10$eoLGtK84INtRaR6xgXVuCOXYYSJzj.oBemC2v72st3ArgmFY6JbYW",
       "supervisorId": "17747758052207v2it",
       "assignedEngineers": [
         "17668",
@@ -585,7 +587,7 @@
       "employeeId": "58175",
       "name": "Mohammad Alik Pramanik",
       "role": "OFFICER",
-      "password": "$2b$10$agGVcf85EYcm3Kkhrv1Iqewzr4MueSxZ56qDWEEGaW6XWwVn.48fO",
+      "password": "$2b$10$O7/.hZWgPP0EW5kxh.q05.kToLRHmnBLxTCCX65bJFG8r6UmPhMAC",
       "supervisorId": "1774775805870bjr0k",
       "assignedEngineers": [
         "19219",
@@ -605,7 +607,7 @@
       "employeeId": "38250",
       "name": "Md. Jahid Hasan",
       "role": "OFFICER",
-      "password": "$2b$10$fuNhT.VXnP77wn88t7Ww0efSIeuzCbRlGPKPwBMB8/N0M7CqmWxeS",
+      "password": "$2b$10$y5cbQthmLWUt9prFrgjKiechCBMRBqxFkmRDKUPOIqUisDsAVYnJa",
       "supervisorId": "1774775805465jfpyp",
       "assignedEngineers": [
         "45213",
@@ -631,7 +633,7 @@
       "employeeId": "67123",
       "name": "Md. Sameul Islam Shakib",
       "role": "OFFICER",
-      "password": "$2b$10$nM2u4hcQQSo4eWE5MysBi.n43ApxWzTUy.QXcSWJZazJYcHg7n4iC",
+      "password": "$2b$10$6..Tgao.1w0rLpsGQvZu3ewKA5xhaiNjdoeE6LO/xMubfjYr9vTZ2",
       "supervisorId": "1774775806400jh2yu",
       "assignedEngineers": [
         "19219",
@@ -656,7 +658,7 @@
       "employeeId": "41412",
       "name": "Md. Yousuf Ali",
       "role": "OFFICER",
-      "password": "$2b$10$cD.CujnraSLadd/tPB1COeBTWbMvaufUhZa/UHYtASY0pcFcNIVSO",
+      "password": "$2b$10$x1H999EBpGU903Zco5nnmOFaqHMBPdZLyiJ0tT41I4LaVWMvMHS2a",
       "supervisorId": "17747758053466f9yq",
       "assignedEngineers": [
         "19219",
@@ -680,7 +682,7 @@
       "employeeId": "39939",
       "name": "Md. Rubel Alom",
       "role": "OFFICER",
-      "password": "$2b$10$h/S5rCDldrP.DuMcEX7rR.2/2eXRXjEfqxLJw5qE4mivUtedtNMFS",
+      "password": "$2b$10$gDjafLsoQI.1o4TMM.yI/.oMMW184WU.zQb0GltEi0vG/7RFpOOQ6",
       "supervisorId": "1774775805963ig03q",
       "assignedEngineers": [
         "17668",
@@ -703,7 +705,7 @@
       "employeeId": "7669",
       "name": "Md. Faruk Hossain",
       "role": "OFFICER",
-      "password": "$2b$10$94mdhLqn4VQS4NbL61DODuK0WlWjBYoXt3BhmcR5I1lCOTRj1ewW.",
+      "password": "$2b$10$g6whpYlQZ9zm3UQvzZ5xK.lQwjZohHSY2GhFAQmwDltetJTtpZ/5m",
       "supervisorId": "1774775805117c761r",
       "assignedEngineers": [
         "17668",
@@ -730,7 +732,7 @@
       "employeeId": "6810",
       "name": "Selim",
       "role": "TECHNICIAN",
-      "password": "$2b$10$tCarC.ooAqLMPQbgoUHc6Ov5VoQJw.GXcpZOore8Y52mc56.o7UXK",
+      "password": "$2b$10$mVB6huKAtMj7gbV8QVd46uNEyeRzU4ApoyEtrEpde4yxYv3QwHm3q",
       "supervisorId": "1774775807698asgwa",
       "assignedEngineers": [],
       "phone": "01678861505",
@@ -747,7 +749,7 @@
       "employeeId": "21527",
       "name": "Md. Mahabub Hasan",
       "role": "TECHNICIAN",
-      "password": "$2b$10$oXcy2S.vASXroEeLLs2ffeKfVDX1ikAiDGCxE56176G/Ag/.KU.7W",
+      "password": "$2b$10$9wIuOdoM5rhBWMeQlg3B7eE/3VmdgJyZtUZaGazyT8wBASULJ7t.i",
       "supervisorId": "177477580731781g27",
       "assignedEngineers": [],
       "phone": "01678862342",
@@ -764,7 +766,7 @@
       "employeeId": "30644",
       "name": "Md. Rasel Ahmmed Khan",
       "role": "TECHNICIAN",
-      "password": "$2b$10$BX7vRGQcFQ6WhRuBj3OycOsjyDSQTX4leW6veLCOtQRuGjYokF.QO",
+      "password": "$2b$10$8JvgRnMOFX4Jm3GYA5WjheeT3A./sfX3KUo5lXqRUB5HJXmpmPqZa",
       "supervisorId": "1774775807192br8by",
       "assignedEngineers": [],
       "phone": "01678861417",
@@ -782,7 +784,7 @@
       "employeeId": "22760",
       "name": "Nashir Uddin",
       "role": "TECHNICIAN",
-      "password": "$2b$10$K5L15otqxEvt.PkvwaC13eKzV98kHmylweNVfY48GLH6Ydi4ZGIHG",
+      "password": "$2b$10$LSBL1souvNOYzGBggcgkMeqJ6SmMutNYWRkB2R/wZdhGVGl9Q3.16",
       "supervisorId": "1774775808049xly94",
       "assignedEngineers": [],
       "phone": "01686695894",
@@ -799,7 +801,7 @@
       "employeeId": "20368",
       "name": "Md. Selim Reja",
       "role": "TECHNICIAN",
-      "password": "$2b$10$TG9/SVFGOkydRu60Ehy7C.WlL3YafrQr9MEsbv6GE51VVGmUC9fiC",
+      "password": "$2b$10$iuvahybljl0Dn/oz3VB.peeo9ZutI1EEhq4qlkqNmMp7DM0z8gum2",
       "supervisorId": "17747758077842pbzc",
       "assignedEngineers": [],
       "phone": "01678861251",
@@ -820,7 +822,7 @@
       "employeeId": "45660",
       "name": "Raju Ahmmed",
       "role": "TECHNICIAN",
-      "password": "$2b$10$NxUaIGyE79x7gtLRdSNvCeydwYcTlOpUMpczidgNg.mN/VgguMCwO",
+      "password": "$2b$10$IxmTkIG7WsY8esR4JHy36OarvQJ0jBRAH2rDhGOtpuu.1DsOldqRy",
       "supervisorId": "1774775807698asgwa",
       "assignedEngineers": [],
       "phone": "01686695599",
@@ -837,7 +839,7 @@
       "employeeId": "48309",
       "name": "Md. Yeakub Hossain",
       "role": "TECHNICIAN",
-      "password": "$2b$10$zToYa.2rR5i83d7EF6h5BO7aMmaUX5HQ2uRGbDPE7HsjLeZDeEPnW",
+      "password": "$2b$10$qiUIBK/cU7P40twH84cX3ubjXzDImtqObSP9WytRn6FioDcYw2m3C",
       "supervisorId": "1774775808049xly94",
       "assignedEngineers": [],
       "phone": "01608984739",
@@ -854,7 +856,7 @@
       "employeeId": "48566",
       "name": "Mahmudul Hasan",
       "role": "TECHNICIAN",
-      "password": "$2b$10$mfLgLJMXlNwAjAa42bfNqup4iHFWyjq7AxBT0tfNVVmzKLBjP6W4q",
+      "password": "$2b$10$nWBXFbWFB.3MRtiSMIjtPegJXLAlHasDzSNWyXqmXNoD12KH7Tvrq",
       "supervisorId": "17747758076112m7wi",
       "assignedEngineers": [],
       "phone": "01678862664",
@@ -871,7 +873,7 @@
       "employeeId": "52903",
       "name": "Md. Faizul Islam",
       "role": "TECHNICIAN",
-      "password": "$2b$10$rr2tnfsEBZPt6kHvLovnQ.m.v.v3u0YNp5CzkvFucgv.Wm5V5L.Ne",
+      "password": "$2b$10$kQAsMht38CN5M.v3ldDYi.oGQKd0ex7ZapIhC31H6nxCtYg/9X81m",
       "supervisorId": "1774775807869p7wm3",
       "assignedEngineers": [],
       "phone": "01608985677",
@@ -892,7 +894,7 @@
       "employeeId": "37413",
       "name": "Sree Nitai Chandro Roy",
       "role": "TECHNICIAN",
-      "password": "$2b$10$25NDS2V5f9It3SKcZkbeuusItpmhiL.l9yczEk0gv.IWF8tsEAk7q",
+      "password": "$2b$10$E6f6m//FLA9iGrpMtty8Eeti9obgQZIu8DjEEMJH519pGkKlXIHWi",
       "supervisorId": "177477580795963nz0",
       "assignedEngineers": [],
       "phone": "01678862982",
@@ -909,7 +911,7 @@
       "employeeId": "40664",
       "name": "Md. Mizanur Rahman",
       "role": "TECHNICIAN",
-      "password": "$2b$10$UsmcPdWQG1iISZqlrbsJ1e6wYAjGRxig.11oTDuztQJbRZ7HFxHNy",
+      "password": "$2b$10$out9JWM5NRcQXqLVFrSh/eB/5xDHZW8GoxpSxT4hfaHMsxz5b2Ure",
       "supervisorId": "17747758075252xogm",
       "assignedEngineers": [],
       "phone": "01678861519",
@@ -926,7 +928,7 @@
       "employeeId": "42234",
       "name": "Md. Rubel Miah",
       "role": "TECHNICIAN",
-      "password": "$2b$10$kykmF0EbbIiBgRbTPsIe7u1Ojii07Wsfk1S8VILwMbPbUoJ4Ze1VO",
+      "password": "$2b$10$O71t4JqOU.bFaR1K3LdMb.MSwII5Wqji6bHewHQ4vZSXgf0DiRm7i",
       "supervisorId": "17747758075252xogm",
       "assignedEngineers": [],
       "phone": "01678862521",
@@ -943,7 +945,7 @@
       "employeeId": "43081",
       "name": "Md. Saem Mia",
       "role": "TECHNICIAN",
-      "password": "$2b$10$bB4xuW2Uz72yhN3xOV797uBUdpxiELd0CDRyu23OjHUbrnr/caCSq",
+      "password": "$2b$10$LUNmn4XNqgkNUHfS5fkhoe84xwN98oWHLYxBZVhIyDQTHmROCozk.",
       "supervisorId": "1774775807426xm354",
       "assignedEngineers": [],
       "phone": "01678864219",
@@ -960,7 +962,7 @@
       "employeeId": "44415",
       "name": "Yakub Ali",
       "role": "TECHNICIAN",
-      "password": "$2b$10$uj5Pb5P.VyCPrUSvcHDWFedCKY.S/Trv0QMzljMx0b.m08emQb1sy",
+      "password": "$2b$10$I49GUJxgrK736fx8GpKkdOTZ2yIrIS2bGtFKtSeoLb7uMTrF/DBzG",
       "supervisorId": "1774775807192br8by",
       "assignedEngineers": [],
       "phone": "01678860819",
@@ -977,7 +979,7 @@
       "employeeId": "56489",
       "name": "Md. Lablue Islam",
       "role": "TECHNICIAN",
-      "password": "$2b$10$MBQjRw0.Dl1z7UNfx5oPguBxDoLSNo69p3CAW.zvAP6sQAe1lylrK",
+      "password": "$2b$10$4sSehb1pHFxO/cmK/gKj1uOnpmAD56FAsZoF6krnkUR9g8xGaci7G",
       "supervisorId": "1774775807698asgwa",
       "assignedEngineers": [],
       "phone": "01608984973",
@@ -994,7 +996,7 @@
       "employeeId": "50328",
       "name": "Md. Hamidur Rahman",
       "role": "TECHNICIAN",
-      "password": "$2b$10$28DjNYSYrpT1Fy4i7O3o/OKbnB49PBRegRUd2KJGocb9JwGd3BK.S",
+      "password": "$2b$10$4EbjCrhqeQxvLWEnpXduROcxrppcGrP3W9ocWgXa11cCqIPVkQ4lO",
       "supervisorId": "17747758077842pbzc",
       "assignedEngineers": [],
       "phone": "01608985572",
@@ -1015,7 +1017,7 @@
       "employeeId": "40660",
       "name": "Alamgir Hossen",
       "role": "TECHNICIAN",
-      "password": "$2b$10$1ob2hY1ZrWn0XeGEczYy1eSduo2DovospvUDiMtv0smOP06zC1l1e",
+      "password": "$2b$10$MXRFdrWpYAzvdK.TEWIz2OmjHcgQW35tKWjvUnfWtIzSdWTs.02r.",
       "supervisorId": "1774775807426xm354",
       "assignedEngineers": [],
       "phone": "01678863894",
@@ -1032,7 +1034,7 @@
       "employeeId": "42692",
       "name": "Md. Farid Hosen",
       "role": "TECHNICIAN",
-      "password": "$2b$10$3xoox8SX2Dj325.9uG2EHeUsueBGL4yNOlwQpDo3ALW/tnfH0oeKK",
+      "password": "$2b$10$IpCZCkkvRkfMoyONxq7lfe52vBjcO8JTofKZg89gou5udQWioLEqa",
       "supervisorId": "17747758077842pbzc",
       "assignedEngineers": [],
       "phone": "01796322838",
@@ -1053,7 +1055,7 @@
       "employeeId": "43264",
       "name": "Md. Mominul Beg",
       "role": "TECHNICIAN",
-      "password": "$2b$10$ItdtrxjvXqWRrwzPUaIwY.eHBHSA9jjvVYHcg/TaK5rjIIi9UFBQu",
+      "password": "$2b$10$6qRJZVKCtoK9Mn0/bN41denFYxtr2ZoYe8be7qq4EvXghwR17dhTq",
       "supervisorId": "17747758077842pbzc",
       "assignedEngineers": [],
       "phone": "01722825343",
@@ -1074,7 +1076,7 @@
       "employeeId": "57041",
       "name": "Moniruzzaman",
       "role": "TECHNICIAN",
-      "password": "$2b$10$Wt.nFdtWKmeAFbz.KXttauV/seerLqJYR6avNN/12GOI.HaP3zSH6",
+      "password": "$2b$10$NADIgzX1ai5OUvWQRfsPmusvC6eznoHBp93ZwfCZ69yAkNrrR0Fgi",
       "supervisorId": "177477580795963nz0",
       "assignedEngineers": [],
       "phone": "01633794821",
@@ -1091,7 +1093,7 @@
       "employeeId": "41904",
       "name": "Md. Rakibul Hasan",
       "role": "TECHNICIAN",
-      "password": "$2b$10$6eoAwt9rydhbOkaQH5ye1uOiqsMMdOS0cOuAGYd.6qWHGliqqaHi2",
+      "password": "$2b$10$reWKdwFqCQavbaC5Ap/mW.XH64vBzEIQS4xM0wf2TzqGkPTO32mQK",
       "supervisorId": "1774775808049xly94",
       "assignedEngineers": [],
       "phone": "01678862349",
@@ -1108,7 +1110,7 @@
       "employeeId": "43249",
       "name": "Mahfijur Rahman",
       "role": "TECHNICIAN",
-      "password": "$2b$10$tBXsqxpO2QAmc6no6KF85Ovu0v/oyaO3mFOuPe9iPOPcEzU5Ykx8a",
+      "password": "$2b$10$qDlgMn0cmrAOSaAWt6PHw.yE8mKEL/T.dMDr3gx6rkReyZQQxEL6O",
       "supervisorId": "17747758077842pbzc",
       "assignedEngineers": [],
       "phone": "01817270543",
@@ -1129,7 +1131,7 @@
       "employeeId": "60321",
       "name": "Nizam Uddin",
       "role": "TECHNICIAN",
-      "password": "$2b$10$FI1bw2pUx1RZ6PGU.CKxiuZhStn2anpM.aPLknk5MDypU52hayaAS",
+      "password": "$2b$10$GHvS9SzOiIuxpj0xcEUmueTKvjRLx6MI9UjKCg3vWFSNFm3qYKedm",
       "supervisorId": "1774775807426xm354",
       "assignedEngineers": [],
       "phone": "01787803439",
@@ -1146,7 +1148,7 @@
       "employeeId": "57208",
       "name": "Sabbir Hasan Shanta",
       "role": "TECHNICIAN",
-      "password": "$2b$10$p6RCBzLZZ93OFgc8sFdb3OFLZJe5cAkTr/L4.s4Yn/GJvqDrg6ynO",
+      "password": "$2b$10$K8mPYE22lWlfMjJ70iUo8.1QBqCFfSp3Eq2sdic8pJrjUKkylJRhi",
       "supervisorId": "1774775807192br8by",
       "assignedEngineers": [],
       "phone": "01633794809",
@@ -1163,7 +1165,7 @@
       "employeeId": "60578",
       "name": "Md. Shakil Babu",
       "role": "TECHNICIAN",
-      "password": "$2b$10$vh2ih1ABbEqMAjc/7AQwe.qd5tbRQQgWnpEkjpXFmLmXlcK0uq4cS",
+      "password": "$2b$10$ItcHDnP61wNp3gR5be7fN.HtI7Wnh.hoZK2CUC2v54TpPfEglQJn2",
       "supervisorId": "17747758077842pbzc",
       "assignedEngineers": [],
       "phone": "01608984685",
@@ -1183,7 +1185,7 @@
       "id": "1774775810607n4v5o",
       "employeeId": "60586",
       "name": "Md. Sumon Rana",
-      "password": "$2b$10$rYXSV5Sqhtimg4MbWHFvI.Cre0oaEVFhFf/w8MMDEvgHc./pWsPmO",
+      "password": "$2b$10$FCGyxHjthXuuJSaxAzQAOOHCt4HyZ/91pBDyPfDbE3ZtCucGq6gGO",
       "role": "TECHNICIAN",
       "designation": "Junior Worker",
       "department": "RAC R&I",
@@ -1200,7 +1202,7 @@
       "id": "17747758106937oshq",
       "employeeId": "60914",
       "name": "Md. Abdulllah",
-      "password": "$2b$10$YKHBg3D0MaQ1pJoFxL4tBu6Kq2Gr/hC4Xt8tEpfWE0pjzcm2NIaYG",
+      "password": "$2b$10$9xsDjvVimK3Vphm1glrZRusfRj8ZbU960/LJ6RY/X3OPNPV6UmvOG",
       "role": "TECHNICIAN",
       "designation": "Junior Worker",
       "department": "RAC R&I",
@@ -1221,7 +1223,7 @@
       "id": "1774775810780pfy8i",
       "employeeId": "61071",
       "name": "Jahidul Islam",
-      "password": "$2b$10$oJsh5wkp9d3Tsk29yxUA0.8wYZ3tmZWstSxaTppzXhoayx98TFJbm",
+      "password": "$2b$10$4aD/CJoeHew97GJ9RT0Xre6xjGknrgbn.nWlRC1wa/pufpzb5.Ubm",
       "role": "TECHNICIAN",
       "designation": "Junior Worker",
       "department": "RAC R&I",
@@ -1238,7 +1240,7 @@
       "id": "1774775810865x0mp4",
       "employeeId": "61650",
       "name": "Md. Rakibul Hasan",
-      "password": "$2b$10$du8N7T6oIbDbsjP8FKhEb.h.PrZxQZXgrgeK4OKKSuykof5IkB.LC",
+      "password": "$2b$10$oK/gKj4sh.r65Lea710qROHwU44VZ.pUjSFjTYZJB06yJWpCf4yYS",
       "role": "TECHNICIAN",
       "designation": "Junior Worker",
       "department": "RAC R&I",
@@ -1255,7 +1257,7 @@
       "id": "1774775810953mn3rn",
       "employeeId": "61674",
       "name": "Md. Sadikur Rahman",
-      "password": "$2b$10$EWnne9GRuoD/9lxwTmq/JOEbpJ803mJwsB0cCnw7gsqiX5WKhRrCy",
+      "password": "$2b$10$5hmEF9b2Nk5ZD8AbSwhseeRFl/itWGXvTPXmm3im2mXrL6VdXiYWO",
       "role": "TECHNICIAN",
       "designation": "Junior Worker",
       "department": "RAC R&I",
@@ -1273,7 +1275,7 @@
       "id": "177477581104944zpu",
       "employeeId": "62193",
       "name": "Ashraf Mondal",
-      "password": "$2b$10$/D.qrDNIChMytE5mMIa4ReyqlPsMzd2wQv/EISbmpln1yxnxtjIWC",
+      "password": "$2b$10$QeDvMtpDUrI6BkIIw3iXfeTQUSxE9DLxXUNsPLtnEb3n6INvW7LQC",
       "role": "TECHNICIAN",
       "designation": "Junior Worker",
       "department": "RAC R&I",
@@ -1290,7 +1292,7 @@
       "id": "1774775811144shpse",
       "employeeId": "62536",
       "name": "Md. Mosharaf Hossain",
-      "password": "$2b$10$WH40Ac8JVAVSOox0mTesc.w7O3G.KP11iS0KjeXE1SfOIA2Lz/45m",
+      "password": "$2b$10$7tLcCJs7n0CbvrFfJhxYkuwUdMLTH6hWzt6ikNQuQTzSidjxhICk6",
       "role": "TECHNICIAN",
       "designation": "Junior Worker",
       "department": "RAC R&I",
@@ -1311,7 +1313,7 @@
       "id": "1774775811229qm2o4",
       "employeeId": "63089",
       "name": "Musarof Hosen",
-      "password": "$2b$10$CpCJiZMb9OOiNLosmuWxAuMlpiNCciPsWHVFgiASQ30..TjRVFWiO",
+      "password": "$2b$10$q.HehIBwedL3D1pI/cC6EOSMpmRAAxWqM.LbUbmsvQ2u99GOljTRO",
       "role": "TECHNICIAN",
       "designation": "Junior Worker",
       "department": "RAC R&I",
@@ -1328,7 +1330,7 @@
       "id": "1774775811314xg4ru",
       "employeeId": "63107",
       "name": "Md. Akash Miah",
-      "password": "$2b$10$v11JX3JskHECGA.WofMTZutR1ofWu0xkd1JlD8FyZuJnUza3QpGnS",
+      "password": "$2b$10$FVPJ8btByLW94NpvhT8aXes8x7oawJnsW6ONW1Ghx66.hWrqS8Jqe",
       "role": "TECHNICIAN",
       "designation": "Junior Worker",
       "department": "RAC R&I",
@@ -1345,7 +1347,7 @@
       "id": "17747758114013u87p",
       "employeeId": "63137",
       "name": "Md. Roni Mia",
-      "password": "$2b$10$bYjt.q9Emzd5NMVgXnuQT.wQklEI3.5ouZmUs3LTzO1cYw7cyD6iW",
+      "password": "$2b$10$1Bo.46gxVNEDNUYUvGuBWOufIYu1x7tscJf1fHZ4Je7uWiOz237ly",
       "role": "TECHNICIAN",
       "designation": "Junior Worker",
       "department": "RAC R&I",
@@ -1362,7 +1364,7 @@
       "id": "17747758114888pwez",
       "employeeId": "63195",
       "name": "Bijoy Kumar Haolader",
-      "password": "$2b$10$A8CJTYqvMd.GrbgSRWcmm.9p6xW.OluuGaRWB7ZtSdHeh9NoOS656",
+      "password": "$2b$10$WMnHDKuwhHXVFbcKmKR.RO00GZWde9nS1nyVd74rcX2Gqf.umaqo6",
       "role": "TECHNICIAN",
       "designation": "Junior Worker",
       "department": "RAC R&I",
@@ -1379,7 +1381,7 @@
       "id": "1774775811575qvii5",
       "employeeId": "63513",
       "name": "Proshenjit Chandra Barmon",
-      "password": "$2b$10$reKjdn/9q.SiY1bCytFNuuLNu5SKMKP1NQehuWfhQpeGw0HSoPUjq",
+      "password": "$2b$10$ldj5/994VJOtV05JJ9crpuzLRtOKZreZJdwpIQuMBcBWxfDnhi.my",
       "role": "TECHNICIAN",
       "designation": "Junior Worker",
       "department": "RAC R&I",
@@ -1400,7 +1402,7 @@
       "id": "1774775811747ugmqy",
       "employeeId": "65683",
       "name": "Md. Atowar Rahman",
-      "password": "$2b$10$jnJU/v4zhqcCq7xY8hc.r.OyTAiwv4eiibU90IjGCzJ9Dj8K0FEcm",
+      "password": "$2b$10$F6P1DDVrlIM/wcj8hoLz6OrwvNXfPN6GgEf79/op9vBOkr5aWOH6O",
       "role": "TECHNICIAN",
       "designation": "Junior Worker",
       "department": "RAC R&I",
@@ -1417,7 +1419,7 @@
       "id": "1774775811834xz2ib",
       "employeeId": "63124",
       "name": "Md. Sakib Babu",
-      "password": "$2b$10$8FjUr32vgMO7y5lVueoZFOQyMGtzAHcxjJyuTeT/5s162dQT01gS2",
+      "password": "$2b$10$6S7tlpIb92Y8VgQZGtHV1OJ.xNjgrgxHYzi8xOZQwI7D07kt4CBO.",
       "role": "TECHNICIAN",
       "designation": "Helper",
       "department": "RAC R&I",
@@ -1438,8 +1440,8 @@
       "id": "1775298922354",
       "employeeId": "1007",
       "name": "Md. Tanvir Rahman",
-      "role": "TECHNICIAN",
-      "password": "$2b$10$ehKR2dhVIivEbmvWx2EXQeOddGcQhBT/NmxOy0nVc7ohn1jE6n8u2",
+      "role": "CBO",
+      "password": "$2b$10$/nody7CgWMAmb1dJpzhzP.OYYU0xGWMPx0Njm9IKr012ZR9LRTEVe",
       "supervisorId": "",
       "supervisor_ids": [],
       "assignedEngineers": [],
@@ -1456,9 +1458,9 @@
       "id": "1789971001785",
       "employeeId": "12467",
       "name": "Shamim Ahmmed",
-      "role": "TECHNICIAN",
-      "password": "$2b$10$TFySLcoxcV32RS98ITIPHuDEjdKEYacenNGB5PO8Eab0cTvB35QMy",
-      "supervisorId": "",
+      "role": "DCBO",
+      "password": "$2b$10$gfnYD3YglKDW/hISdztoP.u4d..an1k/GDe1ncq42gvBPLPYNa11.",
+      "supervisorId": "1775298922354",
       "supervisor_ids": [],
       "assignedEngineers": [],
       "phone": "01678048125",
@@ -1475,7 +1477,7 @@
       "employeeId": "69646",
       "name": "Md. Nazmush Shakib Shahi",
       "role": "ENGINEER",
-      "password": "$2b$10$y5g2KrgkhK0d/2BoTOxsg.gs9/TTWrSYs41QV4EcpFr2xwi9TU5zC",
+      "password": "$2b$10$UzuE8M.P2fAompRHFW0TaumfpFe/JFEDREzfj.kW9wrLzJtvD4J.y",
       "supervisorId": "1774775804637fmwyt",
       "supervisor_ids": [],
       "assignedEngineers": [],
@@ -1493,7 +1495,7 @@
       "employeeId": "69695",
       "name": "Md. Abdus Shakur",
       "role": "ENGINEER",
-      "password": "$2b$10$5mMlbTPWjEEW0iPBD8atrOAzoUo/qQ018rpC9LKrxB1.5hMZKxVsS",
+      "password": "$2b$10$tkCtVTleVKrjFRAk06ivtOFioVkGzsD2Q6EbjsdVzAJBFYktIuujG",
       "supervisorId": "1774775804637fmwyt",
       "supervisor_ids": [],
       "assignedEngineers": [],
@@ -1511,7 +1513,7 @@
       "employeeId": "69810",
       "name": "Md. Ashraful Haque",
       "role": "ENGINEER",
-      "password": "$2b$10$skFjgld1chA.PzG5eom4.Omdg9FH.9urO2mjee2s3P3Q12LrYgmTq",
+      "password": "$2b$10$wG0RHuya4WgwdjW.s48H9uJSZU9wqrlpVhTMZTv.4DArPhRWG4Hxy",
       "supervisorId": "1774775804446xjkgr",
       "supervisor_ids": [],
       "assignedEngineers": [],
@@ -1539,64 +1541,552 @@
       "status": "FREE",
       "total_point": 0,
       "completedTask": 0
-    },
-    {
-      "id": "17900493894262nbkw",
-      "employeeId": "ADMIN001",
-      "name": "Super Admin",
-      "password": "$2b$10$6fzIW1MIyj2.mVDsCpO6fOHP.153QFT/olBZ8J0UKSw4PclA/ckhO",
-      "role": "SUPER_ADMIN",
-      "designation": "",
-      "department": "",
-      "supervisorId": "",
-      "assignedEngineers": [],
-      "total_point": 0,
-      "completedTask": 0
-    },
-    {
-      "id": "1790049389666l52mc",
-      "employeeId": "jhfadmin@jhf.com",
-      "name": "JHF Admin",
-      "password": "$2b$10$jo.twVN2KoC17JRqI3lNJO3HecavOVJ8HeveG/90L/eiML048Tn2G",
-      "role": "SUPER_ADMIN",
-      "designation": "",
-      "department": "",
-      "supervisorId": "",
-      "assignedEngineers": [],
-      "total_point": 0,
-      "completedTask": 0
     }
   ],
   "tasks": [
     {
-      "title": "2222222222",
-      "model": "18K",
-      "details": "3333333333333",
+      "title": "Real Auto-Backup On Entry Verification Task",
+      "model": "Portable",
+      "details": "Verifying auto-backup on entry",
       "urgency": "REGULAR",
-      "assignedTo": "1774775807698asgwa",
-      "deadline": "2026-09-22",
+      "assignedTo": "JHF Boss",
+      "deadline": "2026-10-30T18:00:00.000Z",
       "points": 1,
-      "customStartTime": "",
-      "estimatedDuration": "",
       "workType": "SINGLE",
-      "createdBy": "45213",
-      "assignedBy": "45213",
-      "id": "1790076036607",
-      "taskId": "20260922-1120-406",
-      "createdAt": "2026-09-22T11:20:36.607Z",
+      "id": "1790832431193",
+      "taskId": "20261001-527-956",
+      "createdAt": "2026-10-01T05:27:11.193Z",
+      "createdBy": "jhfboss",
+      "assignedBy": "jhfboss",
+      "dhodId": "17668",
+      "hodId": "19219",
       "status": "PENDING",
       "progress": 0,
+      "customStartTime": "",
+      "estimatedDuration": "",
       "logs": [
         {
-          "id": "1790076036607",
+          "id": "1790832431193",
           "action": "Task Created",
-          "timestamp": "2026-09-22T11:20:36.607Z",
-          "user": "Md. Sadid Hossain"
+          "timestamp": "2026-10-01T05:27:11.193Z",
+          "user": "JHF Boss"
         }
       ]
     }
   ],
+  "deletedTaskIds": [
+    "1790076036607",
+    "20260922-1120-406",
+    "1790829892862",
+    "20261001-444-623",
+    "1790830348259",
+    "20261001-452-562",
+    "1790588405245",
+    "20260928-940-937",
+    "1790588587256",
+    "20260928-943-005",
+    "1790589264736",
+    "20260928-954-048",
+    "1790594216799",
+    "20260928-1116-365",
+    "1790588839936",
+    "20260928-947-564",
+    "1790588469000",
+    "20260928-941-240",
+    "1790593461818",
+    "20260928-114-365",
+    "1790831994085",
+    "20261001-519-719",
+    "1790832405296",
+    "20261001-526-440"
+  ],
+  "deletedUserIds": [
+    "permtest_1790740872206",
+    "1790740872213",
+    "999888",
+    "1790829907089",
+    "admin001",
+    "jhfadmin@jhf.com",
+    "17900493894262nbkw",
+    "1790049389666l52mc",
+    "test_user_999",
+    "1790830347651"
+  ],
   "attendanceRecords": [
+    {
+      "id": "1790739954163fp3lh",
+      "technicianId": "jhfboss",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790739954164dowql",
+      "technicianId": "1007",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "17907399541640agfa",
+      "technicianId": "12467",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "17907399541641s3cr",
+      "technicianId": "17668",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790739954164axoop",
+      "technicianId": "19219",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790739954164nkkkk",
+      "technicianId": "54589",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790739954164rkvnk",
+      "technicianId": "58175",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790739954164ya3b7",
+      "technicianId": "48566",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790739954164fnaxg",
+      "technicianId": "63195",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578hslvd",
+      "technicianId": "29766",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578kxyit",
+      "technicianId": "35866",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578nzy8i",
+      "technicianId": "37091",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "17907400435783ztrn",
+      "technicianId": "38056",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578i24gc",
+      "technicianId": "39301",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578g8u52",
+      "technicianId": "41527",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "17907400435787u5zs",
+      "technicianId": "41053",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578ml1l1",
+      "technicianId": "43924",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578y3n75",
+      "technicianId": "45213",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578r0ejp",
+      "technicianId": "40760",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578re3el",
+      "technicianId": "39766",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "179074004357826u1u",
+      "technicianId": "45064",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578mreg0",
+      "technicianId": "50177",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578rkdzo",
+      "technicianId": "41043",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "17907400435788j23i",
+      "technicianId": "46419",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578umhdr",
+      "technicianId": "53127",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578xl0bg",
+      "technicianId": "5101",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578uf2k3",
+      "technicianId": "57772",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "179074004357890p1w",
+      "technicianId": "66063",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578lb5q6",
+      "technicianId": "68016",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578q1u4q",
+      "technicianId": "39823",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578pwcgy",
+      "technicianId": "19359",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578p9b1p",
+      "technicianId": "19348",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578q0ozj",
+      "technicianId": "42949",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578t5apc",
+      "technicianId": "4461",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "17907400435786frfg",
+      "technicianId": "38250",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578u6la5",
+      "technicianId": "67123",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578l4u5q",
+      "technicianId": "41412",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "17907400435782rm8o",
+      "technicianId": "39939",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578z3i6z",
+      "technicianId": "7669",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578mvayi",
+      "technicianId": "6810",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "17907400435783bij5",
+      "technicianId": "21527",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578dswjp",
+      "technicianId": "30644",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578uflbz",
+      "technicianId": "22760",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "179074004357814qmh",
+      "technicianId": "20368",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578x2f3i",
+      "technicianId": "45660",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578euw66",
+      "technicianId": "48309",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578ny254",
+      "technicianId": "52903",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "179074004357804vih",
+      "technicianId": "37413",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578uxhlw",
+      "technicianId": "40664",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578xph80",
+      "technicianId": "42234",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578xguvy",
+      "technicianId": "43081",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578gzrvj",
+      "technicianId": "44415",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578t88z6",
+      "technicianId": "56489",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "179074004357803njo",
+      "technicianId": "50328",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "17907400435780gxnp",
+      "technicianId": "40660",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "179074004357846joh",
+      "technicianId": "42692",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578ff77n",
+      "technicianId": "43264",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578t60ul",
+      "technicianId": "57041",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578i5s7h",
+      "technicianId": "41904",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578bvwi3",
+      "technicianId": "43249",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578duvid",
+      "technicianId": "60321",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578ggddq",
+      "technicianId": "57208",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578bz9zn",
+      "technicianId": "60578",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "179074004357872shg",
+      "technicianId": "60586",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578f4g7u",
+      "technicianId": "60914",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "17907400435785uc2j",
+      "technicianId": "61071",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578crkhd",
+      "technicianId": "61650",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578fuqp9",
+      "technicianId": "61674",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578hskfe",
+      "technicianId": "62193",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578pyvko",
+      "technicianId": "62536",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "17907400435785j1li",
+      "technicianId": "63089",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578oaidc",
+      "technicianId": "63107",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578scwsq",
+      "technicianId": "63137",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578lldzj",
+      "technicianId": "63513",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "17907400435785gps1",
+      "technicianId": "65683",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578c11dy",
+      "technicianId": "63124",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578ay99j",
+      "technicianId": "69646",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578orzdd",
+      "technicianId": "69695",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790740043578rqyvv",
+      "technicianId": "69810",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
     {
       "id": "1790049412743b20hk",
       "technicianId": "6810",
@@ -1848,13 +2338,556 @@
       "technicianId": "42274",
       "status": "PRESENT",
       "date": "2026-09-22"
+    },
+    {
+      "id": "1790742054442a4x94",
+      "technicianId": "42274",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790742054442xe45d",
+      "technicianId": "ADMIN001",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790742054442tzhw7",
+      "technicianId": "jhfadmin@jhf.com",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "17907420544420uaxx",
+      "technicianId": "PERMTEST_1790740872206",
+      "status": "PRESENT",
+      "date": "2026-09-30"
+    },
+    {
+      "id": "1790831625585dyzmw",
+      "technicianId": "jhfboss",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585z7hc5",
+      "technicianId": "17668",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "17908316255857ltu7",
+      "technicianId": "19219",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "17908316255850w717",
+      "technicianId": "29766",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585lxs5k",
+      "technicianId": "35866",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585py4eu",
+      "technicianId": "37091",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585bn3vi",
+      "technicianId": "38056",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "17908316255851pmn9",
+      "technicianId": "39301",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585l3oh0",
+      "technicianId": "41527",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585cvbne",
+      "technicianId": "41053",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585skpgh",
+      "technicianId": "43924",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585j2msa",
+      "technicianId": "45213",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585zolzh",
+      "technicianId": "40760",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585cl02e",
+      "technicianId": "39766",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585s9qa4",
+      "technicianId": "45064",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585cq9wf",
+      "technicianId": "54589",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585gwv0z",
+      "technicianId": "50177",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585wbnyi",
+      "technicianId": "41043",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585d73ge",
+      "technicianId": "46419",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585pp42o",
+      "technicianId": "53127",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585o43lr",
+      "technicianId": "5101",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585zz6ql",
+      "technicianId": "57772",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585ng3lm",
+      "technicianId": "66063",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585wtgyb",
+      "technicianId": "68016",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585h2orc",
+      "technicianId": "39823",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "179083162558572kbt",
+      "technicianId": "19359",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585w62ap",
+      "technicianId": "19348",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585rpja5",
+      "technicianId": "42949",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585nrhee",
+      "technicianId": "4461",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585gb6q4",
+      "technicianId": "58175",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585yuww6",
+      "technicianId": "38250",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585hfk8q",
+      "technicianId": "67123",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585qyq1d",
+      "technicianId": "41412",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "179083162558597ff5",
+      "technicianId": "39939",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "179083162558594j1d",
+      "technicianId": "7669",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585gne9g",
+      "technicianId": "6810",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585hanyf",
+      "technicianId": "21527",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585zs1rt",
+      "technicianId": "30644",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585vxo78",
+      "technicianId": "22760",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625585fsxt4",
+      "technicianId": "20368",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586l4odw",
+      "technicianId": "45660",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586xin8s",
+      "technicianId": "48309",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586qf1ai",
+      "technicianId": "48566",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586wwvri",
+      "technicianId": "52903",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586jns25",
+      "technicianId": "37413",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "179083162558632dh1",
+      "technicianId": "40664",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586c1ktj",
+      "technicianId": "42234",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586vmdji",
+      "technicianId": "43081",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586i7koi",
+      "technicianId": "44415",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586z1iqp",
+      "technicianId": "56489",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586lshr3",
+      "technicianId": "50328",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586aiq2t",
+      "technicianId": "40660",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "179083162558600lqg",
+      "technicianId": "42692",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586ir6bh",
+      "technicianId": "43264",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586tk62z",
+      "technicianId": "57041",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "17908316255866c1ft",
+      "technicianId": "41904",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586vzh1k",
+      "technicianId": "43249",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586em63g",
+      "technicianId": "60321",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586cj57f",
+      "technicianId": "57208",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586wf8ic",
+      "technicianId": "60578",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586kn726",
+      "technicianId": "60586",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586nfcop",
+      "technicianId": "60914",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586n58y3",
+      "technicianId": "61071",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "17908316255868um6k",
+      "technicianId": "61650",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586bl0cb",
+      "technicianId": "61674",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586qebw3",
+      "technicianId": "62193",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586d08rz",
+      "technicianId": "62536",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "17908316255865x8ln",
+      "technicianId": "63089",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586wuiog",
+      "technicianId": "63107",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586tx07p",
+      "technicianId": "63137",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586upbv2",
+      "technicianId": "63195",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586qbxqr",
+      "technicianId": "63513",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586g78vk",
+      "technicianId": "65683",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586qtv8x",
+      "technicianId": "63124",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586ok856",
+      "technicianId": "1007",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586t6fet",
+      "technicianId": "12467",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "17908316255864jd2u",
+      "technicianId": "69646",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586trtnk",
+      "technicianId": "69695",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "1790831625586h5pjt",
+      "technicianId": "69810",
+      "status": "PRESENT",
+      "date": "2026-10-01"
+    },
+    {
+      "id": "17908316255865bdnu",
+      "technicianId": "42274",
+      "status": "PRESENT",
+      "date": "2026-10-01"
     }
   ],
-  "notifications": [],
+  "notifications": [
+    {
+      "id": "1790829856703hc9dj",
+      "userId": "17747758114888pwez",
+      "senderId": "1774775754483iyriq",
+      "taskId": "1790829856703",
+      "type": "TASK_ASSIGNED",
+      "message": "SUPER_ADMIN JHF Boss assigned you a task: Test Task Deletion",
+      "read": false,
+      "timestamp": "2026-10-01T04:44:16.703Z"
+    },
+    {
+      "id": "1790829873921wcw1y",
+      "userId": "17747758114888pwez",
+      "senderId": "1774775754483iyriq",
+      "taskId": "1790829873921",
+      "type": "TASK_ASSIGNED",
+      "message": "SUPER_ADMIN JHF Boss assigned you a task: Test Task Deletion",
+      "read": false,
+      "timestamp": "2026-10-01T04:44:33.921Z"
+    }
+  ],
   "pointTransactions": [],
   "technicianPerformance": [],
   "assignmentRequests": [],
   "activityLogs": [
+    {
+      "id": "1790739953864qv6je",
+      "userId": "1790739931746mv146",
+      "employeeId": "jhfboss",
+      "name": "JHF Boss",
+      "role": "SUPER_ADMIN",
+      "loginTime": "2026-09-30T03:45:53.866Z",
+      "ipAddress": "115.127.145.138",
+      "browser": "Chrome",
+      "os": "Windows",
+      "deviceType": "Desktop",
+      "deviceName": "Web-Client",
+      "platform": "Win32",
+      "loginStatus": "SUCCESS",
+      "createdAt": "2026-09-30T03:45:53.866Z",
+      "logoutTime": "2026-09-30T03:56:16.456Z",
+      "sessionDuration": "10m 22s"
+    },
     {
       "id": "177589593988595ip8",
       "userId": "1775895928853iitaa",
@@ -1923,9 +2956,7 @@
       "deviceName": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
       "platform": "Win32",
       "loginStatus": "SUCCESS",
-      "createdAt": "2026-04-11T11:41:50.443Z",
-      "logoutTime": "2026-09-22T11:13:27.531Z",
-      "sessionDuration": "Timeout (7 days inactivity)"
+      "createdAt": "2026-04-11T11:41:50.443Z"
     },
     {
       "id": "1789212772565253mw",
@@ -2102,6 +3133,345 @@
       "createdAt": "2026-09-22T11:20:44.166Z",
       "logoutTime": "2026-09-22T11:25:55.787Z",
       "sessionDuration": "5m 11s"
+    },
+    {
+      "id": "17907408587816svpg",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "name": "JHF Boss",
+      "role": "SUPER_ADMIN",
+      "loginTime": "2026-09-30T04:00:58.783Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceType": "Desktop",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "loginStatus": "SUCCESS",
+      "createdAt": "2026-09-30T04:00:58.784Z"
+    },
+    {
+      "id": "17907408721411ryap",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "name": "JHF Boss",
+      "role": "SUPER_ADMIN",
+      "loginTime": "2026-09-30T04:01:12.142Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceType": "Desktop",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "loginStatus": "SUCCESS",
+      "createdAt": "2026-09-30T04:01:12.142Z"
+    },
+    {
+      "id": "1790742054085gkrd1",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "name": "JHF Boss",
+      "role": "SUPER_ADMIN",
+      "loginTime": "2026-09-30T04:20:54.088Z",
+      "ipAddress": "115.127.145.138",
+      "browser": "Chrome",
+      "os": "Windows",
+      "deviceType": "Desktop",
+      "deviceName": "Web-Client",
+      "platform": "Win32",
+      "loginStatus": "SUCCESS",
+      "createdAt": "2026-09-30T04:20:54.088Z"
+    },
+    {
+      "id": "1790742922786qxujq",
+      "userId": "1789971001785",
+      "employeeId": "12467",
+      "name": "Shamim Ahmmed",
+      "role": "DCBO",
+      "loginTime": "2026-09-30T04:35:22.788Z",
+      "ipAddress": "115.127.145.138",
+      "browser": "Chrome",
+      "os": "Windows",
+      "deviceType": "Desktop",
+      "deviceName": "Web-Client",
+      "platform": "Win32",
+      "loginStatus": "SUCCESS",
+      "createdAt": "2026-09-30T04:35:22.788Z"
+    },
+    {
+      "id": "1790744244115",
+      "userId": "1774775804541i25mj",
+      "employeeId": "19219",
+      "name": "Ariful Islam",
+      "role": "HOD",
+      "loginTime": "2026-09-30T04:57:24.115Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceType": "Desktop",
+      "loginStatus": "FAILED",
+      "failedAttemptCount": 1,
+      "createdAt": "2026-09-30T04:57:24.115Z"
+    },
+    {
+      "id": "1790744268886fb48c",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "name": "JHF Boss",
+      "role": "SUPER_ADMIN",
+      "loginTime": "2026-09-30T04:57:48.889Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceType": "Desktop",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "loginStatus": "SUCCESS",
+      "createdAt": "2026-09-30T04:57:48.889Z"
+    },
+    {
+      "id": "1790744283627bmroe",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "name": "JHF Boss",
+      "role": "SUPER_ADMIN",
+      "loginTime": "2026-09-30T04:58:03.628Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceType": "Desktop",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "loginStatus": "SUCCESS",
+      "createdAt": "2026-09-30T04:58:03.628Z"
+    },
+    {
+      "id": "1790746042219urudf",
+      "userId": "1774775804541i25mj",
+      "employeeId": "19219",
+      "name": "Ariful Islam",
+      "role": "HOD",
+      "loginTime": "2026-09-30T05:27:22.225Z",
+      "ipAddress": "115.127.145.138",
+      "browser": "Chrome",
+      "os": "Windows",
+      "deviceType": "Desktop",
+      "deviceName": "Web-Client",
+      "platform": "Win32",
+      "loginStatus": "SUCCESS",
+      "createdAt": "2026-09-30T05:27:22.225Z",
+      "logoutTime": "2026-09-30T05:27:33.325Z",
+      "sessionDuration": "0m 11s"
+    },
+    {
+      "id": "17907460551785ngls",
+      "userId": "1774775804541i25mj",
+      "employeeId": "19219",
+      "name": "Ariful Islam",
+      "role": "HOD",
+      "loginTime": "2026-09-30T05:27:35.178Z",
+      "ipAddress": "115.127.145.138",
+      "browser": "Chrome",
+      "os": "Windows",
+      "deviceType": "Desktop",
+      "deviceName": "Web-Client",
+      "platform": "Win32",
+      "loginStatus": "SUCCESS",
+      "createdAt": "2026-09-30T05:27:35.178Z",
+      "logoutTime": "2026-09-30T05:32:38.382Z",
+      "sessionDuration": "5m 3s"
+    },
+    {
+      "id": "17908298565676uu6h",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "name": "JHF Boss",
+      "role": "SUPER_ADMIN",
+      "loginTime": "2026-10-01T04:44:16.569Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceType": "Desktop",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "loginStatus": "SUCCESS",
+      "createdAt": "2026-10-01T04:44:16.569Z"
+    },
+    {
+      "id": "1790829873835ge0gf",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "name": "JHF Boss",
+      "role": "SUPER_ADMIN",
+      "loginTime": "2026-10-01T04:44:33.835Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceType": "Desktop",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "loginStatus": "SUCCESS",
+      "createdAt": "2026-10-01T04:44:33.835Z"
+    },
+    {
+      "id": "17908298927232bro1",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "name": "JHF Boss",
+      "role": "SUPER_ADMIN",
+      "loginTime": "2026-10-01T04:44:52.724Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceType": "Desktop",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "loginStatus": "SUCCESS",
+      "createdAt": "2026-10-01T04:44:52.724Z"
+    },
+    {
+      "id": "1790829906984940y0",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "name": "JHF Boss",
+      "role": "SUPER_ADMIN",
+      "loginTime": "2026-10-01T04:45:06.985Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceType": "Desktop",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "loginStatus": "SUCCESS",
+      "createdAt": "2026-10-01T04:45:06.985Z"
+    },
+    {
+      "id": "1790830347538bklcg",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "name": "JHF Boss",
+      "role": "SUPER_ADMIN",
+      "loginTime": "2026-10-01T04:52:27.541Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceType": "Desktop",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "loginStatus": "SUCCESS",
+      "createdAt": "2026-10-01T04:52:27.541Z"
+    },
+    {
+      "id": "1790831625196kc8l7",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "name": "JHF Boss",
+      "role": "SUPER_ADMIN",
+      "loginTime": "2026-10-01T05:13:45.200Z",
+      "ipAddress": "115.127.145.138",
+      "browser": "Chrome",
+      "os": "Windows",
+      "deviceType": "Desktop",
+      "deviceName": "Web-Client",
+      "platform": "Win32",
+      "loginStatus": "SUCCESS",
+      "createdAt": "2026-10-01T05:13:45.200Z",
+      "logoutTime": "2026-10-01T05:26:16.941Z",
+      "sessionDuration": "12m 31s"
+    },
+    {
+      "id": "1790831842463nf7p8",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "name": "JHF Boss",
+      "role": "SUPER_ADMIN",
+      "loginTime": "2026-10-01T05:17:22.465Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceType": "Desktop",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "loginStatus": "SUCCESS",
+      "createdAt": "2026-10-01T05:17:22.465Z"
+    },
+    {
+      "id": "1790831961808",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "name": "JHF Boss",
+      "role": "SUPER_ADMIN",
+      "loginTime": "2026-10-01T05:19:21.808Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceType": "Desktop",
+      "loginStatus": "FAILED",
+      "failedAttemptCount": 1,
+      "createdAt": "2026-10-01T05:19:21.808Z"
+    },
+    {
+      "id": "1790831975941",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "name": "JHF Boss",
+      "role": "SUPER_ADMIN",
+      "loginTime": "2026-10-01T05:19:35.941Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceType": "Desktop",
+      "loginStatus": "FAILED",
+      "failedAttemptCount": 2,
+      "createdAt": "2026-10-01T05:19:35.941Z"
+    },
+    {
+      "id": "1790831993841fper0",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "name": "JHF Boss",
+      "role": "SUPER_ADMIN",
+      "loginTime": "2026-10-01T05:19:53.843Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceType": "Desktop",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "loginStatus": "SUCCESS",
+      "createdAt": "2026-10-01T05:19:53.843Z"
+    },
+    {
+      "id": "17908324051719yfl9",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "name": "JHF Boss",
+      "role": "SUPER_ADMIN",
+      "loginTime": "2026-10-01T05:26:45.172Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceType": "Desktop",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "loginStatus": "SUCCESS",
+      "createdAt": "2026-10-01T05:26:45.172Z"
+    },
+    {
+      "id": "1790832431013mgld0",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "name": "JHF Boss",
+      "role": "SUPER_ADMIN",
+      "loginTime": "2026-10-01T05:27:11.016Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceType": "Desktop",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "loginStatus": "SUCCESS",
+      "createdAt": "2026-10-01T05:27:11.016Z"
     }
   ],
   "adminAuditLogs": [
@@ -2133,9 +3503,203 @@
       "timestamp": "2026-09-22T11:20:53.884Z",
       "ipAddress": "0.0.0.0",
       "details": "Deleted task 2222222222 (20260922-1120-406)"
+    },
+    {
+      "id": "1790740872343d4j9x",
+      "adminId": "1774775754483iyriq",
+      "adminName": "JHF Boss",
+      "actionType": "USER_CREATED",
+      "targetUser": "1790740872213",
+      "timestamp": "2026-09-30T04:01:12.343Z",
+      "ipAddress": "0.0.0.0",
+      "details": "Created user Permanent Test User (PERMTEST_1790740872206)"
+    },
+    {
+      "id": "1790740872785jzq2o",
+      "adminId": "1774775754483iyriq",
+      "adminName": "JHF Boss",
+      "actionType": "USER_EDITED",
+      "targetUser": "1790740872213",
+      "timestamp": "2026-09-30T04:01:12.785Z",
+      "ipAddress": "0.0.0.0",
+      "details": "Edited user Permanent Test User Updated (PERMTEST_1790740872206)"
+    },
+    {
+      "id": "179074087312132p7w",
+      "adminId": "1774775754483iyriq",
+      "adminName": "JHF Boss",
+      "actionType": "USER_DELETED",
+      "targetUser": "1790740872213",
+      "timestamp": "2026-09-30T04:01:13.121Z",
+      "ipAddress": "0.0.0.0",
+      "details": "Deleted user Permanent Test User Updated (PERMTEST_1790740872206)"
+    },
+    {
+      "id": "1790829892961o82aa",
+      "adminId": "1774775754483iyriq",
+      "adminName": "JHF Boss",
+      "actionType": "TASK_DELETED",
+      "targetTask": "1790829892862",
+      "timestamp": "2026-10-01T04:44:52.961Z",
+      "ipAddress": "0.0.0.0",
+      "details": "Deleted task Fix Air Conditioner Unit 45 (20261001-444-623)"
+    },
+    {
+      "id": "1790829907208qttm7",
+      "adminId": "1774775754483iyriq",
+      "adminName": "JHF Boss",
+      "actionType": "USER_CREATED",
+      "targetUser": "1790829907089",
+      "timestamp": "2026-10-01T04:45:07.208Z",
+      "ipAddress": "0.0.0.0",
+      "details": "Created user Test User DeleteMe (999888)"
+    },
+    {
+      "id": "1790829907404yulva",
+      "adminId": "1774775754483iyriq",
+      "adminName": "JHF Boss",
+      "actionType": "USER_DELETED",
+      "targetUser": "1790829907089",
+      "timestamp": "2026-10-01T04:45:07.404Z",
+      "ipAddress": "0.0.0.0",
+      "details": "Deleted user Test User DeleteMe (999888)"
+    },
+    {
+      "id": "179083034776392c44",
+      "adminId": "1774775754483iyriq",
+      "adminName": "JHF Boss",
+      "actionType": "USER_CREATED",
+      "targetUser": "1790830347651",
+      "timestamp": "2026-10-01T04:52:27.763Z",
+      "ipAddress": "0.0.0.0",
+      "details": "Created user Permanent Verification User (TEST_USER_999)"
+    },
+    {
+      "id": "17908303480832tqdi",
+      "adminId": "1774775754483iyriq",
+      "adminName": "JHF Boss",
+      "actionType": "USER_DELETED",
+      "targetUser": "1790830347651",
+      "timestamp": "2026-10-01T04:52:28.083Z",
+      "ipAddress": "0.0.0.0",
+      "details": "Deleted user Permanent Verification User (TEST_USER_999)"
+    },
+    {
+      "id": "179083034844090nju",
+      "adminId": "1774775754483iyriq",
+      "adminName": "JHF Boss",
+      "actionType": "TASK_DELETED",
+      "targetTask": "1790830348259",
+      "timestamp": "2026-10-01T04:52:28.440Z",
+      "ipAddress": "0.0.0.0",
+      "details": "Deleted task Routine Condenser Inspection 99 (20261001-452-562)"
+    },
+    {
+      "id": "1790831760753vkksb",
+      "adminId": "1774775754483iyriq",
+      "adminName": "JHF Boss",
+      "actionType": "TASK_DELETED",
+      "targetTask": "1790588405245",
+      "timestamp": "2026-10-01T05:16:00.753Z",
+      "ipAddress": "0.0.0.0",
+      "details": "Deleted task 6set Eva Ready From Line (20260928-940-937)"
+    },
+    {
+      "id": "17908317630713kkl8",
+      "adminId": "1774775754483iyriq",
+      "adminName": "JHF Boss",
+      "actionType": "TASK_DELETED",
+      "targetTask": "1790588587256",
+      "timestamp": "2026-10-01T05:16:03.071Z",
+      "ipAddress": "0.0.0.0",
+      "details": "Deleted task Casset IDU Service (20260928-943-005)"
+    },
+    {
+      "id": "1790831765481mkoed",
+      "adminId": "1774775754483iyriq",
+      "adminName": "JHF Boss",
+      "actionType": "TASK_DELETED",
+      "targetTask": "1790589264736",
+      "timestamp": "2026-10-01T05:16:05.481Z",
+      "ipAddress": "0.0.0.0",
+      "details": "Deleted task New Model Instruction ready 18J (20260928-954-048)"
+    },
+    {
+      "id": "17908317697990dz6b",
+      "adminId": "1774775754483iyriq",
+      "adminName": "JHF Boss",
+      "actionType": "TASK_DELETED",
+      "targetTask": "1790594216799",
+      "timestamp": "2026-10-01T05:16:09.799Z",
+      "ipAddress": "0.0.0.0",
+      "details": "Deleted task Service pipe market sample thickness confirmation (20260928-1116-365)"
+    },
+    {
+      "id": "1790831772403sklae",
+      "adminId": "1774775754483iyriq",
+      "adminName": "JHF Boss",
+      "actionType": "TASK_DELETED",
+      "targetTask": "1790588839936",
+      "timestamp": "2026-10-01T05:16:12.403Z",
+      "ipAddress": "0.0.0.0",
+      "details": "Deleted task Move Order all  spare parts collect from line (20260928-947-564)"
+    },
+    {
+      "id": "1790831775199p0an6",
+      "adminId": "1774775754483iyriq",
+      "adminName": "JHF Boss",
+      "actionType": "TASK_DELETED",
+      "targetTask": "1790588469000",
+      "timestamp": "2026-10-01T05:16:15.199Z",
+      "ipAddress": "0.0.0.0",
+      "details": "Deleted task Market Sample Service Thickness Report Ready (20260928-941-240)"
+    },
+    {
+      "id": "17908317776665v8gk",
+      "adminId": "1774775754483iyriq",
+      "adminName": "JHF Boss",
+      "actionType": "TASK_DELETED",
+      "targetTask": "1790593461818",
+      "timestamp": "2026-10-01T05:16:17.666Z",
+      "ipAddress": "0.0.0.0",
+      "details": "Deleted task Compressor Wastage Work Next Day (20260928-114-365)"
+    },
+    {
+      "id": "17908319943027hyjd",
+      "adminId": "1774775754483iyriq",
+      "adminName": "JHF Boss",
+      "actionType": "TASK_DELETED",
+      "targetTask": "1790831994085",
+      "timestamp": "2026-10-01T05:19:54.302Z",
+      "ipAddress": "0.0.0.0",
+      "details": "Deleted task Real Permanent Deletion Verification Task (20261001-519-719)"
+    },
+    {
+      "id": "17908324069888ys55",
+      "adminId": "1774775754483iyriq",
+      "adminName": "JHF Boss",
+      "actionType": "TASK_DELETED",
+      "targetTask": "1790832405296",
+      "timestamp": "2026-10-01T05:26:46.988Z",
+      "ipAddress": "0.0.0.0",
+      "details": "Deleted task Auto-Backup On Entry Test Task (20261001-526-440)"
     }
   ],
   "userSessions": [
+    {
+      "id": "1790739953864qv6je",
+      "userId": "1790739931746mv146",
+      "employeeId": "jhfboss",
+      "loginTime": "2026-09-30T03:45:53.866Z",
+      "ipAddress": "115.127.145.138",
+      "browser": "Chrome",
+      "os": "Windows",
+      "deviceHash": "MTE1LjEyNy4xNDUuMTM4LU1vemlsbGEvNS4wIChXaW5kb3dzIE5UIDEwLjA7IFdpbjY0OyB4NjQpIEFwcGxlV2ViS2l0LzUzNy4zNiAoS0hUTUwsIGxpa2UgR2Vja28pIENocm9tZS8xNTQuMC4wLjAgU2FmYXJpLzUzNy4zNi1XZWItQ2xpZW50",
+      "deviceName": "Web-Client",
+      "platform": "Win32",
+      "active": true,
+      "lastActivity": "2026-09-30T03:58:21.538Z"
+    },
     {
       "id": "1789212772565253mw",
       "userId": "1774775754483iyriq",
@@ -2283,22 +3847,358 @@
       "lastActivity": "2026-09-22T11:25:55.787Z",
       "logoutTime": "2026-09-22T11:25:55.787Z",
       "logoutReason": "USER_LOGOUT"
+    },
+    {
+      "id": "177589593988595ip8",
+      "userId": "1775895928853iitaa",
+      "employeeId": "jhfboss",
+      "loginTime": "2026-04-11T08:25:39.886Z",
+      "ipAddress": "182.252.64.186",
+      "browser": "Chrome",
+      "os": "Windows",
+      "deviceHash": "MTgyLjI1Mi42NC4xODYtTW96aWxsYS81LjAgKFdpbmRvd3MgTlQgMTAuMDsgV2luNjQ7IHg2NCkgQXBwbGVXZWJLaXQvNTM3LjM2IChLSFRNTCwgbGlrZSBHZWNrbykgQ2hyb21lLzE0Ni4wLjAuMCBTYWZhcmkvNTM3LjM2LU1vemlsbGEvNS4wIChXaW5kb3dzIE5UIDEwLjA7IFdpbjY0OyB4NjQpIEFwcGxlV2ViS2l0LzUzNy4zNiAoS0hUTUwsIGxpa2UgR2Vja28pIENocm9tZS8xNDYuMC4wLjAgU2FmYXJpLzUzNy4zNg==",
+      "deviceName": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+      "platform": "Win32",
+      "active": false,
+      "lastActivity": "2026-04-11T08:28:36.260Z",
+      "logoutTime": "2026-04-11T08:28:36.260Z"
+    },
+    {
+      "id": "1775896120301wywwb",
+      "userId": "1774775807698asgwa",
+      "employeeId": "38250",
+      "loginTime": "2026-04-11T08:28:40.302Z",
+      "ipAddress": "182.252.64.186",
+      "browser": "Chrome",
+      "os": "Windows",
+      "deviceHash": "MTgyLjI1Mi42NC4xODYtTW96aWxsYS81LjAgKFdpbmRvd3MgTlQgMTAuMDsgV2luNjQ7IHg2NCkgQXBwbGVXZWJLaXQvNTM3LjM2IChLSFRNTCwgbGlrZSBHZWNrbykgQ2hyb21lLzE0Ni4wLjAuMCBTYWZhcmkvNTM3LjM2LU1vemlsbGEvNS4wIChXaW5kb3dzIE5UIDEwLjA7IFdpbjY0OyB4NjQpIEFwcGxlV2ViS2l0LzUzNy4zNiAoS0hUTUwsIGxpa2UgR2Vja28pIENocm9tZS8xNDYuMC4wLjAgU2FmYXJpLzUzNy4zNg==",
+      "deviceName": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+      "platform": "Win32",
+      "active": false,
+      "lastActivity": "2026-04-11T09:20:06.871Z",
+      "logoutTime": "2026-04-11T09:20:06.871Z"
+    },
+    {
+      "id": "1775899212097s5n32",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "loginTime": "2026-04-11T09:20:12.098Z",
+      "ipAddress": "182.252.64.186",
+      "browser": "Chrome",
+      "os": "Windows",
+      "deviceHash": "MTgyLjI1Mi42NC4xODYtTW96aWxsYS81LjAgKFdpbmRvd3MgTlQgMTAuMDsgV2luNjQ7IHg2NCkgQXBwbGVXZWJLaXQvNTM3LjM2IChLSFRNTCwgbGlrZSBHZWNrbykgQ2hyb21lLzE0Ni4wLjAuMCBTYWZhcmkvNTM3LjM2LU1vemlsbGEvNS4wIChXaW5kb3dzIE5UIDEwLjA7IFdpbjY0OyB4NjQpIEFwcGxlV2ViS2l0LzUzNy4zNiAoS0hUTUwsIGxpa2UgR2Vja28pIENocm9tZS8xNDYuMC4wLjAgU2FmYXJpLzUzNy4zNg==",
+      "deviceName": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+      "platform": "Win32",
+      "active": false,
+      "lastActivity": "2026-04-11T11:41:46.974Z",
+      "logoutTime": "2026-04-11T11:41:46.975Z"
+    },
+    {
+      "id": "17759077104422tqww",
+      "userId": "1774775807698asgwa",
+      "employeeId": "38250",
+      "loginTime": "2026-04-11T11:41:50.443Z",
+      "ipAddress": "182.252.64.186",
+      "browser": "Chrome",
+      "os": "Windows",
+      "deviceHash": "MTgyLjI1Mi42NC4xODYtTW96aWxsYS81LjAgKFdpbmRvd3MgTlQgMTAuMDsgV2luNjQ7IHg2NCkgQXBwbGVXZWJLaXQvNTM3LjM2IChLSFRNTCwgbGlrZSBHZWNrbykgQ2hyb21lLzE0Ni4wLjAuMCBTYWZhcmkvNTM3LjM2LU1vemlsbGEvNS4wIChXaW5kb3dzIE5UIDEwLjA7IFdpbjY0OyB4NjQpIEFwcGxlV2ViS2l0LzUzNy4zNiAoS0hUTUwsIGxpa2UgR2Vja28pIENocm9tZS8xNDYuMC4wLjAgU2FmYXJpLzUzNy4zNg==",
+      "deviceName": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+      "platform": "Win32",
+      "active": true,
+      "lastActivity": "2026-04-11T11:47:29.888Z"
+    },
+    {
+      "id": "17907408587816svpg",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "loginTime": "2026-09-30T04:00:58.783Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceHash": "MTI3LjAuMC4xLW5vZGUtVW5rbm93biBEZXZpY2U=",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "active": true,
+      "lastActivity": "2026-09-30T04:00:58.856Z"
+    },
+    {
+      "id": "17907408721411ryap",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "loginTime": "2026-09-30T04:01:12.142Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceHash": "MTI3LjAuMC4xLW5vZGUtVW5rbm93biBEZXZpY2U=",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "active": true,
+      "lastActivity": "2026-09-30T04:01:13.120Z"
+    },
+    {
+      "id": "1790742054085gkrd1",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "loginTime": "2026-09-30T04:20:54.088Z",
+      "ipAddress": "115.127.145.138",
+      "browser": "Chrome",
+      "os": "Windows",
+      "deviceHash": "MTE1LjEyNy4xNDUuMTM4LU1vemlsbGEvNS4wIChXaW5kb3dzIE5UIDEwLjA7IFdpbjY0OyB4NjQpIEFwcGxlV2ViS2l0LzUzNy4zNiAoS0hUTUwsIGxpa2UgR2Vja28pIENocm9tZS8xNTQuMC4wLjAgU2FmYXJpLzUzNy4zNi1XZWItQ2xpZW50",
+      "deviceName": "Web-Client",
+      "platform": "Win32",
+      "active": true,
+      "lastActivity": "2026-09-30T04:21:45.734Z"
+    },
+    {
+      "id": "1790742922786qxujq",
+      "userId": "1789971001785",
+      "employeeId": "12467",
+      "loginTime": "2026-09-30T04:35:22.788Z",
+      "ipAddress": "115.127.145.138",
+      "browser": "Chrome",
+      "os": "Windows",
+      "deviceHash": "MTE1LjEyNy4xNDUuMTM4LU1vemlsbGEvNS4wIChXaW5kb3dzIE5UIDEwLjA7IFdpbjY0OyB4NjQpIEFwcGxlV2ViS2l0LzUzNy4zNiAoS0hUTUwsIGxpa2UgR2Vja28pIENocm9tZS8xNTQuMC4wLjAgU2FmYXJpLzUzNy4zNi1XZWItQ2xpZW50",
+      "deviceName": "Web-Client",
+      "platform": "Win32",
+      "active": true,
+      "lastActivity": "2026-09-30T04:36:49.490Z"
+    },
+    {
+      "id": "1790744268886fb48c",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "loginTime": "2026-09-30T04:57:48.889Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceHash": "MTI3LjAuMC4xLW5vZGUtVW5rbm93biBEZXZpY2U=",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "active": true,
+      "lastActivity": "2026-09-30T04:57:49.002Z"
+    },
+    {
+      "id": "1790744283627bmroe",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "loginTime": "2026-09-30T04:58:03.628Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceHash": "MTI3LjAuMC4xLW5vZGUtVW5rbm93biBEZXZpY2U=",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "active": true,
+      "lastActivity": "2026-09-30T04:58:03.749Z"
+    },
+    {
+      "id": "1790746042219urudf",
+      "userId": "1774775804541i25mj",
+      "employeeId": "19219",
+      "loginTime": "2026-09-30T05:27:22.225Z",
+      "ipAddress": "115.127.145.138",
+      "browser": "Chrome",
+      "os": "Windows",
+      "deviceHash": "MTE1LjEyNy4xNDUuMTM4LU1vemlsbGEvNS4wIChXaW5kb3dzIE5UIDEwLjA7IFdpbjY0OyB4NjQpIEFwcGxlV2ViS2l0LzUzNy4zNiAoS0hUTUwsIGxpa2UgR2Vja28pIENocm9tZS8xNTQuMC4wLjAgU2FmYXJpLzUzNy4zNi1XZWItQ2xpZW50",
+      "deviceName": "Web-Client",
+      "platform": "Win32",
+      "active": false,
+      "lastActivity": "2026-09-30T05:27:33.325Z",
+      "logoutTime": "2026-09-30T05:27:33.325Z",
+      "logoutReason": "USER_LOGOUT"
+    },
+    {
+      "id": "17907460551785ngls",
+      "userId": "1774775804541i25mj",
+      "employeeId": "19219",
+      "loginTime": "2026-09-30T05:27:35.178Z",
+      "ipAddress": "115.127.145.138",
+      "browser": "Chrome",
+      "os": "Windows",
+      "deviceHash": "MTE1LjEyNy4xNDUuMTM4LU1vemlsbGEvNS4wIChXaW5kb3dzIE5UIDEwLjA7IFdpbjY0OyB4NjQpIEFwcGxlV2ViS2l0LzUzNy4zNiAoS0hUTUwsIGxpa2UgR2Vja28pIENocm9tZS8xNTQuMC4wLjAgU2FmYXJpLzUzNy4zNi1XZWItQ2xpZW50",
+      "deviceName": "Web-Client",
+      "platform": "Win32",
+      "active": false,
+      "lastActivity": "2026-09-30T05:32:38.382Z",
+      "logoutTime": "2026-09-30T05:32:38.382Z",
+      "logoutReason": "USER_LOGOUT"
+    },
+    {
+      "id": "17908298565676uu6h",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "loginTime": "2026-10-01T04:44:16.569Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceHash": "MTI3LjAuMC4xLW5vZGUtVW5rbm93biBEZXZpY2U=",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "active": true,
+      "lastActivity": "2026-10-01T04:44:19.803Z"
+    },
+    {
+      "id": "1790829873835ge0gf",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "loginTime": "2026-10-01T04:44:33.835Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceHash": "MTI3LjAuMC4xLW5vZGUtVW5rbm93biBEZXZpY2U=",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "active": true,
+      "lastActivity": "2026-10-01T04:44:34.012Z"
+    },
+    {
+      "id": "17908298927232bro1",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "loginTime": "2026-10-01T04:44:52.724Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceHash": "MTI3LjAuMC4xLW5vZGUtVW5rbm93biBEZXZpY2U=",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "active": true,
+      "lastActivity": "2026-10-01T04:44:55.196Z"
+    },
+    {
+      "id": "1790829906984940y0",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "loginTime": "2026-10-01T04:45:06.985Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceHash": "MTI3LjAuMC4xLW5vZGUtVW5rbm93biBEZXZpY2U=",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "active": true,
+      "lastActivity": "2026-10-01T04:45:07.583Z"
+    },
+    {
+      "id": "1790830347538bklcg",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "loginTime": "2026-10-01T04:52:27.541Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceHash": "MTI3LjAuMC4xLW5vZGUtVW5rbm93biBEZXZpY2U=",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "active": true,
+      "lastActivity": "2026-10-01T04:52:28.344Z"
+    },
+    {
+      "id": "1790831625196kc8l7",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "loginTime": "2026-10-01T05:13:45.200Z",
+      "ipAddress": "115.127.145.138",
+      "browser": "Chrome",
+      "os": "Windows",
+      "deviceHash": "MTE1LjEyNy4xNDUuMTM4LU1vemlsbGEvNS4wIChXaW5kb3dzIE5UIDEwLjA7IFdpbjY0OyB4NjQpIEFwcGxlV2ViS2l0LzUzNy4zNiAoS0hUTUwsIGxpa2UgR2Vja28pIENocm9tZS8xNTQuMC4wLjAgU2FmYXJpLzUzNy4zNi1XZWItQ2xpZW50",
+      "deviceName": "Web-Client",
+      "platform": "Win32",
+      "active": false,
+      "lastActivity": "2026-10-01T05:26:16.940Z",
+      "logoutTime": "2026-10-01T05:26:16.941Z",
+      "logoutReason": "USER_LOGOUT"
+    },
+    {
+      "id": "1790831842463nf7p8",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "loginTime": "2026-10-01T05:17:22.465Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceHash": "MTI3LjAuMC4xLW5vZGUtVW5rbm93biBEZXZpY2U=",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "active": true,
+      "lastActivity": "2026-10-01T05:17:24.590Z"
+    },
+    {
+      "id": "1790831993841fper0",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "loginTime": "2026-10-01T05:19:53.843Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceHash": "MTI3LjAuMC4xLW5vZGUtVW5rbm93biBEZXZpY2U=",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "active": true,
+      "lastActivity": "2026-10-01T05:19:54.179Z"
+    },
+    {
+      "id": "17908324051719yfl9",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "loginTime": "2026-10-01T05:26:45.172Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceHash": "MTI3LjAuMC4xLW5vZGUtVW5rbm93biBEZXZpY2U=",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "active": true,
+      "lastActivity": "2026-10-01T05:26:46.896Z"
+    },
+    {
+      "id": "1790832431013mgld0",
+      "userId": "1774775754483iyriq",
+      "employeeId": "jhfboss",
+      "loginTime": "2026-10-01T05:27:11.016Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceHash": "MTI3LjAuMC4xLW5vZGUtVW5rbm93biBEZXZpY2U=",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "active": true,
+      "lastActivity": "2026-10-01T05:27:11.192Z"
     }
   ],
-  "failedLoginAttempts": [],
+  "failedLoginAttempts": [
+    {
+      "id": "1790831961808",
+      "employeeId": "jhfboss",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "timestamp": "2026-10-01T05:19:35.941Z",
+      "attemptCount": 0,
+      "isLocked": false
+    }
+  ],
   "lockedDevices": [],
   "autoBackupSettings": {
     "enabled": true,
-    "intervalMinutes": 60,
-    "lastBackupTime": "2026-09-22T11:24:56.025Z",
-    "nextBackupTime": "2026-09-22T12:24:56.025Z",
-    "retentionCount": 72
+    "intervalMinutes": 5,
+    "lastBackupTime": "2026-10-01T05:27:06.010Z",
+    "nextBackupTime": "2026-10-01T05:32:06.010Z",
+    "retentionCount": 288
   },
+  "lastSavedAt": "2026-10-01T05:27:11.285Z",
   "backupMeta": {
-    "type": "HOURLY_AUTO",
-    "timestamp": "2026-09-22T11:26:04.739Z",
+    "type": "TASK_ENTRY",
+    "trigger": "TASK_ENTRY",
+    "details": {
+      "taskId": "20261001-527-956",
+      "title": "Real Auto-Backup On Entry Verification Task",
+      "createdBy": "JHF Boss"
+    },
+    "timestamp": "2026-10-01T05:27:11.285Z",
     "tasksCount": 1,
-    "usersCount": 82,
-    "source": "AUTO_BACKUP_SERVICE"
+    "usersCount": 80,
+    "source": "AUTO_BACKUP_SERVICE",
+    "folder": "backups/"
   }
 }
