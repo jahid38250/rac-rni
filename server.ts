@@ -108,7 +108,7 @@ async function startServer() {
     intervalMinutes: 60,
     lastBackupTime: null as string | null,
     nextBackupTime: null as string | null,
-    retentionCount: 72
+    retentionCount: 5000 // Permanent retention: backups are preserved and never auto-deleted
   };
 
   // Ensure necessary directories exist synchronously or on boot
@@ -229,7 +229,80 @@ async function startServer() {
         console.warn("[USER ROSTER PROTECTION] Error checking backup user roster:", err.message);
       }
 
+      // Task preservation: Check if backups/latest-backup.json or any backup files contain tasks missing from loadedContent
+      try {
+        const latestBackupPath = path.join(BACKUPS_DIR, 'latest-backup.json');
+        let backupTasks: any[] = [];
+        if (fsSync.existsSync(latestBackupPath)) {
+          const backupRaw = await fs.readFile(latestBackupPath, 'utf-8');
+          const backupParsed = JSON.parse(backupRaw);
+          if (Array.isArray(backupParsed.tasks) && backupParsed.tasks.length > 0) {
+            backupTasks = backupParsed.tasks;
+          }
+        }
+
+        // If latest-backup didn't have tasks or had very few, inspect other valid backup files
+        if (fsSync.existsSync(BACKUPS_DIR)) {
+          const files = (await fs.readdir(BACKUPS_DIR))
+            .filter(f => f.startsWith('db-backup-') && f.endsWith('.json'))
+            .sort()
+            .reverse();
+          for (const f of files.slice(0, 10)) {
+            try {
+              const raw = await fs.readFile(path.join(BACKUPS_DIR, f), 'utf-8');
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed.tasks) && parsed.tasks.length > backupTasks.length) {
+                backupTasks = parsed.tasks;
+              }
+            } catch (e) {}
+          }
+        }
+
+        if (backupTasks.length > 0) {
+          const currentTasks = loadedContent.tasks || [];
+          const existingIds = new Set(currentTasks.map((t: any) => String(t.id || '').trim()).filter(Boolean));
+          const existingTaskIds = new Set(currentTasks.map((t: any) => String(t.taskId || '').trim()).filter(Boolean));
+          let restoredTaskCount = 0;
+
+          for (const bTask of backupTasks) {
+            if (!bTask) continue;
+            const bId = String(bTask.id || '').trim();
+            const bTaskId = String(bTask.taskId || '').trim();
+            if ((!bId || !existingIds.has(bId)) && (!bTaskId || !existingTaskIds.has(bTaskId))) {
+              currentTasks.push(bTask);
+              if (bId) existingIds.add(bId);
+              if (bTaskId) existingTaskIds.add(bTaskId);
+              restoredTaskCount++;
+            }
+          }
+
+          if (restoredTaskCount > 0) {
+            console.log(`[TASK DATA PROTECTION] Restored ${restoredTaskCount} tasks from backups! Total persistent tasks: ${currentTasks.length}`);
+            loadedContent.tasks = currentTasks;
+          }
+        }
+      } catch (err: any) {
+        console.warn("[TASK DATA PROTECTION] Error checking backup tasks:", err.message);
+      }
+
       console.log(`Successfully loaded database state from ${loadedFrom} (Tasks: ${loadedContent.tasks?.length || 0}, Users: ${loadedContent.users?.length || 0})`);
+      if (Array.isArray(loadedContent.tasks)) {
+        loadedContent.tasks.forEach((t: any) => {
+          if (t && t.status === 'HOLD' && !t.currentHoldStartTime) {
+            let recoveredTime: string | null = null;
+            if (Array.isArray(t.logs)) {
+              const holdLog = [...t.logs].reverse().find((l: any) =>
+                l.action && String(l.action).toLowerCase().includes('hold')
+              );
+              if (holdLog?.timestamp) {
+                recoveredTime = holdLog.timestamp;
+              }
+            }
+            t.currentHoldStartTime = recoveredTime || t.startedAt || t.createdAt || new Date().toISOString();
+            console.log(`[HOLD TIME PROTECTION] Populated hold start time for task ${t.id || t.taskId} (${t.title}): ${t.currentHoldStartTime}`);
+          }
+        });
+      }
       if (loadedContent.autoBackupSettings) {
         autoBackupSettings = { ...autoBackupSettings, ...loadedContent.autoBackupSettings };
       }
@@ -281,6 +354,46 @@ async function startServer() {
     return mins || 60;
   }
 
+  function getTaskHoldMs(taskObj: any, currentOrEndTime?: Date): number {
+    let holdMs = Number(taskObj.totalHoldMs) || ((Number(taskObj.totalHoldMinutes) || 0) * 60 * 1000);
+    
+    // If task is currently on HOLD, add the ongoing hold time
+    if (taskObj.status === 'HOLD') {
+      let holdStartMs = 0;
+      if (taskObj.currentHoldStartTime) {
+        const hStart = parseTaskDate(taskObj.currentHoldStartTime);
+        if (!isNaN(hStart.getTime())) holdStartMs = hStart.getTime();
+      }
+      if (!holdStartMs && Array.isArray(taskObj.holdHistory) && taskObj.holdHistory.length > 0) {
+        const lastH = taskObj.holdHistory[taskObj.holdHistory.length - 1];
+        if (lastH?.holdStart) {
+          const hStart = parseTaskDate(lastH.holdStart);
+          if (!isNaN(hStart.getTime())) holdStartMs = hStart.getTime();
+        }
+      }
+      if (!holdStartMs && Array.isArray(taskObj.logs)) {
+        const holdLog = [...taskObj.logs].reverse().find((l: any) =>
+          l.action && String(l.action).toLowerCase().includes('hold')
+        );
+        if (holdLog?.timestamp) {
+          const hStart = parseTaskDate(holdLog.timestamp);
+          if (!isNaN(hStart.getTime())) holdStartMs = hStart.getTime();
+        }
+      }
+      if (!holdStartMs) {
+        const start = parseTaskDate(taskObj.startedAt || taskObj.createdAt);
+        if (!isNaN(start.getTime())) holdStartMs = start.getTime();
+      }
+
+      if (holdStartMs) {
+        const refTime = currentOrEndTime || new Date();
+        const ongoingHoldMs = Math.max(0, refTime.getTime() - holdStartMs);
+        holdMs += ongoingHoldMs;
+      }
+    }
+    return holdMs;
+  }
+
   function computeTaskTiming(taskObj: any) {
     const startRaw = taskObj.customStartTime || taskObj.startedAt || taskObj.createdAt;
     const endRaw = taskObj.actualCompletionTime || taskObj.completedAt;
@@ -289,19 +402,59 @@ async function startServer() {
     const estimatedMinutes = parseTaskDurationMins(taskObj.estimatedDuration);
 
     if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      // Active task (RUNNING, HOLD, PENDING)
+      let activeMinutes = 0;
+      if (taskObj.status === 'HOLD') {
+        let holdStartMs = 0;
+        if (taskObj.currentHoldStartTime) {
+          const parsed = parseTaskDate(taskObj.currentHoldStartTime).getTime();
+          if (!isNaN(parsed)) holdStartMs = parsed;
+        }
+        if (!holdStartMs && Array.isArray(taskObj.logs)) {
+          const holdLog = [...taskObj.logs].reverse().find((l: any) =>
+            l.action && String(l.action).toLowerCase().includes('hold')
+          );
+          if (holdLog?.timestamp) {
+            const parsed = parseTaskDate(holdLog.timestamp).getTime();
+            if (!isNaN(parsed)) holdStartMs = parsed;
+          }
+        }
+        if (holdStartMs && !isNaN(start.getTime())) {
+          const priorHoldMs = Number(taskObj.totalHoldMs) || ((Number(taskObj.totalHoldMinutes) || 0) * 60 * 1000);
+          const activeMs = Math.max(0, (holdStartMs - start.getTime()) - priorHoldMs);
+          activeMinutes = Math.floor(activeMs / (1000 * 60));
+        }
+      } else if (taskObj.status === 'RUNNING' && !isNaN(start.getTime())) {
+        const totalHold = getTaskHoldMs(taskObj);
+        const activeMs = Math.max(0, (Date.now() - start.getTime()) - totalHold);
+        activeMinutes = Math.floor(activeMs / (1000 * 60));
+      }
+
+      const diffHrs = Math.floor(activeMinutes / 60);
+      const diffMins = activeMinutes % 60;
+      const taskTakenTime = `${diffHrs}h ${diffMins}m`;
+      const timeDiffMins = estimatedMinutes - activeMinutes;
+      const absDiffMins = Math.abs(timeDiffMins);
+      const dHrs = Math.floor(absDiffMins / 60);
+      const dMins = absDiffMins % 60;
+      const formattedDiff = `${dHrs}h ${dMins}m`;
+
       return {
-        taskTakenTime: taskObj.taskTakenTime || '0h 0m',
-        remainingTime: taskObj.remainingTime || `${Math.floor(estimatedMinutes / 60)}h ${estimatedMinutes % 60}m`,
-        overTime: taskObj.overTime || '0h 0m',
-        actualMinutes: 0,
+        taskTakenTime,
+        remainingTime: timeDiffMins >= 0 ? formattedDiff : '0h 0m',
+        overTime: timeDiffMins < 0 ? formattedDiff : '0h 0m',
+        actualMinutes: activeMinutes,
         estimatedMinutes,
         start,
         end
       };
     }
 
-    const diffMs = Math.max(0, end.getTime() - start.getTime());
-    const actualMinutes = Math.floor(diffMs / (1000 * 60));
+    const totalElapsedMs = Math.max(0, end.getTime() - start.getTime());
+    const totalHoldMs = getTaskHoldMs(taskObj, end);
+    // Active work excludes time spent on HOLD
+    const activeMs = Math.max(0, totalElapsedMs - totalHoldMs);
+    const actualMinutes = Math.floor(activeMs / (1000 * 60));
     const diffHrs = Math.floor(actualMinutes / 60);
     const diffMins = actualMinutes % 60;
     const taskTakenTime = `${diffHrs}h ${diffMins}m`;
@@ -997,21 +1150,13 @@ async function startServer() {
 
   async function pruneOldBackups() {
     try {
+      // PERMANENT BACKUP POLICY: Never delete backup files automatically.
+      // All historical database snapshots in backups/ are permanently preserved so user data is never lost.
       const files = await fs.readdir(BACKUPS_DIR);
       const backupFiles = files.filter(f => f.startsWith('db-backup-') && f.endsWith('.json'));
-      if (backupFiles.length <= autoBackupSettings.retentionCount) return;
-
-      // Sort descending (newest first)
-      backupFiles.sort().reverse();
-      const filesToDelete = backupFiles.slice(autoBackupSettings.retentionCount);
-      for (const file of filesToDelete) {
-        try {
-          await fs.unlink(path.join(BACKUPS_DIR, file));
-        } catch (e) {}
-      }
-      console.log(`[BACKUP PRUNE] Removed ${filesToDelete.length} older backups. Kept ${autoBackupSettings.retentionCount}.`);
+      console.log(`[BACKUP POLICY] Preserving all ${backupFiles.length} database backups. Auto-deletion is disabled.`);
     } catch (err) {
-      console.error("Error pruning old backups:", err);
+      console.error("Error inspecting backups:", err);
     }
   }
 
@@ -1969,22 +2114,25 @@ async function startServer() {
   app.get("/api/tasks", authenticate, (req: Request, res: Response) => {
     const { month, year, all } = req.query;
     
-    if (all === 'true') {
+    // Default to all tasks so tasks are never hidden from users
+    if (all === 'true' || !month || !year) {
       return res.json(tasks);
     }
 
-    const currentMonth = month ? parseInt(month as string) : new Date().getMonth() + 1;
-    const currentYear = year ? parseInt(year as string) : new Date().getFullYear();
+    const currentMonth = parseInt(month as string);
+    const currentYear = parseInt(year as string);
 
     const filteredTasks = tasks.filter((t: any) => {
-      const taskDate = new Date(t.createdAt);
+      const taskDate = t.createdAt ? new Date(t.createdAt) : null;
+      const completedDate = t.completedAt ? new Date(t.completedAt) : null;
       const deadlineDate = t.deadline ? new Date(t.deadline) : null;
       
-      const isCreatedInMonth = taskDate.getMonth() + 1 === currentMonth && taskDate.getFullYear() === currentYear;
+      const isCreatedInMonth = taskDate && (taskDate.getMonth() + 1 === currentMonth && taskDate.getFullYear() === currentYear);
+      const isCompletedInMonth = completedDate && (completedDate.getMonth() + 1 === currentMonth && completedDate.getFullYear() === currentYear);
       const isDeadlineInMonth = deadlineDate && (deadlineDate.getMonth() + 1 === currentMonth && deadlineDate.getFullYear() === currentYear);
       const isNotCompleted = t.status !== 'COMPLETED';
 
-      return isCreatedInMonth || isDeadlineInMonth || isNotCompleted;
+      return isCreatedInMonth || isCompletedInMonth || isDeadlineInMonth || isNotCompleted;
     });
 
     res.json(filteredTasks);
@@ -3040,7 +3188,10 @@ async function startServer() {
         return res.status(403).json({ error: "Access Denied: You can only update tasks assigned to you." });
       }
       // Technicians can only update specific fields
-      const allowedFields = ['status', 'progress', 'remarks', 'logs', 'startedAt', 'completedAt'];
+      const allowedFields = [
+        'status', 'progress', 'remarks', 'logs', 'startedAt', 'completedAt',
+        'actualCompletionTime', 'currentHoldStartTime', 'totalHoldMs', 'totalHoldMinutes', 'holdHistory'
+      ];
       const updates = req.body;
       const requestedFields = Object.keys(updates);
       const isAllowed = requestedFields.every(field => allowedFields.includes(field));
@@ -3480,19 +3631,89 @@ async function startServer() {
       updatedData.overTime = timing.overTime;
     }
 
-      // Handle HOLD status
+      // Handle HOLD status transitions and accurate hold time tracking
       if (updatedData.status === 'HOLD') {
-        updatedData.progress = 0; // No progress shown during HOLD
-        if (!updatedData.remarks) {
+        if (!updatedData.remarks && !oldTask.remarks) {
           return res.status(400).json({ error: "Remarks are required for Temporary Hold" });
+        }
+        if (oldTask.status !== 'HOLD') {
+          // Transition into HOLD: record hold start timestamp and freeze work timer
+          const nowIso = updatedData.currentHoldStartTime || new Date().toISOString();
+          updatedData.currentHoldStartTime = nowIso;
+          const currentHistory = Array.isArray(oldTask.holdHistory) ? [...oldTask.holdHistory] : [];
+          currentHistory.push({
+            holdStart: nowIso,
+            reason: updatedData.remarks || oldTask.remarks || 'Temporary Hold'
+          });
+          updatedData.holdHistory = currentHistory;
+        } else if (!oldTask.currentHoldStartTime && !updatedData.currentHoldStartTime) {
+          // Self-heal: task was already HOLD but missed currentHoldStartTime
+          const nowIso = new Date().toISOString();
+          updatedData.currentHoldStartTime = nowIso;
         }
       }
 
-      // If status changes from HOLD back to RUNNING or a percentage is set
-      if (oldTask.status === 'HOLD' && (updatedData.status === 'RUNNING' || (updatedData.progress > 0 && updatedData.status !== 'HOLD'))) {
-        updatedData.status = 'RUNNING';
-        updatedData.startedAt = new Date().toISOString();
+      // If status changes FROM HOLD to RUNNING, COMPLETED, or any other status
+      if (oldTask.status === 'HOLD' && updatedData.status && updatedData.status !== 'HOLD') {
+        const nowMs = Date.now();
+        let holdDurationMs = 0;
+        let holdStartMs = 0;
+
+        if (oldTask.currentHoldStartTime) {
+          const hStart = new Date(oldTask.currentHoldStartTime).getTime();
+          if (!isNaN(hStart)) holdStartMs = hStart;
+        }
+        if (!holdStartMs && Array.isArray(oldTask.holdHistory) && oldTask.holdHistory.length > 0) {
+          const lastH = oldTask.holdHistory[oldTask.holdHistory.length - 1];
+          if (lastH?.holdStart) {
+            const hStart = new Date(lastH.holdStart).getTime();
+            if (!isNaN(hStart)) holdStartMs = hStart;
+          }
+        }
+        if (!holdStartMs && Array.isArray(oldTask.logs)) {
+          const holdLog = [...oldTask.logs].reverse().find((l: any) =>
+            l.action && String(l.action).toLowerCase().includes('hold')
+          );
+          if (holdLog?.timestamp) {
+            const hStart = new Date(holdLog.timestamp).getTime();
+            if (!isNaN(hStart)) holdStartMs = hStart;
+          }
+        }
+
+        if (holdStartMs) {
+          holdDurationMs = Math.max(0, nowMs - holdStartMs);
+        }
+
+        const prevHoldMs = Number(oldTask.totalHoldMs) || ((Number(oldTask.totalHoldMinutes) || 0) * 60 * 1000);
+        const newTotalHoldMs = prevHoldMs + holdDurationMs;
+        updatedData.totalHoldMs = newTotalHoldMs;
+        updatedData.totalHoldMinutes = Math.floor(newTotalHoldMs / (1000 * 60));
+        updatedData.currentHoldStartTime = null;
+
+        // Close out last history item with holdEnd
+        if (Array.isArray(oldTask.holdHistory) && oldTask.holdHistory.length > 0) {
+          const updatedHistory = [...oldTask.holdHistory];
+          const lastIdx = updatedHistory.length - 1;
+          if (!updatedHistory[lastIdx].holdEnd) {
+            updatedHistory[lastIdx] = {
+              ...updatedHistory[lastIdx],
+              holdEnd: new Date(nowMs).toISOString()
+            };
+          }
+          updatedData.holdHistory = updatedHistory;
+        }
+
+        // Preserve original task startedAt (do NOT overwrite with current time)
+        if (!updatedData.startedAt && oldTask.startedAt) {
+          updatedData.startedAt = oldTask.startedAt;
+        }
       }
+
+      // Recompute timing accounting for hold periods
+      const timingWithHold = computeTaskTiming({ ...oldTask, ...updatedData });
+      updatedData.taskTakenTime = timingWithHold.taskTakenTime;
+      updatedData.remainingTime = timingWithHold.remainingTime;
+      updatedData.overTime = timingWithHold.overTime;
 
       // Ensure logs are appended if not already handled by the logic above or the request body
       if (!updatedData.logs) {

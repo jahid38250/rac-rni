@@ -47,6 +47,35 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
   const currentMonthNum = currentDate.getMonth() + 1;
   const currentYearNum = currentDate.getFullYear();
 
+  // Check if current user is HOD or DHOD (specifically IDs 19219 or 17668, or role HOD/DHOD)
+  const isHodView = currentUser.role === 'HOD' || 
+                    currentUser.role === 'DHOD' || 
+                    currentUser.employeeId === '19219' || 
+                    currentUser.employeeId === '17668';
+
+  // For HOD panel: Hierarchy starts from In-Charge down. CBO, DCBO, and HODs must NOT appear as associates.
+  const activeStaffList = useMemo(() => {
+    if (isHodView) {
+      return staffList.filter(s => 
+        s.role !== 'CBO' && 
+        s.role !== 'DCBO' && 
+        s.role !== 'HOD' && 
+        s.role !== 'DHOD' && 
+        s.employeeId !== '1007' && 
+        s.employeeId !== '12467' && 
+        s.employeeId !== '19219' && 
+        s.employeeId !== '17668' &&
+        WORKFORCE_ROLES.includes(s.role)
+      );
+    }
+    return staffList;
+  }, [staffList, isHodView]);
+
+  // In-Charge list (direct operational associates under HOD/DHOD)
+  const inChargeStaffList = useMemo(() => {
+    return activeStaffList.filter(s => s.role === 'IN_CHARGE');
+  }, [activeStaffList]);
+
   // Month & Year state
   const [selectedMonth, setSelectedMonth] = useState<number>(currentMonthNum);
   const [selectedYear, setSelectedYear] = useState<number>(currentYearNum);
@@ -101,11 +130,11 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
   // Departments list for filtering
   const departments = useMemo(() => {
     const depts = new Set<string>();
-    staffList.forEach(s => {
+    activeStaffList.forEach(s => {
       if (s.department && s.department.trim()) depts.add(s.department.trim());
     });
     return Array.from(depts);
-  }, [staffList]);
+  }, [activeStaffList]);
 
   // Filter tasks strictly by selected month and year
   const periodTasks = useMemo(() => {
@@ -323,7 +352,9 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
 
   // High-level Category Overview Metrics
   const categoryMetrics = useMemo(() => {
-    const roles: Role[] = ['IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER', 'TECHNICIAN', 'DHOD', 'HOD'];
+    const roles: Role[] = isHodView
+      ? ['IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER', 'TECHNICIAN']
+      : ['IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER', 'TECHNICIAN', 'DHOD', 'HOD'];
     const summary: Record<string, {
       headcount: number;
       totalTasks: number;
@@ -336,7 +367,7 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
     }> = {};
 
     roles.forEach(r => {
-      const staffInRole = staffList.filter(s => s.role === r);
+      const staffInRole = activeStaffList.filter(s => s.role === r);
       let totalTasks = 0;
       let completed = 0;
       let running = 0;
@@ -369,7 +400,7 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
     });
 
     return summary;
-  }, [staffList, periodTasks]);
+  }, [activeStaffList, periodTasks, isHodView]);
 
   // Overall enterprise metrics across all staff for selected period
   const overallEnterpriseMetrics = useMemo(() => {
@@ -399,7 +430,7 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
       : 0;
 
     return {
-      totalStaff: staffList.length,
+      totalStaff: activeStaffList.length,
       totalTasks,
       totalCompleted,
       totalRunning,
@@ -408,7 +439,7 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
       overallPerformance,
       totalVerifiedPoints
     };
-  }, [periodTasks, staffList]);
+  }, [periodTasks, activeStaffList]);
 
   // Chart data: Completion & Performance by category
   const roleChartData = useMemo(() => {
@@ -433,13 +464,13 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
 
   // Filtered staff list for the active category table
   const displayedStaffList = useMemo(() => {
-    let list = staffList;
+    let list = activeStaffList;
     if (activeCategory === 'OVERVIEW') {
-      list = staffList.filter(s => WORKFORCE_ROLES.includes(s.role) || s.role === 'HOD' || s.role === 'DHOD');
-    } else if (activeCategory === 'HOD') {
-      list = staffList.filter(s => s.role === 'HOD' || s.role === 'DHOD');
+      list = activeStaffList.filter(s => WORKFORCE_ROLES.includes(s.role) || (!isHodView && (s.role === 'HOD' || s.role === 'DHOD')));
+    } else if (activeCategory === 'HOD' && !isHodView) {
+      list = activeStaffList.filter(s => s.role === 'HOD' || s.role === 'DHOD');
     } else {
-      list = staffList.filter(s => s.role === activeCategory);
+      list = activeStaffList.filter(s => s.role === activeCategory);
     }
 
     // Apply department filter
@@ -584,17 +615,23 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
             <div className="flex items-center gap-3 mb-2 flex-wrap">
               <span className="px-3 py-1 rounded-full text-xs font-black tracking-widest uppercase bg-blue-500/20 text-blue-400 border border-blue-500/30 flex items-center gap-1.5 shadow-sm">
                 <ShieldCheck size={14} className="text-blue-400" />
-                {currentUser.role === 'CBO' ? 'CHIEF BUSINESS OFFICER' : 'DEPUTY CHIEF BUSINESS OFFICER'}
+                {currentUser.role === 'CBO' ? 'CHIEF BUSINESS OFFICER' :
+                 currentUser.role === 'DCBO' ? 'DEPUTY CHIEF BUSINESS OFFICER' :
+                 currentUser.employeeId === '19219' || currentUser.role === 'HOD' ? 'HEAD OF DEPARTMENT (HOD)' :
+                 currentUser.employeeId === '17668' || currentUser.role === 'DHOD' ? 'DEPUTY HEAD OF DEPARTMENT (DHOD)' :
+                 'DEPARTMENT COMMAND'}
               </span>
               <span className="text-xs text-slate-400 font-medium tracking-wide">
-                Executive Monitoring Layer • Hierarchical Operations Command
+                {isHodView ? 'HOD Operations Command • RAC R&I Department Monitoring' : 'Executive Monitoring Layer • Hierarchical Operations Command'}
               </span>
             </div>
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-white tracking-tight">
-              Executive Business & Workforce Command Center
+              {isHodView ? 'Department Operations & Workforce Command Center' : 'Executive Business & Workforce Command Center'}
             </h1>
             <p className="text-sm text-slate-300 mt-1 max-w-2xl">
-              Real-time enterprise monitoring of all In-Charges, Model Managers, Engineers, Officers, Technicians, and HODs.
+              {isHodView 
+                ? 'Real-time operational monitoring of all In-Charges, Model Managers, Engineers, Officers, and Technicians in RAC R&I.' 
+                : 'Real-time enterprise monitoring of all In-Charges, Model Managers, Engineers, Officers, Technicians, and HODs.'}
             </p>
           </div>
 
@@ -649,13 +686,19 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
               Current Month
             </button>
 
-            {/* Assign Task to HOD button */}
+            {/* Assign Task button */}
             <button
-              onClick={() => setIsAssignHodModalOpen(true)}
+              onClick={() => {
+                if (isHodView && onOpenNewTaskModal) {
+                  onOpenNewTaskModal();
+                } else {
+                  setIsAssignHodModalOpen(true);
+                }
+              }}
               className="bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-lg shadow-blue-600/30 flex items-center gap-1.5 transition-all"
             >
               <Plus size={14} />
-              Assign to HOD
+              {isHodView ? "Assign New Task" : "Assign to HOD"}
             </button>
           </div>
         </div>
@@ -747,15 +790,17 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
         </div>
       </div>
 
-      {/* Associated HOD Attendance & Operational Overview (Section 4 & 14) */}
+      {/* Associated Operational Monitoring: In-Charges for HOD/DHOD, HODs for CBO/DCBO */}
       <div className="bg-slate-900/80 border border-white/10 rounded-3xl p-6 shadow-xl backdrop-blur-xl">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5 pb-4 border-b border-white/10">
           <div>
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-blue-400 mb-1">
               <Building2 size={16} />
-              <span>Hierarchical HOD Monitoring</span>
+              <span>{isHodView ? 'Section & Unit Operational Monitoring' : 'Hierarchical HOD Monitoring'}</span>
             </div>
-            <h2 className="text-xl font-bold text-white">Associated HOD Attendance & Department Operations</h2>
+            <h2 className="text-xl font-bold text-white">
+              {isHodView ? 'Associated In-Charge Attendance & Section Operations' : 'Associated HOD Attendance & Department Operations'}
+            </h2>
           </div>
           <div className="text-xs text-slate-400">
             Source of Truth: Real-time system attendance records ({todayDateStr})
@@ -763,14 +808,14 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {hodStaffList.length === 0 ? (
+          {(isHodView ? inChargeStaffList : hodStaffList).length === 0 ? (
             <div className="col-span-full py-8 text-center text-slate-500 text-sm">
-              No HOD personnel currently registered in system.
+              {isHodView ? 'No In-Charge personnel currently registered in system.' : 'No HOD personnel currently registered in system.'}
             </div>
           ) : (
-            hodStaffList.map(hod => {
-              const status = getPersonTodayAttendance(hod.employeeId);
-              const hodMetrics = getPersonPeriodMetrics(hod);
+            (isHodView ? inChargeStaffList : hodStaffList).map(person => {
+              const status = getPersonTodayAttendance(person.employeeId);
+              const personMetrics = getPersonPeriodMetrics(person);
               
               // Status color mapping
               let statusBadgeClass = "bg-emerald-500/20 text-emerald-400 border-emerald-500/30";
@@ -780,16 +825,16 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
 
               return (
                 <div 
-                  key={hod.id}
+                  key={person.id}
                   className="bg-white/5 border border-white/10 hover:border-blue-500/40 rounded-2xl p-5 transition-all group relative overflow-hidden"
                 >
                   <div className="flex items-start justify-between gap-2 mb-3">
                     <div className="min-w-0">
                       <div className="font-bold text-white text-base truncate group-hover:text-blue-300 transition-colors">
-                        {hod.name}
+                        {person.name}
                       </div>
                       <div className="text-xs text-slate-400 truncate">
-                        ID: {hod.employeeId} • {hod.department || 'Executive Department'}
+                        ID: {person.employeeId} • {person.section || person.department || 'RAC R&I'}
                       </div>
                     </div>
                     <span className={cn("px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border shrink-0", statusBadgeClass)}>
@@ -797,19 +842,19 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
                     </span>
                   </div>
 
-                  {/* Department metrics summary */}
+                  {/* Metrics summary */}
                   <div className="grid grid-cols-3 gap-2 py-3 border-y border-white/5 text-center my-3">
                     <div>
                       <div className="text-xs text-slate-400">Tasks</div>
-                      <div className="text-sm font-bold text-white">{hodMetrics.totalTasksGiven}</div>
+                      <div className="text-sm font-bold text-white">{personMetrics.totalTasksGiven}</div>
                     </div>
                     <div>
                       <div className="text-xs text-slate-400">Done</div>
-                      <div className="text-sm font-bold text-emerald-400">{hodMetrics.completedTasks}</div>
+                      <div className="text-sm font-bold text-emerald-400">{personMetrics.completedTasks}</div>
                     </div>
                     <div>
                       <div className="text-xs text-slate-400">Perf %</div>
-                      <div className="text-sm font-bold text-blue-400">{hodMetrics.performancePercentage}%</div>
+                      <div className="text-sm font-bold text-blue-400">{personMetrics.performancePercentage}%</div>
                     </div>
                   </div>
 
@@ -817,7 +862,7 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
                   <div className="flex items-center justify-between gap-2 mt-3 pt-1">
                     <button
                       onClick={() => {
-                        setSelectedPerson(hod);
+                        setSelectedPerson(person);
                         setIsDetailDrawerOpen(true);
                       }}
                       className="text-xs text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1 transition-colors"
@@ -828,7 +873,7 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
                     {onUpdateAttendance && (
                       <div className="flex items-center gap-1">
                         <button
-                          onClick={() => onUpdateAttendance(hod.employeeId, 'PRESENT')}
+                          onClick={() => onUpdateAttendance(person.employeeId, 'PRESENT')}
                           title="Mark Present"
                           className={cn(
                             "px-2 py-0.5 rounded text-[10px] font-bold transition-all",
@@ -838,7 +883,7 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
                           P
                         </button>
                         <button
-                          onClick={() => onUpdateAttendance(hod.employeeId, 'LEAVE')}
+                          onClick={() => onUpdateAttendance(person.employeeId, 'LEAVE')}
                           title="Mark Leave"
                           className={cn(
                             "px-2 py-0.5 rounded text-[10px] font-bold transition-all",
@@ -848,7 +893,7 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
                           L
                         </button>
                         <button
-                          onClick={() => onUpdateAttendance(hod.employeeId, 'ABSENT')}
+                          onClick={() => onUpdateAttendance(person.employeeId, 'ABSENT')}
                           title="Mark Absent"
                           className={cn(
                             "px-2 py-0.5 rounded text-[10px] font-bold transition-all",
@@ -991,28 +1036,43 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
           </div>
           <ChevronRight size={14} className="text-slate-600 shrink-0" />
           <div className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-300 flex items-center gap-1.5">
-            <span className="text-slate-500 font-mono">4</span> In-Charge / Model Mgr
+            <span className="text-slate-500 font-mono">4</span> Model Manager
           </div>
           <ChevronRight size={14} className="text-slate-600 shrink-0" />
           <div className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-300 flex items-center gap-1.5">
-            <span className="text-slate-500 font-mono">5</span> DHOD
+            <span className="text-slate-500 font-mono">5</span> In-Charge
           </div>
-          <ChevronRight size={14} className="text-slate-600 shrink-0" />
-          <div className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-300 flex items-center gap-1.5">
-            <span className="text-slate-500 font-mono">6</span> HOD
-          </div>
-          <ChevronRight size={14} className="text-slate-600 shrink-0" />
-          <div className="px-3 py-1.5 rounded-lg bg-purple-500/20 border border-purple-500/30 text-purple-300 flex items-center gap-1.5">
-            <span className="text-purple-400 font-mono">7</span> DCBO
-          </div>
-          <ChevronRight size={14} className="text-slate-600 shrink-0" />
-          <div className="px-3 py-1.5 rounded-lg bg-blue-500/20 border border-blue-500/30 text-blue-300 font-bold flex items-center gap-1.5">
-            <span className="text-blue-400 font-mono">8</span> CBO (Command Level)
-          </div>
+          {isHodView ? (
+            <>
+              <ChevronRight size={14} className="text-slate-600 shrink-0" />
+              <div className="px-3 py-1.5 rounded-lg bg-blue-500/20 border border-blue-500/30 text-blue-300 font-bold flex items-center gap-1.5">
+                <span className="text-blue-400 font-mono">6</span> HOD / DHOD (Department Command)
+              </div>
+            </>
+          ) : (
+            <>
+              <ChevronRight size={14} className="text-slate-600 shrink-0" />
+              <div className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-300 flex items-center gap-1.5">
+                <span className="text-slate-500 font-mono">6</span> DHOD
+              </div>
+              <ChevronRight size={14} className="text-slate-600 shrink-0" />
+              <div className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-300 flex items-center gap-1.5">
+                <span className="text-slate-500 font-mono">7</span> HOD
+              </div>
+              <ChevronRight size={14} className="text-slate-600 shrink-0" />
+              <div className="px-3 py-1.5 rounded-lg bg-purple-500/20 border border-purple-500/30 text-purple-300 flex items-center gap-1.5">
+                <span className="text-purple-400 font-mono">8</span> DCBO
+              </div>
+              <ChevronRight size={14} className="text-slate-600 shrink-0" />
+              <div className="px-3 py-1.5 rounded-lg bg-blue-500/20 border border-blue-500/30 text-blue-300 font-bold flex items-center gap-1.5">
+                <span className="text-blue-400 font-mono">9</span> CBO (Enterprise Command)
+              </div>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Main 5 Workforce Categories Tabs & Monitoring Table (Sections 6, 8, 9, 10) */}
+      {/* Main Workforce Categories Tabs & Monitoring Table */}
       <div className="bg-slate-900/80 border border-white/10 rounded-3xl p-6 shadow-xl backdrop-blur-xl space-y-6">
         {/* Category Navigation Tabs */}
         <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-white/10">
@@ -1027,12 +1087,12 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
               )}
             >
               <Layers size={14} />
-              ALL WORKFORCE ({staffList.length})
+              ALL WORKFORCE ({activeStaffList.length})
             </button>
 
             {WORKFORCE_ROLES.map(role => {
               const label = role.replace(/_/g, ' ');
-              const count = staffList.filter(s => s.role === role).length;
+              const count = activeStaffList.filter(s => s.role === role).length;
               const isActive = activeCategory === role;
 
               return (
@@ -1057,17 +1117,19 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
               );
             })}
 
-            <button
-              onClick={() => setActiveCategory('HOD')}
-              className={cn(
-                "px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2",
-                activeCategory === 'HOD'
-                  ? "bg-blue-600 text-white shadow-lg shadow-blue-500/25"
-                  : "bg-white/5 hover:bg-white/10 text-slate-300 border border-white/5"
-              )}
-            >
-              HOD / DHOD ({hodStaffList.length})
-            </button>
+            {!isHodView && (
+              <button
+                onClick={() => setActiveCategory('HOD')}
+                className={cn(
+                  "px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2",
+                  activeCategory === 'HOD'
+                    ? "bg-blue-600 text-white shadow-lg shadow-blue-500/25"
+                    : "bg-white/5 hover:bg-white/10 text-slate-300 border border-white/5"
+                )}
+              >
+                HOD / DHOD ({hodStaffList.length})
+              </button>
+            )}
           </div>
 
           {/* Export Action */}
@@ -1677,8 +1739,10 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
                   <Building2 size={20} />
                 </div>
                 <div>
-                  <h3 className="font-bold text-white text-base">Assign Executive Task to HOD</h3>
-                  <p className="text-xs text-slate-400">Direct executive task assignment from {currentUser.role}</p>
+                  <h3 className="font-bold text-white text-base">
+                    {isHodView ? "Assign Operational Task to Workforce" : "Assign Executive Task to HOD"}
+                  </h3>
+                  <p className="text-xs text-slate-400">Direct task assignment from {currentUser.name} ({currentUser.role})</p>
                 </div>
               </div>
               <button
@@ -1691,24 +1755,36 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
 
             <form onSubmit={handleAssignTaskToHod} className="space-y-4 text-xs">
               <div>
-                <label className="block text-slate-300 font-bold mb-1.5">Assign To (HOD / DCBO) *</label>
+                <label className="block text-slate-300 font-bold mb-1.5">
+                  {isHodView ? "Assign To (In-Charge / Engineer / Officer / Tech) *" : "Assign To (HOD / DCBO) *"}
+                </label>
                 <select
                   value={hodTaskData.assignedTo}
                   onChange={(e) => setHodTaskData({ ...hodTaskData, assignedTo: e.target.value })}
                   required
                   className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="">Select HOD or Executive Assignee</option>
-                  {currentUser.role === 'CBO' && dcboStaffList.map(dcbo => (
-                    <option key={dcbo.id} value={dcbo.employeeId}>
-                      [DCBO] {dcbo.name} ({dcbo.employeeId})
-                    </option>
-                  ))}
-                  {hodStaffList.map(hod => (
-                    <option key={hod.id} value={hod.employeeId}>
-                      [{hod.role} - {hod.department || 'Dept'}] {hod.name} ({hod.employeeId})
-                    </option>
-                  ))}
+                  <option value="">{isHodView ? "Select In-Charge, Officer, or Engineer" : "Select HOD or Executive Assignee"}</option>
+                  {isHodView ? (
+                    activeStaffList.map(s => (
+                      <option key={s.id} value={s.employeeId}>
+                        [{s.role.replace(/_/g, ' ')}] {s.name} ({s.employeeId})
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      {currentUser.role === 'CBO' && dcboStaffList.map(dcbo => (
+                        <option key={dcbo.id} value={dcbo.employeeId}>
+                          [DCBO] {dcbo.name} ({dcbo.employeeId})
+                        </option>
+                      ))}
+                      {hodStaffList.map(hod => (
+                        <option key={hod.id} value={hod.employeeId}>
+                          [{hod.role} - {hod.department || 'Dept'}] {hod.name} ({hod.employeeId})
+                        </option>
+                      ))}
+                    </>
+                  )}
                 </select>
               </div>
 

@@ -100,6 +100,10 @@ export interface Task {
   inChargeId?: string;
   dhodId?: string;
   hodId?: string;
+  totalHoldMinutes?: number;
+  totalHoldMs?: number;
+  currentHoldStartTime?: string;
+  holdHistory?: Array<{ holdStart: string; holdEnd?: string; reason?: string }>;
 }
 
 export interface Attendance {

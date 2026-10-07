@@ -97,6 +97,116 @@ const ThemeContext = React.createContext('dark');
 
 // --- Components ---
 
+export const parseTaskDurationMinutes = (dur?: string): number => {
+  if (!dur) return 60;
+  const str = String(dur).trim();
+  if (/^\d+$/.test(str)) return parseInt(str, 10) || 60;
+  let mins = 0;
+  const dMatch = str.match(/(\d+)\s*d/i);
+  const hMatch = str.match(/(\d+)\s*h/i);
+  const mMatch = str.match(/(\d+)\s*m/i);
+  if (dMatch) mins += parseInt(dMatch[1], 10) * 24 * 60;
+  if (hMatch) mins += parseInt(hMatch[1], 10) * 60;
+  if (mMatch) mins += parseInt(mMatch[1], 10);
+  if (mins === 0) {
+    const numMatch = str.match(/(\d+)/);
+    if (numMatch) mins = parseInt(numMatch[1], 10);
+  }
+  return mins || 60;
+};
+
+export const getTaskHoldDurationMs = (task: any, refEndTime?: Date): number => {
+  let holdMs = Number(task.totalHoldMs) || ((Number(task.totalHoldMinutes) || 0) * 60 * 1000);
+
+  if (task.status === 'HOLD') {
+    let holdStartMs = 0;
+    if (task.currentHoldStartTime) {
+      const parsed = new Date(task.currentHoldStartTime).getTime();
+      if (!isNaN(parsed)) holdStartMs = parsed;
+    }
+    if (!holdStartMs && Array.isArray(task.holdHistory) && task.holdHistory.length > 0) {
+      const last = task.holdHistory[task.holdHistory.length - 1];
+      if (last?.holdStart) {
+        const parsed = new Date(last.holdStart).getTime();
+        if (!isNaN(parsed)) holdStartMs = parsed;
+      }
+    }
+    if (!holdStartMs && Array.isArray(task.logs)) {
+      const holdLog = [...task.logs].reverse().find((l: any) => 
+        (l.action && String(l.action).toLowerCase().includes('hold'))
+      );
+      if (holdLog?.timestamp) {
+        const parsed = new Date(holdLog.timestamp).getTime();
+        if (!isNaN(parsed)) holdStartMs = parsed;
+      }
+    }
+    if (!holdStartMs) {
+      const parsed = new Date(task.startedAt || task.createdAt || Date.now()).getTime();
+      if (!isNaN(parsed)) holdStartMs = parsed;
+    }
+
+    const refMs = refEndTime ? refEndTime.getTime() : Date.now();
+    const ongoingHoldMs = Math.max(0, refMs - holdStartMs);
+    holdMs += ongoingHoldMs;
+  }
+
+  return holdMs;
+};
+
+export const getTaskActiveElapsedMs = (task: any, refEndTime?: Date): number => {
+  const startRaw = task.customStartTime || task.startedAt || task.createdAt;
+  const start = new Date(startRaw).getTime();
+  if (isNaN(start)) return 0;
+
+  const priorHoldMs = Number(task.totalHoldMs) || ((Number(task.totalHoldMinutes) || 0) * 60 * 1000);
+
+  // If task is ON HOLD: The active work clock is completely FROZEN at the moment hold started!
+  if (task.status === 'HOLD') {
+    let holdStartMs = 0;
+    if (task.currentHoldStartTime) {
+      const parsed = new Date(task.currentHoldStartTime).getTime();
+      if (!isNaN(parsed)) holdStartMs = parsed;
+    }
+    if (!holdStartMs && Array.isArray(task.holdHistory) && task.holdHistory.length > 0) {
+      const last = task.holdHistory[task.holdHistory.length - 1];
+      if (last?.holdStart) {
+        const parsed = new Date(last.holdStart).getTime();
+        if (!isNaN(parsed)) holdStartMs = parsed;
+      }
+    }
+    if (!holdStartMs && Array.isArray(task.logs)) {
+      const holdLog = [...task.logs].reverse().find((l: any) => 
+        (l.action && String(l.action).toLowerCase().includes('hold'))
+      );
+      if (holdLog?.timestamp) {
+        const parsed = new Date(holdLog.timestamp).getTime();
+        if (!isNaN(parsed)) holdStartMs = parsed;
+      }
+    }
+    if (!holdStartMs) {
+      holdStartMs = start;
+    }
+
+    // Freeze active work at exactly (holdStartMs - start) - priorHoldMs!
+    // Never increases while task is in HOLD!
+    return Math.max(0, (holdStartMs - start) - priorHoldMs);
+  }
+
+  // If task is COMPLETED:
+  if (task.status === 'COMPLETED') {
+    const endRaw = task.actualCompletionTime || task.completedAt || refEndTime || Date.now();
+    const end = new Date(endRaw).getTime();
+    if (!isNaN(end)) {
+      const totalHoldMs = getTaskHoldDurationMs(task, new Date(end));
+      return Math.max(0, (end - start) - totalHoldMs);
+    }
+  }
+
+  // If task is RUNNING:
+  const nowMs = refEndTime ? refEndTime.getTime() : Date.now();
+  return Math.max(0, (nowMs - start) - priorHoldMs);
+};
+
 const CountdownTimer = ({ task }: { task: Task }) => {
   const [timeLeft, setTimeLeft] = React.useState<string>('');
   const [progress, setProgress] = React.useState<number>(0);
@@ -104,45 +214,50 @@ const CountdownTimer = ({ task }: { task: Task }) => {
 
   React.useEffect(() => {
     const isOfficerTask = task.status === 'PENDING' && task.requestStatus === 'RECOMMENDED';
-    if (task.status !== 'RUNNING' && !isOfficerTask) {
-      if (task.status === 'COMPLETED') {
-        setTimeLeft(task.taskTakenTime ? `Done (${task.taskTakenTime})` : 'Completed');
-        setProgress(100);
-        setColor('bg-green-500');
-      } else {
-        setTimeLeft('--:--:--');
-        setProgress(0);
-        setColor('bg-gray-500');
-      }
+    
+    if (task.status === 'COMPLETED') {
+      setTimeLeft(task.taskTakenTime ? `Done (${task.taskTakenTime})` : 'Completed');
+      setProgress(100);
+      setColor('bg-green-500');
       return;
     }
 
-    const parseDuration = (dur?: string) => {
-      if (!dur) return 60;
-      const str = String(dur).trim();
-      if (/^\d+$/.test(str)) return parseInt(str, 10) || 60;
-      let mins = 0;
-      const dMatch = str.match(/(\d+)\s*d/i);
-      const hMatch = str.match(/(\d+)\s*h/i);
-      const mMatch = str.match(/(\d+)\s*m/i);
-      if (dMatch) mins += parseInt(dMatch[1], 10) * 24 * 60;
-      if (hMatch) mins += parseInt(hMatch[1], 10) * 60;
-      if (mMatch) mins += parseInt(mMatch[1], 10);
-      if (mins === 0) {
-        const numMatch = str.match(/(\d+)/);
-        if (numMatch) mins = parseInt(numMatch[1], 10);
-      }
-      return mins || 60;
-    };
+    const durationMins = parseTaskDurationMinutes(task.estimatedDuration);
+    const durationMs = durationMins * 60 * 1000;
 
-    const updateTimer = () => {
-      const start = new Date(task.customStartTime || task.startedAt || task.createdAt).getTime();
-      const now = new Date().getTime();
-      const durationMins = parseDuration(task.estimatedDuration);
-      const durationMs = durationMins * 60 * 1000;
-      const end = start + durationMs;
-      const remainingMs = end - now;
-      
+    const renderTimer = () => {
+      const activeWorkMs = getTaskActiveElapsedMs(task);
+      const remainingMs = durationMs - activeWorkMs;
+
+      // When task is ON HOLD: The time is completely frozen, no ticking or counting up!
+      if (task.status === 'HOLD') {
+        if (remainingMs <= 0) {
+          const overTimeMs = Math.abs(remainingMs);
+          const h = Math.floor(overTimeMs / (1000 * 60 * 60));
+          const m = Math.floor((overTimeMs % (1000 * 60 * 60)) / (1000 * 60));
+          setTimeLeft(`PAUSED (Over: ${h}h ${m}m)`);
+          setProgress(100);
+          setColor('bg-red-600');
+        } else {
+          const h = Math.floor(remainingMs / (1000 * 60 * 60));
+          const m = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
+          const s = Math.floor((remainingMs % (1000 * 60)) / 1000);
+          setTimeLeft(`PAUSED (${h}h ${m}m ${s}s)`);
+          const currentProgress = Math.min(100, Math.max(0, (activeWorkMs / durationMs) * 100));
+          setProgress(currentProgress);
+          setColor('bg-amber-500');
+        }
+        return;
+      }
+
+      if (task.status !== 'RUNNING' && !isOfficerTask) {
+        setTimeLeft('--:--:--');
+        setProgress(0);
+        setColor('bg-gray-500');
+        return;
+      }
+
+      // Active RUNNING task: ticking live clock
       if (remainingMs <= 0) {
         const overTimeMs = Math.abs(remainingMs);
         const h = Math.floor(overTimeMs / (1000 * 60 * 60));
@@ -157,8 +272,7 @@ const CountdownTimer = ({ task }: { task: Task }) => {
         const s = Math.floor((remainingMs % (1000 * 60)) / 1000);
         setTimeLeft(`${h}h ${m}m ${s}s`);
         
-        const elapsedMs = Math.max(0, now - start);
-        const currentProgress = Math.min(100, Math.max(0, (elapsedMs / durationMs) * 100));
+        const currentProgress = Math.min(100, Math.max(0, (activeWorkMs / durationMs) * 100));
         setProgress(currentProgress);
         
         if (currentProgress < 60) setColor('bg-green-500');
@@ -167,9 +281,15 @@ const CountdownTimer = ({ task }: { task: Task }) => {
       }
     };
 
-    updateTimer();
-    const timer = setInterval(updateTimer, 1000);
+    renderTimer();
 
+    // If task is on HOLD or not RUNNING, DO NOT start an interval!
+    // The timer is completely frozen!
+    if (task.status === 'HOLD' || (task.status !== 'RUNNING' && !isOfficerTask)) {
+      return;
+    }
+
+    const timer = setInterval(renderTimer, 1000);
     return () => clearInterval(timer);
   }, [task]);
 
@@ -177,7 +297,8 @@ const CountdownTimer = ({ task }: { task: Task }) => {
     <div className="space-y-2">
       <div className="flex justify-between items-center">
         <span className="text-[10px] font-mono text-gray-400">{timeLeft}</span>
-        {task.status === 'RUNNING' && <span className="text-[8px] text-blue-400 animate-pulse">LIVE</span>}
+        {task.status === 'RUNNING' && <span className="text-[8px] text-blue-400 animate-pulse font-bold">LIVE</span>}
+        {task.status === 'HOLD' && <span className="text-[8px] text-amber-400 font-bold px-1.5 py-0.5 rounded bg-amber-400/10 border border-amber-400/20">PAUSED</span>}
       </div>
       <div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
         <motion.div 
@@ -316,7 +437,14 @@ const ReportingPanel = ({ tasks, staff, user }: { tasks: Task[], staff: User[], 
     return null;
   };
 
-  const calculateDuration = (start?: string, end?: string) => {
+  const calculateDuration = (start?: string, end?: string, taskItem?: Task) => {
+    if (taskItem) {
+      const activeMs = getTaskActiveElapsedMs(taskItem, end ? new Date(end) : undefined);
+      const totalMins = Math.floor(activeMs / (1000 * 60));
+      const hours = Math.floor(totalMins / 60);
+      const minutes = totalMins % 60;
+      return `${hours}h ${minutes}m`;
+    }
     if (!start || !end) return 'N/A';
     const s = new Date(start);
     const e = new Date(end);
@@ -389,7 +517,7 @@ const ReportingPanel = ({ tasks, staff, user }: { tasks: Task[], staff: User[], 
       const formattedDeadline = new Date(t.deadline).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
       const startRef = t.customStartTime || t.startedAt || t.createdAt;
       const endRef = t.actualCompletionTime || t.completedAt;
-      const takenStr = t.taskTakenTime || calculateDuration(startRef, endRef);
+      const takenStr = t.taskTakenTime || calculateDuration(startRef, endRef, t);
       if (role === 'ENGINEER') {
         row.push(officerName, t.status, formattedDeadline, endRef ? new Date(endRef).toLocaleString() : 'N/A', takenStr, history);
       } else if (role === 'OFFICER') {
@@ -1211,6 +1339,27 @@ export default function App() {
 
   // Track if any modal is open to prevent interruptions
   const isAnyModalOpen = isTaskModalOpen || isStaffModalOpen || isTaskDetailsModalOpen || isStatusUpdateModalOpen || isChangePasswordModalOpen || isResetPasswordModalOpen || isRejectModalOpen;
+
+  const [hodDashboardView, setHodDashboardView] = useState<'command' | 'standard'>('command');
+  const isHodExecutiveUser = Boolean(
+    user && (
+      user.role === 'HOD' ||
+      user.role === 'DHOD' ||
+      user.employeeId === '19219' ||
+      user.employeeId === '17668'
+    )
+  );
+  const isExecutiveUser = Boolean(
+    user && (
+      user.role === 'CBO' ||
+      user.role === 'DCBO' ||
+      user.role === 'HOD' ||
+      user.role === 'DHOD' ||
+      user.role === 'SUPER_ADMIN' ||
+      user.employeeId === '19219' ||
+      user.employeeId === '17668'
+    )
+  );
 
   const getRandomColor = () => {
     const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
@@ -3054,10 +3203,10 @@ export default function App() {
   const [notifications, setNotifications] = useState<{id: string, message: string, read: boolean, timestamp: string}[]>([]);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
 
-  const fetchTasks = async (token: string, all = false) => {
+  const fetchTasks = async (token: string, all = true) => {
     try {
-      // Performance Boost: Limit initial load to current month or last 100 tasks
-      const url = all ? '/api/tasks?all=true&limit=100' : `/api/tasks?month=${new Date().getMonth() + 1}&year=${new Date().getFullYear()}`;
+      // Ensure all persistent tasks are retrieved so task records never disappear after 2 days
+      const url = all ? '/api/tasks?all=true' : '/api/tasks?all=true';
       const data = await fetchJson(url, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -3377,27 +3526,41 @@ export default function App() {
             ? new Date(statusUpdateData.actualCompletionTime).toISOString()
             : statusUpdateData.actualCompletionTime)
         : '';
+      const isHold = statusUpdateData.status === 'HOLD';
+      const wasHold = statusUpdateTask.status === 'HOLD';
+      const isResuming = wasHold && statusUpdateData.status !== 'HOLD';
+
+      const payload: any = {
+        status: statusUpdateData.status,
+        progress: statusUpdateData.progress,
+        remarks: statusUpdateData.remarks,
+        actualCompletionTime: normalizedCompletionTime,
+        logs: [
+          ...(statusUpdateTask.logs || []),
+          {
+            id: Date.now().toString(),
+            action: isHold
+              ? `Task placed on Temporary Hold (Reason: ${statusUpdateData.remarks})`
+              : isResuming
+                ? `Task resumed to ${statusUpdateData.status} (${statusUpdateData.progress}%)`
+                : `Status updated to ${statusUpdateData.status} (${statusUpdateData.progress}%)`,
+            timestamp: new Date().toISOString(),
+            user: user?.name || 'System'
+          }
+        ]
+      };
+
+      if (isHold) {
+        payload.currentHoldStartTime = statusUpdateTask.currentHoldStartTime || new Date().toISOString();
+      }
+
       const data = await fetchJson(`/api/tasks/${statusUpdateTask.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({
-          status: statusUpdateData.status,
-          progress: statusUpdateData.progress,
-          remarks: statusUpdateData.remarks,
-          actualCompletionTime: normalizedCompletionTime,
-          logs: [
-            ...(statusUpdateTask.logs || []),
-            {
-              id: Date.now().toString(),
-              action: `Status updated to ${statusUpdateData.status} (${statusUpdateData.progress}%)`,
-              timestamp: new Date().toISOString(),
-              user: user?.name || 'System'
-            }
-          ]
-        })
+        body: JSON.stringify(payload)
       });
       
       const token2 = localStorage.getItem('token');
@@ -3406,11 +3569,13 @@ export default function App() {
         await fetchStaff(token2);
         await fetchPoints(token2);
       }
+      toast.success(isHold ? 'Task placed on Temporary Hold (Timer frozen)' : isResuming ? 'Task resumed successfully' : 'Task status updated successfully');
       setIsStatusUpdateModalOpen(false);
       setStatusUpdateTask(null);
       setStatusUpdateData({ progress: 0, status: 'RUNNING', remarks: '', actualCompletionTime: '' });
     } catch (err) {
       console.error('Status update error:', err);
+      toast.error(err instanceof Error ? err.message : 'Error updating task status');
     } finally {
       setIsLoading(false);
     }
@@ -3705,7 +3870,14 @@ export default function App() {
     return (hasCrossTeamLog || isRequestedStatus) ? 'Hired' : 'Own';
   };
 
-  const calculateDuration = (start?: string, end?: string) => {
+  const calculateDuration = (start?: string, end?: string, taskItem?: Task) => {
+    if (taskItem) {
+      const activeMs = getTaskActiveElapsedMs(taskItem, end ? new Date(end) : undefined);
+      const totalMins = Math.floor(activeMs / (1000 * 60));
+      const hours = Math.floor(totalMins / 60);
+      const minutes = totalMins % 60;
+      return `${hours}h ${minutes}m`;
+    }
     if (!start || !end) return 'N/A';
     const s = new Date(start);
     const e = new Date(end);
@@ -5527,19 +5699,46 @@ export default function App() {
                     />
                   </div>
 
-                  <div className="pt-4 border-t border-white/10">
-                    <button
-                      onClick={() => setStatusUpdateData({ ...statusUpdateData, status: 'HOLD', progress: 0 })}
-                      className={cn(
-                        "w-full py-4 rounded-xl font-bold transition-all border flex items-center justify-center gap-2",
-                        statusUpdateData.status === 'HOLD'
-                          ? "bg-red-600 border-red-500 text-white shadow-lg shadow-red-500/20"
-                          : "bg-white/5 border-white/10 text-red-400 hover:bg-red-500/10"
-                      )}
-                    >
-                      <Pause size={20} />
-                      Temporary Hold
-                    </button>
+                  <div className="pt-4 border-t border-white/10 space-y-2">
+                    <label className="text-xs text-gray-400 uppercase tracking-widest block">Work Status Mode</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStatusUpdateData({ 
+                            ...statusUpdateData, 
+                            status: statusUpdateData.progress === 100 ? 'COMPLETED' : 'RUNNING' 
+                          });
+                        }}
+                        className={cn(
+                          "py-3.5 px-3 rounded-xl font-bold transition-all border flex items-center justify-center gap-2 text-xs",
+                          statusUpdateData.status !== 'HOLD'
+                            ? "bg-green-600 border-green-500 text-white shadow-lg shadow-green-500/20"
+                            : "bg-white/5 border-white/10 text-green-400 hover:bg-green-500/10"
+                        )}
+                      >
+                        <Play size={16} />
+                        Active / Running
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStatusUpdateData({ 
+                            ...statusUpdateData, 
+                            status: 'HOLD' 
+                          });
+                        }}
+                        className={cn(
+                          "py-3.5 px-3 rounded-xl font-bold transition-all border flex items-center justify-center gap-2 text-xs",
+                          statusUpdateData.status === 'HOLD'
+                            ? "bg-amber-600 border-amber-500 text-white shadow-lg shadow-amber-500/20"
+                            : "bg-white/5 border-white/10 text-amber-400 hover:bg-amber-500/10"
+                        )}
+                      >
+                        <Pause size={16} />
+                        Temporary Hold
+                      </button>
+                    </div>
                   </div>
 
                   {statusUpdateData.status === 'HOLD' && (
@@ -9706,7 +9905,7 @@ export default function App() {
                         <div>
                           <p className="text-xs text-gray-400 uppercase tracking-widest">Time Taken</p>
                           <p className="text-white text-sm">
-                            {selectedTask.taskTakenTime || calculateDuration(selectedTask.customStartTime || selectedTask.startedAt || selectedTask.createdAt, selectedTask.actualCompletionTime || selectedTask.completedAt)}
+                            {selectedTask.taskTakenTime || calculateDuration(selectedTask.customStartTime || selectedTask.startedAt || selectedTask.createdAt, selectedTask.actualCompletionTime || selectedTask.completedAt, selectedTask)}
                           </p>
                         </div>
                         <div>
