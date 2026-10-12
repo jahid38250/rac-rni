@@ -101,6 +101,34 @@ async function startServer() {
   const DB_FILE = path.join(DATA_DIR, "db.json");
   const BACKUPS_DIR = path.join(process.cwd(), "backups");
   const UPLOADS_DIR = path.join(process.cwd(), "uploads");
+  const PERMANENT_STAFF_FILE = path.join(DATA_DIR, "permanent-staff.json");
+  const STAFF_BACKUPS_DIR = path.join(BACKUPS_DIR, "staff-backups");
+
+  // Helper to backup staff management database and enforce permanent-staff.json
+  async function backupAndSyncPermanentStaff(action: 'ADDED' | 'DELETED' | 'UPDATED', targetEmpId?: string, targetName?: string) {
+    try {
+      if (!fsSync.existsSync(STAFF_BACKUPS_DIR)) {
+        fsSync.mkdirSync(STAFF_BACKUPS_DIR, { recursive: true });
+      }
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const backupFilename = `staff-backup-${timestamp}-${action.toLowerCase()}-${targetEmpId || 'all'}.json`;
+      const backupPath = path.join(STAFF_BACKUPS_DIR, backupFilename);
+      const payload = {
+        action,
+        targetEmployeeId: targetEmpId,
+        targetName,
+        timestamp: new Date().toISOString(),
+        totalUsers: users.length,
+        users: JSON.parse(JSON.stringify(users))
+      };
+      await fs.writeFile(backupPath, JSON.stringify(payload, null, 2), "utf-8");
+      await fs.writeFile(path.join(BACKUPS_DIR, "latest-staff-backup.json"), JSON.stringify(payload, null, 2), "utf-8");
+      await fs.writeFile(PERMANENT_STAFF_FILE, JSON.stringify(users, null, 2), "utf-8");
+      console.log(`[PERMANENT STAFF DB] Created staff backup ${backupFilename} and updated ${PERMANENT_STAFF_FILE}`);
+    } catch (err: any) {
+      console.error("[PERMANENT STAFF DB] Error in backupAndSyncPermanentStaff:", err.message);
+    }
+  }
 
   // Auto-backup configuration state
   let autoBackupSettings = {
@@ -201,32 +229,52 @@ async function startServer() {
     }
 
     if (loadedContent) {
-      // User preservation: Check if backups/latest-backup.json contains users missing from loadedContent
+      // Permanent Staff Database: Authoritative permanent database for staff management
       try {
-        const latestBackupPath = path.join(BACKUPS_DIR, 'latest-backup.json');
-        if (fsSync.existsSync(latestBackupPath)) {
-          const backupRaw = await fs.readFile(latestBackupPath, 'utf-8');
-          const backupParsed = JSON.parse(backupRaw);
-          if (Array.isArray(backupParsed.users) && backupParsed.users.length > 0) {
-            const currentUsers = loadedContent.users || [];
-            const currentEmpIds = new Set(currentUsers.map((u: any) => String(u.employeeId || '').toLowerCase().trim()));
-            let mergedUsers = false;
-            for (const bUser of backupParsed.users) {
-              const bEmpId = String(bUser.employeeId || '').toLowerCase().trim();
-              if (bEmpId && !currentEmpIds.has(bEmpId)) {
-                currentUsers.push(bUser);
-                currentEmpIds.add(bEmpId);
-                mergedUsers = true;
-              }
-            }
-            if (mergedUsers) {
-              console.log(`[USER ROSTER PROTECTION] Restored missing employee profiles from latest-backup.json. Total users: ${currentUsers.length}`);
-              loadedContent.users = currentUsers;
-            }
+        if (fsSync.existsSync(PERMANENT_STAFF_FILE)) {
+          const staffRaw = await fs.readFile(PERMANENT_STAFF_FILE, 'utf-8');
+          const parsedStaff = JSON.parse(staffRaw);
+          if (Array.isArray(parsedStaff) && parsedStaff.length > 0) {
+            loadedContent.users = parsedStaff;
+            console.log(`[PERMANENT STAFF DB] Enforced authoritative permanent staff database from ${PERMANENT_STAFF_FILE} (${parsedStaff.length} employees)`);
           }
+        } else if (Array.isArray(loadedContent.users) && loadedContent.users.length > 0) {
+          // Initialize permanent staff file from current users
+          await fs.writeFile(PERMANENT_STAFF_FILE, JSON.stringify(loadedContent.users, null, 2), 'utf-8');
+          console.log(`[PERMANENT STAFF DB] Initialized permanent staff file ${PERMANENT_STAFF_FILE} with ${loadedContent.users.length} employees`);
         }
       } catch (err: any) {
-        console.warn("[USER ROSTER PROTECTION] Error checking backup user roster:", err.message);
+        console.warn("[PERMANENT STAFF DB] Error handling permanent staff file:", err.message);
+      }
+
+      // User preservation fallback: only run if permanent staff file does NOT exist
+      if (!fsSync.existsSync(PERMANENT_STAFF_FILE)) {
+        try {
+          const latestBackupPath = path.join(BACKUPS_DIR, 'latest-backup.json');
+          if (fsSync.existsSync(latestBackupPath)) {
+            const backupRaw = await fs.readFile(latestBackupPath, 'utf-8');
+            const backupParsed = JSON.parse(backupRaw);
+            if (Array.isArray(backupParsed.users) && backupParsed.users.length > 0) {
+              const currentUsers = loadedContent.users || [];
+              const currentEmpIds = new Set(currentUsers.map((u: any) => String(u.employeeId || '').toLowerCase().trim()));
+              let mergedUsers = false;
+              for (const bUser of backupParsed.users) {
+                const bEmpId = String(bUser.employeeId || '').toLowerCase().trim();
+                if (bEmpId && !currentEmpIds.has(bEmpId)) {
+                  currentUsers.push(bUser);
+                  currentEmpIds.add(bEmpId);
+                  mergedUsers = true;
+                }
+              }
+              if (mergedUsers) {
+                console.log(`[USER ROSTER PROTECTION] Restored missing employee profiles from latest-backup.json. Total users: ${currentUsers.length}`);
+                loadedContent.users = currentUsers;
+              }
+            }
+          }
+        } catch (err: any) {
+          console.warn("[USER ROSTER PROTECTION] Error checking backup user roster:", err.message);
+        }
       }
 
       // Task preservation: Check if backups/latest-backup.json or any backup files contain tasks missing from loadedContent
@@ -1032,6 +1080,14 @@ async function startServer() {
       await fs.writeFile(tmpBakFile, jsonStr, "utf-8");
       await fs.rename(tmpBakFile, bakFile);
 
+      // 4. Keep permanent-staff.json in sync with permanent staff database
+      if (Array.isArray(users) && users.length > 0) {
+        const staffJson = JSON.stringify(users, null, 2);
+        const tmpStaffFile = `${PERMANENT_STAFF_FILE}.${uniqueSuffix}.tmp`;
+        await fs.writeFile(tmpStaffFile, staffJson, "utf-8");
+        await fs.rename(tmpStaffFile, PERMANENT_STAFF_FILE);
+      }
+
     } catch (err) {
       console.error("[DATABASE ERROR] Failed to save data to disk:", err);
       throw err;
@@ -1823,6 +1879,7 @@ async function startServer() {
     };
     users.push(newUser);
     await logAdminAction(req.user, 'USER_CREATED', `Created user ${newUser.name} (${newUser.employeeId})`, newUser.id);
+    await backupAndSyncPermanentStaff('ADDED', newUser.employeeId, newUser.name);
     await saveData();
     const { password: _, ...userWithoutPassword } = newUser;
     res.status(201).json(userWithoutPassword);
@@ -1866,6 +1923,7 @@ async function startServer() {
       }
       users[index] = updatedUser;
       await logAdminAction(req.user, 'USER_EDITED', `Edited user ${updatedUser.name} (${updatedUser.employeeId})`, updatedUser.id);
+      await backupAndSyncPermanentStaff('UPDATED', updatedUser.employeeId, updatedUser.name);
       await saveData();
       const { password: _, ...userWithoutPassword } = users[index];
       res.json(userWithoutPassword);
@@ -1884,6 +1942,7 @@ async function startServer() {
       const deletedUser = users[index];
       users.splice(index, 1);
       await logAdminAction(req.user, 'USER_DELETED', `Deleted user ${deletedUser.name} (${deletedUser.employeeId})`, deletedUser.id);
+      await backupAndSyncPermanentStaff('DELETED', deletedUser.employeeId, deletedUser.name);
       await saveData();
       res.status(204).send();
     } else {
@@ -3096,23 +3155,20 @@ async function startServer() {
 
   app.get("/api/attendance", authenticate, async (req: Request, res: Response) => {
     const today = new Date().toISOString().split('T')[0];
-    const technicians = users.filter(u => u.role === 'TECHNICIAN');
+    const trackableStaff = users.filter(u => u.role !== 'SUPER_ADMIN');
     
     let updated = false;
-    const todayRecords = technicians.map(tech => {
-      const existingRecord = attendanceRecords.find(r => r.technicianId === tech.employeeId && r.date === today);
-      if (existingRecord) {
-        return existingRecord;
-      } else {
+    trackableStaff.forEach(staff => {
+      const existingRecord = attendanceRecords.find(r => r.technicianId === staff.employeeId && r.date === today);
+      if (!existingRecord) {
         const newRecord = {
           id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-          technicianId: tech.employeeId,
+          technicianId: staff.employeeId,
           status: 'PRESENT' as const,
           date: today
         };
         attendanceRecords.push(newRecord);
         updated = true;
-        return newRecord;
       }
     });
     
@@ -3120,7 +3176,8 @@ async function startServer() {
       await saveData();
     }
     
-    res.json(todayRecords);
+    // Return all attendance records so frontend has both today's status and historical counts
+    res.json(attendanceRecords);
   });
 
   app.post("/api/attendance", authenticate, async (req: Request, res: Response) => {
@@ -3133,34 +3190,34 @@ async function startServer() {
       attendanceRecords.push({ id: Date.now().toString(), technicianId, status: status as Attendance['status'], date: today });
     }
 
-    // Update Technician Status based on attendance
-    const tech = users.find(u => u.employeeId === technicianId);
-    if (tech) {
+    // Update Staff Status based on attendance
+    const staffMember = users.find(u => u.employeeId === technicianId);
+    if (staffMember) {
       if (status === 'PRESENT') {
         const hasRunningTasks = tasks.some(t => 
           t.status === 'RUNNING' && 
           (t.assignedTo === technicianId || (t.assignedTechnicians && t.assignedTechnicians.some((at: any) => at.employeeId === technicianId)))
         );
-        tech.status = hasRunningTasks ? 'WORKING' : 'FREE';
+        staffMember.status = hasRunningTasks ? 'WORKING' : 'FREE';
       } else if (status === 'LEAVE' || status === 'ABSENT') {
-        tech.status = 'ON_LEAVE';
+        staffMember.status = 'ON_LEAVE';
       } else if (status === 'SHORT_LEAVE') {
-        tech.status = 'SHORT_LEAVE';
-      } else if (status === 'SHIFT_6_2' || status === 'SHIFT_2_6') {
+        staffMember.status = 'SHORT_LEAVE';
+      } else if (status === 'SHIFT_A' || status === 'SHIFT_B' || status === 'SHIFT_6_2' || status === 'SHIFT_2_6') {
         const now = new Date();
         const currentHour = now.getHours();
         let isWorkingShift = false;
-        if (status === 'SHIFT_6_2') isWorkingShift = currentHour >= 6 && currentHour < 14;
-        else if (status === 'SHIFT_2_6') isWorkingShift = currentHour >= 14 && currentHour < 18;
+        if (status === 'SHIFT_A' || status === 'SHIFT_6_2') isWorkingShift = currentHour >= 6 && currentHour < 14;
+        else if (status === 'SHIFT_B' || status === 'SHIFT_2_6') isWorkingShift = currentHour >= 14 && currentHour < 22;
         
         if (isWorkingShift) {
           const hasRunningTasks = tasks.some(t => 
             t.status === 'RUNNING' && 
             (t.assignedTo === technicianId || (t.assignedTechnicians && t.assignedTechnicians.some((at: any) => at.employeeId === technicianId)))
           );
-          tech.status = hasRunningTasks ? 'WORKING' : 'FREE';
+          staffMember.status = hasRunningTasks ? 'WORKING' : 'FREE';
         } else {
-          tech.status = 'SHIFT_OFF';
+          staffMember.status = 'SHIFT_OFF';
         }
       }
     }

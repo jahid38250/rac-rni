@@ -45,6 +45,7 @@ import {
   Wrench,
   Share2,
   Pause,
+  Play,
   Lock,
   Layers,
   Zap,
@@ -52,6 +53,7 @@ import {
   RefreshCw,
   Star,
   Shield,
+  Building2,
   Smartphone,
   Globe,
   Monitor,
@@ -1341,6 +1343,7 @@ export default function App() {
   const isAnyModalOpen = isTaskModalOpen || isStaffModalOpen || isTaskDetailsModalOpen || isStatusUpdateModalOpen || isChangePasswordModalOpen || isResetPasswordModalOpen || isRejectModalOpen;
 
   const [hodDashboardView, setHodDashboardView] = useState<'command' | 'standard'>('command');
+  const [hodAttendanceCategory, setHodAttendanceCategory] = useState<'IN_CHARGE' | 'ALL_ASSOCIATE' | 'MODEL_MANAGER' | 'ENGINEER' | 'OFFICER'>('IN_CHARGE');
   const isHodExecutiveUser = Boolean(
     user && (
       user.role === 'HOD' ||
@@ -5926,14 +5929,27 @@ export default function App() {
             />
           )}
 
+          {/* Executive Command Panel (For CBO, DCBO, HOD, DHOD, 19219, 17668, SUPER_ADMIN) */}
+          {isExecutiveUser && (
+            <SidebarItem 
+              icon={Shield} 
+              label="Executive Command Panel" 
+              active={activeTab === 'executive_command'} 
+              onClick={() => setActiveTab('executive_command')} 
+              color="text-indigo-400"
+            />
+          )}
+
           {/* 2. Dashboard */}
-          <SidebarItem 
-            icon={LayoutDashboard} 
-            label={user?.role === 'CBO' || user?.role === 'DCBO' ? "Executive Command" : "Dashboard"} 
-            active={activeTab === 'dashboard'} 
-            onClick={() => setActiveTab('dashboard')} 
-            color="text-blue-500"
-          />
+          {user?.role !== 'CBO' && user?.role !== 'DCBO' && (
+            <SidebarItem 
+              icon={LayoutDashboard} 
+              label="Dashboard" 
+              active={activeTab === 'dashboard'} 
+              onClick={() => setActiveTab('dashboard')} 
+              color="text-blue-500"
+            />
+          )}
 
           {/* 3. Task Management */}
           <SidebarItem 
@@ -6120,7 +6136,8 @@ export default function App() {
               {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
             <h2 className="text-xl font-bold capitalize">
-              {activeTab === 'dashboard' ? (user?.role === 'CBO' || user?.role === 'DCBO' ? 'Executive Business & Workforce Command Center' : 'Dashboard') :
+              {activeTab === 'executive_command' ? (isHodExecutiveUser ? 'Department Operations & Workforce Command Center' : 'Executive Business & Workforce Command Center') :
+               activeTab === 'dashboard' ? (user?.role === 'CBO' || user?.role === 'DCBO' ? 'Executive Business & Workforce Command Center' : (isHodExecutiveUser ? 'Department Command & Operations' : 'Dashboard')) :
                activeTab === 'tasks' || activeTab === 'officer_tasks' || activeTab === 'mywork' ? 'Task Management' :
                activeTab === 'attendance' ? 'Attendance' :
                activeTab === 'daily_task' ? 'Daily Task' :
@@ -6207,6 +6224,40 @@ export default function App() {
         </header>
 
         <div className="p-8 max-w-7xl mx-auto space-y-8">
+          {/* Executive Command Panel Tab (Direct from Sidebar) */}
+          {activeTab === 'executive_command' && (
+            <ExecutiveCommandCenter
+              currentUser={user!}
+              staffList={staffList}
+              tasks={tasks}
+              attendance={attendance}
+              onOpenNewTaskModal={(preselectedAssignee) => {
+                setEditingTask(null);
+                setNewTask({ 
+                  title: '', 
+                  model: 'General Work', 
+                  details: '', 
+                  urgency: 'REGULAR', 
+                  assignedTo: preselectedAssignee || '', 
+                  deadline: '', 
+                  points: 1, 
+                  customStartTime: '', 
+                  estimatedDuration: '',
+                  workType: 'SINGLE',
+                  assignedTechnicians: []
+                });
+                setSelectedTechs([]);
+                setIsTaskModalOpen(true);
+              }}
+              onRefreshData={handleRecalculate}
+              onUpdateAttendance={handleUpdateAttendance}
+              onSelectTask={(task) => {
+                setSelectedTask(task);
+                setIsTaskDetailsModalOpen(true);
+              }}
+            />
+          )}
+
           {activeTab === 'dashboard' && (
             (user?.role === 'CBO' || user?.role === 'DCBO') ? (
               <ExecutiveCommandCenter
@@ -6239,8 +6290,85 @@ export default function App() {
                   setIsTaskDetailsModalOpen(true);
                 }}
               />
+            ) : isHodExecutiveUser && hodDashboardView === 'command' ? (
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white/5 p-3 rounded-2xl border border-white/10">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setHodDashboardView('command')}
+                      className="px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 bg-indigo-600 text-white shadow-lg shadow-indigo-500/25"
+                    >
+                      <Shield size={14} />
+                      Executive Command Panel
+                    </button>
+                    <button
+                      onClick={() => setHodDashboardView('standard')}
+                      className="px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 text-gray-400 hover:text-white hover:bg-white/5"
+                    >
+                      <LayoutDashboard size={14} />
+                      Standard Overview
+                    </button>
+                  </div>
+                  <span className="text-xs text-indigo-300 font-medium px-2">
+                    Hierarchical Operational Monitoring (In-Charge → Technician)
+                  </span>
+                </div>
+                <ExecutiveCommandCenter
+                  currentUser={user!}
+                  staffList={staffList}
+                  tasks={tasks}
+                  attendance={attendance}
+                  onOpenNewTaskModal={(preselectedAssignee) => {
+                    setEditingTask(null);
+                    setNewTask({ 
+                      title: '', 
+                      model: 'General Work', 
+                      details: '', 
+                      urgency: 'REGULAR', 
+                      assignedTo: preselectedAssignee || '', 
+                      deadline: '', 
+                      points: 1, 
+                      customStartTime: '', 
+                      estimatedDuration: '',
+                      workType: 'SINGLE',
+                      assignedTechnicians: []
+                    });
+                    setSelectedTechs([]);
+                    setIsTaskModalOpen(true);
+                  }}
+                  onRefreshData={handleRecalculate}
+                  onUpdateAttendance={handleUpdateAttendance}
+                  onSelectTask={(task) => {
+                    setSelectedTask(task);
+                    setIsTaskDetailsModalOpen(true);
+                  }}
+                />
+              </div>
             ) : (
             <>
+              {isHodExecutiveUser && (
+                <div className="flex items-center justify-between bg-white/5 p-3 rounded-2xl border border-white/10 mb-4">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setHodDashboardView('command')}
+                      className="px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 text-gray-400 hover:text-white hover:bg-white/5"
+                    >
+                      <Shield size={14} />
+                      Executive Command Panel
+                    </button>
+                    <button
+                      onClick={() => setHodDashboardView('standard')}
+                      className="px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 bg-blue-600 text-white shadow-lg shadow-blue-500/25"
+                    >
+                      <LayoutDashboard size={14} />
+                      Standard Overview
+                    </button>
+                  </div>
+                  <span className="text-xs text-slate-400 font-medium px-2">
+                    Department Overview Mode
+                  </span>
+                </div>
+              )}
               {/* Welcome Section */}
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
@@ -7232,10 +7360,10 @@ export default function App() {
                     const techTasks = tasks.filter(t => {
                       const isAssigned = t.assignedTo === tech.name || 
                         (t.workType === 'TEAM' && t.assignedTechnicians?.some(at => at.employeeId === tech.employeeId));
-                      // Sync with Running Work: Include all RUNNING tasks + any non-completed tasks for today
-                      const isRunning = t.status === 'RUNNING';
-                      const isForToday = t.deadline.startsWith(today);
-                      return isAssigned && t.status !== 'COMPLETED' && (isRunning || isForToday);
+                      // Sync with Active Work: Include all RUNNING, HOLD, DELAYED tasks + any non-completed tasks for today
+                      const isOngoing = t.status === 'RUNNING' || t.status === 'HOLD' || t.status === 'DELAYED';
+                      const isForToday = Boolean(t.deadline && t.deadline.startsWith(today));
+                      return isAssigned && t.status !== 'COMPLETED' && (isOngoing || isForToday);
                     });
 
                     if (techTasks.length === 0) return null;
@@ -7674,9 +7802,20 @@ export default function App() {
 
           {activeTab === 'staff' && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <h1 className="text-3xl font-bold">Staff Management</h1>
-                <div className="flex gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <h1 className="text-3xl font-bold">Staff Management</h1>
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                      <Shield size={11} />
+                      Permanent Database Active
+                    </span>
+                  </div>
+                  <p className="text-gray-400 text-xs">
+                    Protected employee roster & associate concern network. Adding or deleting employees automatically triggers a permanent backup.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-3">
                   {user?.role === 'SUPER_ADMIN' && (
                     <>
                       <button 
@@ -8450,77 +8589,253 @@ export default function App() {
 
           {activeTab === 'attendance' && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h1 className="text-3xl font-bold">Technician Attendance</h1>
-                  <p className="text-gray-500 text-sm mt-1">Daily attendance management for technicians</p>
-                </div>
-                <div className="px-4 py-2 bg-blue-500/10 border border-blue-500/20 rounded-xl flex items-center gap-2">
-                  <Calendar size={14} className="text-blue-400" />
-                  <span className="text-xs font-bold text-blue-400">
-                    {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })}
-                  </span>
-                </div>
-              </div>
-              
-              <div className="bg-blue-500/5 border border-blue-500/10 rounded-2xl p-4 flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 bg-blue-500/20 rounded-full flex items-center justify-center text-blue-400">
-                  <Info size={20} />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-blue-400">Daily Reset System Active</p>
-                  <p className="text-[10px] text-gray-500">All technicians are auto-set to "Present" at 00:00 every day. Officers can manually update status below.</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {staffList
-                  .filter(s => s.role === 'TECHNICIAN' && isStaffInScope(s))
-                  .map((tech, i) => {
-                    const techAttendance = attendance.find(a => a.technicianId === tech.employeeId);
-                    return (
-                      <GlassCard key={tech.id} className="flex flex-col">
-                        <div className="flex items-center gap-4 mb-6">
-                          <div className="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center font-bold">
-                            {tech.name[0]}
-                          </div>
-                          <div>
-                            <h3 className="font-bold">{tech.name}</h3>
-                            <p className="text-xs text-gray-500">{tech.employeeId}</p>
-                          </div>
-                        </div>
-                        
-                        <div className="grid grid-cols-2 gap-2">
-                          {[
-                            { label: 'Present', value: 'PRESENT' },
-                            { label: 'Leave', value: 'LEAVE' },
-                            { label: 'Short-Leave', value: 'SHORT_LEAVE' },
-                            { label: 'Shift A (6AM-2PM)', value: 'SHIFT_A' },
-                            { label: 'Shift B (2PM-10PM)', value: 'SHIFT_B' }
-                          ].map(opt => (
-                            <button 
-                              key={opt.value}
-                              onClick={() => handleUpdateAttendance(tech.employeeId, opt.value)}
-                              className={cn(
-                                "py-2 rounded-lg text-[10px] font-bold transition-all",
-                                techAttendance?.status === opt.value 
-                                  ? "bg-blue-600 text-white" 
-                                  : "bg-white/5 text-gray-500 hover:bg-white/10"
-                              )}
-                            >
-                              {opt.label}
-                            </button>
-                          ))}
-                        </div>
-                      </GlassCard>
-                    );
-                  })}
-                {staffList.filter(s => s.role === 'TECHNICIAN' && (user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD' || s.supervisorId === user?.id)).length === 0 && (
-                  <div className="col-span-full py-20 text-center bg-white/5 rounded-3xl border border-dashed border-white/10">
-                    <p className="text-gray-500">No technicians found in the system.</p>
+              {isHodExecutiveUser ? (
+                /* HOD / DHOD Associate Concern Attendance Panel (In-Charge direct associates, no technicians) */
+                <div className="space-y-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-blue-400 mb-1">
+                        <Building2 size={16} />
+                        <span>HOD Associate Concern Attendance</span>
+                      </div>
+                      <h1 className="text-3xl font-bold text-white">Associated In-Charge & Unit Attendance</h1>
+                      <p className="text-gray-400 text-sm mt-1">
+                        Daily attendance and operational status of HOD associate In-Charges & Section Leads (technicians are supervised by Unit Officers)
+                      </p>
+                    </div>
+                    <div className="px-4 py-2 bg-blue-500/10 border border-blue-500/20 rounded-xl flex items-center gap-2 self-start sm:self-auto">
+                      <Calendar size={14} className="text-blue-400" />
+                      <span className="text-xs font-bold text-blue-400">
+                        {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })}
+                      </span>
+                    </div>
                   </div>
-                )}
-              </div>
+
+                  {/* Associate Concern Category Tabs */}
+                  <div className="flex flex-wrap items-center gap-2 p-1.5 bg-black/30 border border-white/10 rounded-2xl">
+                    {[
+                      { key: 'IN_CHARGE', label: 'In-Charge (Direct Associates)', count: staffList.filter(s => s.role === 'IN_CHARGE').length },
+                      { key: 'ALL_ASSOCIATE', label: 'All Associate Concerns', count: staffList.filter(s => ['IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(s.role)).length },
+                      { key: 'MODEL_MANAGER', label: 'Model Manager', count: staffList.filter(s => s.role === 'MODEL_MANAGER').length },
+                      { key: 'ENGINEER', label: 'Engineer', count: staffList.filter(s => s.role === 'ENGINEER').length },
+                      { key: 'OFFICER', label: 'Officer', count: staffList.filter(s => s.role === 'OFFICER').length }
+                    ].map(tab => {
+                      const isActive = hodAttendanceCategory === tab.key;
+                      return (
+                        <button
+                          key={tab.key}
+                          onClick={() => setHodAttendanceCategory(tab.key as any)}
+                          className={cn(
+                            "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2",
+                            isActive
+                              ? "bg-blue-600 text-white shadow-lg shadow-blue-500/25"
+                              : "bg-white/5 hover:bg-white/10 text-slate-300"
+                          )}
+                        >
+                          <span>{tab.label}</span>
+                          <span className={cn(
+                            "px-1.5 py-0.5 rounded-md text-[10px]",
+                            isActive ? "bg-white/20 text-white" : "bg-black/30 text-slate-400"
+                          )}>
+                            {tab.count}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="bg-blue-500/5 border border-blue-500/10 rounded-2xl p-4 flex items-center gap-3">
+                    <div className="w-10 h-10 bg-blue-500/20 rounded-full flex items-center justify-center text-blue-400 shrink-0">
+                      <Info size={20} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-blue-400">Daily Associate Reset Active</p>
+                      <p className="text-[11px] text-gray-400">
+                        Associate in-charges and unit personnel are auto-set to "Present" at 00:00 every day. HOD can update associate status below.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Associate Staff Cards */}
+                  {(() => {
+                    const filteredAssociates = staffList.filter(s => {
+                      if (hodAttendanceCategory === 'IN_CHARGE') return s.role === 'IN_CHARGE';
+                      if (hodAttendanceCategory === 'ALL_ASSOCIATE') return ['IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(s.role);
+                      return s.role === hodAttendanceCategory;
+                    });
+
+                    if (filteredAssociates.length === 0) {
+                      return (
+                        <div className="py-20 text-center bg-white/5 rounded-3xl border border-dashed border-white/10">
+                          <p className="text-gray-400 font-medium">No personnel found for selected associate concern.</p>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {filteredAssociates.map(person => {
+                          const personAttendance = attendance.find(a => a.technicianId === person.employeeId);
+                          const currentStatus = personAttendance?.status || (person.status === 'ON_LEAVE' ? 'LEAVE' : 'PRESENT');
+                          
+                          let statusBadge = "bg-emerald-500/20 text-emerald-400 border-emerald-500/30";
+                          if (currentStatus === 'ABSENT') statusBadge = "bg-red-500/20 text-red-400 border-red-500/30";
+                          else if (currentStatus === 'LEAVE') statusBadge = "bg-amber-500/20 text-amber-400 border-amber-500/30";
+                          else if (currentStatus === 'SHORT_LEAVE') statusBadge = "bg-purple-500/20 text-purple-400 border-purple-500/30";
+                          else if (currentStatus === 'SHIFT_A' || currentStatus === 'SHIFT_B') statusBadge = "bg-blue-500/20 text-blue-400 border-blue-500/30";
+
+                          const personTasks = tasks.filter(t => t.assignedTo === person.employeeId);
+                          const runningTasks = personTasks.filter(t => t.status === 'RUNNING').length;
+                          const completedTasks = personTasks.filter(t => t.status === 'COMPLETED').length;
+
+                          return (
+                            <GlassCard key={person.id} className="flex flex-col justify-between">
+                              <div>
+                                <div className="flex items-start justify-between gap-3 mb-4">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-12 h-12 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center font-bold text-white text-lg shadow-md">
+                                      {person.name[0]}
+                                    </div>
+                                    <div>
+                                      <h3 className="font-bold text-white text-base leading-tight">{person.name}</h3>
+                                      <p className="text-xs text-blue-400 font-mono mt-0.5">ID: {person.employeeId}</p>
+                                    </div>
+                                  </div>
+                                  <span className={cn("px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border shrink-0", statusBadge)}>
+                                    {currentStatus}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-2 mb-4">
+                                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-white/10 text-slate-300 uppercase">
+                                    {person.role.replace(/_/g, ' ')}
+                                  </span>
+                                  <span className="text-xs text-slate-400 truncate">
+                                    {person.department || 'RAC R&I'} {person.section ? `• ${person.section}` : ''}
+                                  </span>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2 py-2.5 px-3 bg-white/5 rounded-xl text-xs mb-4">
+                                  <div>
+                                    <span className="text-slate-400 block text-[10px] uppercase">Running Tasks</span>
+                                    <span className="font-bold text-amber-400">{runningTasks}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-slate-400 block text-[10px] uppercase">Completed</span>
+                                    <span className="font-bold text-emerald-400">{completedTasks}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div>
+                                <div className="text-[10px] uppercase font-bold text-slate-400 mb-2">Update Associate Attendance</div>
+                                <div className="grid grid-cols-3 gap-1.5">
+                                  {[
+                                    { label: 'Present', value: 'PRESENT' },
+                                    { label: 'Leave', value: 'LEAVE' },
+                                    { label: 'Short-Leave', value: 'SHORT_LEAVE' },
+                                    { label: 'Shift A', value: 'SHIFT_A' },
+                                    { label: 'Shift B', value: 'SHIFT_B' },
+                                    { label: 'Absent', value: 'ABSENT' }
+                                  ].map(opt => (
+                                    <button 
+                                      key={opt.value}
+                                      onClick={() => handleUpdateAttendance(person.employeeId, opt.value)}
+                                      className={cn(
+                                        "py-1.5 rounded-lg text-[10px] font-bold transition-all text-center",
+                                        currentStatus === opt.value 
+                                          ? "bg-blue-600 text-white shadow-md shadow-blue-500/20" 
+                                          : "bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white"
+                                      )}
+                                    >
+                                      {opt.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            </GlassCard>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </div>
+              ) : (
+                /* Non-HOD (Officer / Engineer) Technician Attendance Management */
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h1 className="text-3xl font-bold">Technician Attendance</h1>
+                      <p className="text-gray-500 text-sm mt-1">Daily attendance management for technicians</p>
+                    </div>
+                    <div className="px-4 py-2 bg-blue-500/10 border border-blue-500/20 rounded-xl flex items-center gap-2">
+                      <Calendar size={14} className="text-blue-400" />
+                      <span className="text-xs font-bold text-blue-400">
+                        {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-blue-500/5 border border-blue-500/10 rounded-2xl p-4 flex items-center gap-3 mb-6">
+                    <div className="w-10 h-10 bg-blue-500/20 rounded-full flex items-center justify-center text-blue-400">
+                      <Info size={20} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-blue-400">Daily Reset System Active</p>
+                      <p className="text-[10px] text-gray-500">All technicians are auto-set to "Present" at 00:00 every day. Officers can manually update status below.</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {staffList
+                      .filter(s => s.role === 'TECHNICIAN' && isStaffInScope(s))
+                      .map((tech, i) => {
+                        const techAttendance = attendance.find(a => a.technicianId === tech.employeeId);
+                        return (
+                          <GlassCard key={tech.id} className="flex flex-col">
+                            <div className="flex items-center gap-4 mb-6">
+                              <div className="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center font-bold">
+                                {tech.name[0]}
+                              </div>
+                              <div>
+                                <h3 className="font-bold">{tech.name}</h3>
+                                <p className="text-xs text-gray-500">{tech.employeeId}</p>
+                              </div>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-2">
+                              {[
+                                { label: 'Present', value: 'PRESENT' },
+                                { label: 'Leave', value: 'LEAVE' },
+                                { label: 'Short-Leave', value: 'SHORT_LEAVE' },
+                                { label: 'Shift A (6AM-2PM)', value: 'SHIFT_A' },
+                                { label: 'Shift B (2PM-10PM)', value: 'SHIFT_B' }
+                              ].map(opt => (
+                                <button 
+                                  key={opt.value}
+                                  onClick={() => handleUpdateAttendance(tech.employeeId, opt.value)}
+                                  className={cn(
+                                    "py-2 rounded-lg text-[10px] font-bold transition-all",
+                                    techAttendance?.status === opt.value 
+                                      ? "bg-blue-600 text-white" 
+                                      : "bg-white/5 text-gray-500 hover:bg-white/10"
+                                  )}
+                                >
+                                  {opt.label}
+                                </button>
+                              ))}
+                            </div>
+                          </GlassCard>
+                        );
+                      })}
+                    {staffList.filter(s => s.role === 'TECHNICIAN' && (user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD' || s.supervisorId === user?.id)).length === 0 && (
+                      <div className="col-span-full py-20 text-center bg-white/5 rounded-3xl border border-dashed border-white/10">
+                        <p className="text-gray-500">No technicians found in the system.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

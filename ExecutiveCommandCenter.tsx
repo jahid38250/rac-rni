@@ -32,6 +32,7 @@ const MONTH_NAMES = [
 ];
 
 const WORKFORCE_ROLES: Role[] = ['IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER', 'TECHNICIAN'];
+const HOD_ASSOCIATE_ROLES: Role[] = ['IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'];
 
 export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
   currentUser,
@@ -53,7 +54,7 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
                     currentUser.employeeId === '19219' || 
                     currentUser.employeeId === '17668';
 
-  // For HOD panel: Hierarchy starts from In-Charge down. CBO, DCBO, and HODs must NOT appear as associates.
+  // For HOD panel: Associate concerns only (In-Charge down to Officer). Technicians belong to Officers/Engineers and must NOT appear in HOD attendance/workforce.
   const activeStaffList = useMemo(() => {
     if (isHodView) {
       return staffList.filter(s => 
@@ -61,11 +62,12 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
         s.role !== 'DCBO' && 
         s.role !== 'HOD' && 
         s.role !== 'DHOD' && 
+        s.role !== 'TECHNICIAN' &&
         s.employeeId !== '1007' && 
         s.employeeId !== '12467' && 
         s.employeeId !== '19219' && 
         s.employeeId !== '17668' &&
-        WORKFORCE_ROLES.includes(s.role)
+        HOD_ASSOCIATE_ROLES.includes(s.role)
       );
     }
     return staffList;
@@ -443,6 +445,14 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
 
   // Chart data: Completion & Performance by category
   const roleChartData = useMemo(() => {
+    if (isHodView) {
+      return [
+        { name: 'In-Charge', completed: categoryMetrics['IN_CHARGE']?.completed || 0, running: categoryMetrics['IN_CHARGE']?.running || 0, pending: categoryMetrics['IN_CHARGE']?.pending || 0, performance: categoryMetrics['IN_CHARGE']?.avgPerformance || 0 },
+        { name: 'Model Mgr', completed: categoryMetrics['MODEL_MANAGER']?.completed || 0, running: categoryMetrics['MODEL_MANAGER']?.running || 0, pending: categoryMetrics['MODEL_MANAGER']?.pending || 0, performance: categoryMetrics['MODEL_MANAGER']?.avgPerformance || 0 },
+        { name: 'Engineer', completed: categoryMetrics['ENGINEER']?.completed || 0, running: categoryMetrics['ENGINEER']?.running || 0, pending: categoryMetrics['ENGINEER']?.pending || 0, performance: categoryMetrics['ENGINEER']?.avgPerformance || 0 },
+        { name: 'Officer', completed: categoryMetrics['OFFICER']?.completed || 0, running: categoryMetrics['OFFICER']?.running || 0, pending: categoryMetrics['OFFICER']?.pending || 0, performance: categoryMetrics['OFFICER']?.avgPerformance || 0 }
+      ];
+    }
     return [
       { name: 'In-Charge', completed: categoryMetrics['IN_CHARGE']?.completed || 0, running: categoryMetrics['IN_CHARGE']?.running || 0, pending: categoryMetrics['IN_CHARGE']?.pending || 0, performance: categoryMetrics['IN_CHARGE']?.avgPerformance || 0 },
       { name: 'Model Mgr', completed: categoryMetrics['MODEL_MANAGER']?.completed || 0, running: categoryMetrics['MODEL_MANAGER']?.running || 0, pending: categoryMetrics['MODEL_MANAGER']?.pending || 0, performance: categoryMetrics['MODEL_MANAGER']?.avgPerformance || 0 },
@@ -450,7 +460,7 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
       { name: 'Officer', completed: categoryMetrics['OFFICER']?.completed || 0, running: categoryMetrics['OFFICER']?.running || 0, pending: categoryMetrics['OFFICER']?.pending || 0, performance: categoryMetrics['OFFICER']?.avgPerformance || 0 },
       { name: 'Technician', completed: categoryMetrics['TECHNICIAN']?.completed || 0, running: categoryMetrics['TECHNICIAN']?.running || 0, pending: categoryMetrics['TECHNICIAN']?.pending || 0, performance: categoryMetrics['TECHNICIAN']?.avgPerformance || 0 }
     ];
-  }, [categoryMetrics]);
+  }, [categoryMetrics, isHodView]);
 
   // Chart data: Status distribution
   const statusPieData = useMemo(() => {
@@ -465,8 +475,9 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
   // Filtered staff list for the active category table
   const displayedStaffList = useMemo(() => {
     let list = activeStaffList;
+    const allowedRoles = isHodView ? HOD_ASSOCIATE_ROLES : WORKFORCE_ROLES;
     if (activeCategory === 'OVERVIEW') {
-      list = activeStaffList.filter(s => WORKFORCE_ROLES.includes(s.role) || (!isHodView && (s.role === 'HOD' || s.role === 'DHOD')));
+      list = activeStaffList.filter(s => allowedRoles.includes(s.role) || (!isHodView && (s.role === 'HOD' || s.role === 'DHOD')));
     } else if (activeCategory === 'HOD' && !isHodView) {
       list = activeStaffList.filter(s => s.role === 'HOD' || s.role === 'DHOD');
     } else {
@@ -1023,30 +1034,34 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
 
         {/* Visual Hierarchy Flow */}
         <div className="flex flex-wrap items-center gap-2 text-xs font-semibold py-2 overflow-x-auto custom-scrollbar">
+          {!isHodView && (
+            <>
+              <div className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-300 flex items-center gap-1.5">
+                <span className="text-slate-500 font-mono">1</span> Technician
+              </div>
+              <ChevronRight size={14} className="text-slate-600 shrink-0" />
+            </>
+          )}
           <div className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-300 flex items-center gap-1.5">
-            <span className="text-slate-500 font-mono">1</span> Technician
-          </div>
-          <ChevronRight size={14} className="text-slate-600 shrink-0" />
-          <div className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-300 flex items-center gap-1.5">
-            <span className="text-slate-500 font-mono">2</span> Officer
+            <span className="text-slate-500 font-mono">{isHodView ? '1' : '2'}</span> Officer
           </div>
           <ChevronRight size={14} className="text-slate-600 shrink-0" />
           <div className="px-3 py-1.5 rounded-lg bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 flex items-center gap-1.5">
-            <span className="text-indigo-400 font-mono">3</span> Engineer (Aggregates Officers)
+            <span className="text-indigo-400 font-mono">{isHodView ? '2' : '3'}</span> Engineer (Aggregates Officers)
           </div>
           <ChevronRight size={14} className="text-slate-600 shrink-0" />
           <div className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-300 flex items-center gap-1.5">
-            <span className="text-slate-500 font-mono">4</span> Model Manager
+            <span className="text-slate-500 font-mono">{isHodView ? '3' : '4'}</span> Model Manager
           </div>
           <ChevronRight size={14} className="text-slate-600 shrink-0" />
           <div className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-300 flex items-center gap-1.5">
-            <span className="text-slate-500 font-mono">5</span> In-Charge
+            <span className="text-slate-500 font-mono">{isHodView ? '4' : '5'}</span> In-Charge (Associate Concern)
           </div>
           {isHodView ? (
             <>
               <ChevronRight size={14} className="text-slate-600 shrink-0" />
               <div className="px-3 py-1.5 rounded-lg bg-blue-500/20 border border-blue-500/30 text-blue-300 font-bold flex items-center gap-1.5">
-                <span className="text-blue-400 font-mono">6</span> HOD / DHOD (Department Command)
+                <span className="text-blue-400 font-mono">5</span> HOD / DHOD (Department Command)
               </div>
             </>
           ) : (
@@ -1087,10 +1102,10 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
               )}
             >
               <Layers size={14} />
-              ALL WORKFORCE ({activeStaffList.length})
+              {isHodView ? `ALL ASSOCIATE CONCERN (${activeStaffList.length})` : `ALL WORKFORCE (${activeStaffList.length})`}
             </button>
 
-            {WORKFORCE_ROLES.map(role => {
+            {(isHodView ? HOD_ASSOCIATE_ROLES : WORKFORCE_ROLES).map(role => {
               const label = role.replace(/_/g, ' ');
               const count = activeStaffList.filter(s => s.role === role).length;
               const isActive = activeCategory === role;
