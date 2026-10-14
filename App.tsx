@@ -2273,8 +2273,96 @@ export default function App() {
     }
   };
 
+  const getTodayAttendanceRecord = (empId: string): Attendance | undefined => {
+    const todayIso = new Date().toISOString().split('T')[0];
+    const todayLocal = new Date().toLocaleDateString('en-CA');
+    
+    // Find record matching today's date (search in reverse to get most recent)
+    const match = attendance.slice().reverse().find(a => 
+      (a.technicianId === empId || (a as any).employeeId === empId) && 
+      (a.date === todayIso || a.date === todayLocal)
+    );
+    if (match) return match;
+    
+    // Fallback to most recent record for this employee
+    return attendance.slice().reverse().find(a => 
+      a.technicianId === empId || (a as any).employeeId === empId
+    );
+  };
+
+  const getStaffAttendanceStatus = (person: User): 'PRESENT' | 'LEAVE' | 'SHORT_LEAVE' | 'SHIFT_A' | 'SHIFT_B' | 'ABSENT' => {
+    const rec = getTodayAttendanceRecord(person.employeeId);
+    if (rec && rec.status) {
+      if (rec.status === 'SHIFT_6_2') return 'SHIFT_A';
+      if (rec.status === 'SHIFT_2_6') return 'SHIFT_B';
+      return rec.status as any;
+    }
+    if (person.status === 'ON_LEAVE') return 'LEAVE';
+    if (person.status === 'SHORT_LEAVE') return 'SHORT_LEAVE';
+    if (person.status === 'SHIFT_OFF') return 'SHIFT_A';
+    return 'PRESENT';
+  };
+
   const handleUpdateAttendance = async (technicianId: string, status: string) => {
+    const empId = String(technicianId || '').trim();
+    if (!empId) return;
+
     const token = localStorage.getItem('token');
+    const todayIso = new Date().toISOString().split('T')[0];
+    const todayLocal = new Date().toLocaleDateString('en-CA');
+
+    // 1. Optimistically update attendance state immediately
+    setAttendance(prev => {
+      const next = [...prev];
+      const idx = next.findIndex(a => 
+        (a.technicianId === empId || (a as any).employeeId === empId) && 
+        (a.date === todayIso || a.date === todayLocal)
+      );
+      if (idx !== -1) {
+        next[idx] = { ...next[idx], status: status as any, date: todayIso };
+      } else {
+        next.unshift({
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+          technicianId: empId,
+          status: status as any,
+          date: todayIso
+        });
+      }
+      return next;
+    });
+
+    // 2. Optimistically update staffList user status immediately
+    setStaffList(prev => prev.map(s => {
+      if (s.employeeId !== empId && s.id !== empId) return s;
+      let nextStatus = s.status;
+      if (status === 'PRESENT') {
+        const isWorking = tasks.some(t => 
+          (t.status === 'RUNNING' || (t.status === 'PENDING' && t.requestStatus === 'RECOMMENDED')) && 
+          (t.assignedTo === empId || t.assignedTo === s.name || (t.assignedTechnicians && t.assignedTechnicians.some((at: any) => at.employeeId === empId)))
+        );
+        nextStatus = isWorking ? 'WORKING' : 'FREE';
+      } else if (status === 'LEAVE' || status === 'ABSENT') {
+        nextStatus = 'ON_LEAVE';
+      } else if (status === 'SHORT_LEAVE') {
+        nextStatus = 'SHORT_LEAVE';
+      } else if (status === 'SHIFT_A' || status === 'SHIFT_B' || status === 'SHIFT_6_2' || status === 'SHIFT_2_6') {
+        const hour = new Date().getHours();
+        const isWorking = (status === 'SHIFT_A' && hour >= 6 && hour < 14) || 
+                          (status === 'SHIFT_B' && hour >= 14 && hour < 22);
+        nextStatus = isWorking ? 'FREE' : 'SHIFT_OFF';
+      }
+      return { ...s, status: nextStatus };
+    }));
+
+    // 3. User feedback
+    const targetStaff = staffList.find(s => s.employeeId === empId || s.id === empId);
+    const staffName = targetStaff?.name || empId;
+    const statusLabel = status === 'SHORT_LEAVE' ? 'Short-Leave' :
+                        status === 'SHIFT_A' ? 'Shift A (6AM-2PM)' :
+                        status === 'SHIFT_B' ? 'Shift B (2PM-10PM)' :
+                        status;
+    toast.success(`Marked ${staffName} as ${statusLabel}`);
+
     try {
       await fetchJson('/api/attendance', {
         method: 'POST',
@@ -2282,11 +2370,17 @@ export default function App() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ technicianId, status })
+        body: JSON.stringify({ technicianId: empId, status, date: todayIso })
       });
-      fetchAttendance(token!);
+      if (token) {
+        await Promise.all([
+          fetchAttendance(token),
+          fetchStaff(token, isAnyModalOpen)
+        ]);
+      }
     } catch (err) {
       console.error('Update attendance error:', err);
+      toast.error('Failed to save attendance to server');
     }
   };
 
@@ -4245,15 +4339,15 @@ export default function App() {
   
 
   const isTechnicianAvailable = (techId: string) => {
-    const today = new Date().toLocaleDateString('en-CA');
-    const techAttendance = attendance.find(a => a.technicianId === techId && a.date === today);
-    
-    // Default to available if no attendance record exists for today (auto-present logic)
-    if (!techAttendance) return true;
+    const tech = staffList.find(s => s.employeeId === techId || s.id === techId);
+    if (tech && (tech.status === 'ON_LEAVE' || tech.status === 'SHORT_LEAVE' || tech.status === 'SHIFT_OFF')) {
+      return false;
+    }
 
-    const status = techAttendance.status;
+    const attRec = getTodayAttendanceRecord(techId);
+    const status = attRec?.status || (tech ? getStaffAttendanceStatus(tech) : 'PRESENT');
     
-    // If on Leave or Short-Leave, they are NOT available
+    // If on Leave, Short-Leave, or Absent, they are NOT available
     if (status === 'LEAVE' || status === 'SHORT_LEAVE' || status === 'ABSENT') return false;
     
     // If Present, they are available (standard shift)
@@ -4262,16 +4356,45 @@ export default function App() {
     const currentHour = now.getHours();
     
     // Shifting Duty (Shift A: 6 AM – 2 PM)
-    if (status === 'SHIFT_A') {
+    if (status === 'SHIFT_A' || (status as any) === 'SHIFT_6_2') {
       return currentHour >= 6 && currentHour < 14;
     }
     
     // Shifting Duty (Shift B: 2 PM – 10 PM)
-    if (status === 'SHIFT_B') {
+    if (status === 'SHIFT_B' || (status as any) === 'SHIFT_2_6') {
       return currentHour >= 14 && currentHour < 22;
     }
 
     return false;
+  };
+
+  // Rule: If a technician is in leave status (LEAVE), or short-leave (SHORT_LEAVE), or outside their shift time (SHIFT_A/SHIFT_B/SHIFT_OFF),
+  // they are COMPLETELY REMOVED from Technician Monitoring
+  const isTechnicianActiveForMonitoring = (tech: User): boolean => {
+    if (tech.role !== 'TECHNICIAN') return false;
+
+    // 1. Check user status flags
+    if (tech.status === 'ON_LEAVE' || tech.status === 'SHORT_LEAVE' || tech.status === 'SHIFT_OFF') {
+      return false;
+    }
+
+    // 2. Check attendance record for today
+    const attendanceStatus = getStaffAttendanceStatus(tech);
+    if (attendanceStatus === 'LEAVE' || attendanceStatus === 'SHORT_LEAVE' || attendanceStatus === 'ABSENT') {
+      return false;
+    }
+
+    const currentHour = now.getHours();
+    if (attendanceStatus === 'SHIFT_A' || (attendanceStatus as any) === 'SHIFT_6_2') {
+      // Shift A: 6 AM – 2 PM (6:00 - 14:00)
+      if (currentHour < 6 || currentHour >= 14) return false;
+    }
+    if (attendanceStatus === 'SHIFT_B' || (attendanceStatus as any) === 'SHIFT_2_6') {
+      // Shift B: 2 PM – 10 PM (14:00 - 22:00)
+      if (currentHour < 14 || currentHour >= 22) return false;
+    }
+
+    return true;
   };
 
   const getTechnicianStatus = (techId: string) => {
@@ -4295,9 +4418,16 @@ export default function App() {
     const activeTask = techTasks.find(t => t.status === 'RUNNING' || t.status === 'DELAYED' || t.status === 'HOLD');
     
     // Check leave / shift off statuses from attendance or user record
-    if (tech.status === 'ON_LEAVE') return { status: 'On Leave', color: 'text-red-400', bg: 'bg-red-400/10', task: null };
-    if (tech.status === 'SHORT_LEAVE') return { status: 'Short Leave', color: 'text-amber-400', bg: 'bg-amber-400/10', task: null };
-    if (tech.status === 'SHIFT_OFF') return { status: 'Shift Off', color: 'text-gray-500', bg: 'bg-gray-500/10', task: null };
+    const attStatus = getStaffAttendanceStatus(tech);
+    if (tech.status === 'ON_LEAVE' || attStatus === 'LEAVE' || attStatus === 'ABSENT') {
+      return { status: 'On Leave', color: 'text-red-400', bg: 'bg-red-400/10', task: null };
+    }
+    if (tech.status === 'SHORT_LEAVE' || attStatus === 'SHORT_LEAVE') {
+      return { status: 'Short Leave', color: 'text-purple-400', bg: 'bg-purple-400/10', task: null };
+    }
+    if (tech.status === 'SHIFT_OFF' || !isTechnicianAvailable(tech.employeeId)) {
+      return { status: 'Shift Off', color: 'text-gray-500', bg: 'bg-gray-500/10', task: null };
+    }
 
     // ONLY when task is actually assigned and active, show as 'Working'
     if (activeTask) {

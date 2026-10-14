@@ -150,11 +150,22 @@ export const CBODashboard: React.FC<CBODashboardProps> = ({
 
   // Helper to determine today's attendance status
   const getPersonAttendanceStatus = (empId: string): string => {
-    const rec = attendance.find(a => a.technicianId === empId && a.date === todayDateStr);
-    if (rec) return rec.status;
-    const u = staffList.find(s => s.employeeId === empId);
+    const targetId = String(empId || '').trim();
+    const todayIso = new Date().toISOString().split('T')[0];
+    const todayLocal = new Date().toLocaleDateString('en-CA');
+    const rec = attendance.slice().reverse().find(a => 
+      (String(a.technicianId || '').trim() === targetId || String((a as any).employeeId || '').trim() === targetId) && 
+      (a.date === todayIso || a.date === todayLocal || a.date === todayDateStr)
+    );
+    if (rec && rec.status) {
+      if (rec.status === 'SHIFT_6_2') return 'SHIFT_A';
+      if (rec.status === 'SHIFT_2_6') return 'SHIFT_B';
+      return rec.status;
+    }
+    const u = staffList.find(s => String(s.employeeId || '').trim() === targetId || s.id === targetId);
     if (u?.status === 'ON_LEAVE') return 'LEAVE';
     if (u?.status === 'SHORT_LEAVE') return 'SHORT_LEAVE';
+    if (u?.status === 'SHIFT_OFF') return 'SHIFT_A';
     return 'PRESENT';
   };
 

@@ -1243,45 +1243,45 @@ async function startServer() {
   }
 
   function rebuildTechnicianStatuses() {
-    const todayDate = new Date().toISOString().split('T')[0];
-    users.forEach((u: any) => {
-      if (u.role === 'TECHNICIAN') {
-        const techAttendance = attendanceRecords.find((a: any) => a.technicianId === u.employeeId && a.date === todayDate);
-        const hasActiveTasks = tasks.some((t: any) => 
-          (t.status === 'RUNNING' || (t.status === 'PENDING' && t.requestStatus === 'RECOMMENDED')) && 
-          (
-            t.assignedTo === u.employeeId || 
-            t.assignedTo === u.id || 
-            (t.assignedTo && u.name && t.assignedTo.toLowerCase() === u.name.toLowerCase()) ||
-            (t.assignedTechnicians && t.assignedTechnicians.some((at: any) => at.employeeId === u.employeeId))
-          )
-        );
+    const todayIso = new Date().toISOString().split('T')[0];
+    const todayLocal = new Date().toLocaleDateString('en-CA');
+    const now = new Date();
+    const currentHour = now.getHours();
 
-        // Preserve leave/off statuses if they exist
-        if (techAttendance) {
-          if (techAttendance.status === 'PRESENT') {
-            u.status = hasActiveTasks ? 'WORKING' : 'FREE';
-          } else if (techAttendance.status === 'LEAVE' || techAttendance.status === 'ABSENT') {
-            u.status = 'ON_LEAVE';
-          } else if (techAttendance.status === 'SHORT_LEAVE') {
-            u.status = 'SHORT_LEAVE';
-          } else if (techAttendance.status === 'SHIFT_6_2' || techAttendance.status === 'SHIFT_2_6') {
-            const now = new Date();
-            const currentHour = now.getHours();
-            let isWorkingShift = false;
-            if (techAttendance.status === 'SHIFT_6_2') isWorkingShift = currentHour >= 6 && currentHour < 14;
-            else if (techAttendance.status === 'SHIFT_2_6') isWorkingShift = currentHour >= 14 && currentHour < 18;
-            
-            if (isWorkingShift) {
-              u.status = hasActiveTasks ? 'WORKING' : 'FREE';
-            } else {
-              u.status = 'SHIFT_OFF';
-            }
-          }
-        } else {
-          // If no attendance record, base it solely on tasks
+    users.forEach((u: any) => {
+      const empId = String(u.employeeId || '').trim();
+      const todayAttendance = attendanceRecords.find((a: any) => 
+        (String(a.technicianId || '').trim() === empId || String((a as any).employeeId || '').trim() === empId) && 
+        (a.date === todayIso || a.date === todayLocal)
+      );
+      const hasActiveTasks = tasks.some((t: any) => 
+        (t.status === 'RUNNING' || (t.status === 'PENDING' && t.requestStatus === 'RECOMMENDED')) && 
+        (
+          String(t.assignedTo || '').trim() === empId || 
+          t.assignedTo === u.id || 
+          (t.assignedTo && u.name && t.assignedTo.toLowerCase() === u.name.toLowerCase()) ||
+          (t.assignedTechnicians && t.assignedTechnicians.some((at: any) => String(at.employeeId || '').trim() === empId))
+        )
+      );
+
+      if (todayAttendance) {
+        if (todayAttendance.status === 'PRESENT') {
           u.status = hasActiveTasks ? 'WORKING' : 'FREE';
+        } else if (todayAttendance.status === 'LEAVE' || todayAttendance.status === 'ABSENT') {
+          u.status = 'ON_LEAVE';
+        } else if (todayAttendance.status === 'SHORT_LEAVE') {
+          u.status = 'SHORT_LEAVE';
+        } else if (todayAttendance.status === 'SHIFT_A' || todayAttendance.status === 'SHIFT_6_2') {
+          // Shift A: 6 AM to 2 PM (6:00 - 14:00)
+          const isWorkingShift = currentHour >= 6 && currentHour < 14;
+          u.status = isWorkingShift ? (hasActiveTasks ? 'WORKING' : 'FREE') : 'SHIFT_OFF';
+        } else if (todayAttendance.status === 'SHIFT_B' || todayAttendance.status === 'SHIFT_2_6') {
+          // Shift B: 2 PM to 10 PM (14:00 - 22:00)
+          const isWorkingShift = currentHour >= 14 && currentHour < 22;
+          u.status = isWorkingShift ? (hasActiveTasks ? 'WORKING' : 'FREE') : 'SHIFT_OFF';
         }
+      } else if (u.role === 'TECHNICIAN') {
+        u.status = hasActiveTasks ? 'WORKING' : 'FREE';
       }
     });
   }
@@ -1404,18 +1404,16 @@ async function startServer() {
           u.status = 'ON_LEAVE';
         } else if (techAttendance.status === 'SHORT_LEAVE') {
           u.status = 'SHORT_LEAVE';
-        } else if (techAttendance.status === 'SHIFT_6_2' || techAttendance.status === 'SHIFT_2_6') {
+        } else if (techAttendance.status === 'SHIFT_A' || techAttendance.status === 'SHIFT_6_2') {
           const now = new Date();
           const currentHour = now.getHours();
-          let isWorkingShift = false;
-          if (techAttendance.status === 'SHIFT_6_2') isWorkingShift = currentHour >= 6 && currentHour < 14;
-          else if (techAttendance.status === 'SHIFT_2_6') isWorkingShift = currentHour >= 14 && currentHour < 18;
-          
-          if (isWorkingShift) {
-            u.status = hasRunningTasks ? 'WORKING' : 'FREE';
-          } else {
-            u.status = 'SHIFT_OFF';
-          }
+          const isWorkingShift = currentHour >= 6 && currentHour < 14;
+          u.status = isWorkingShift ? (hasRunningTasks ? 'WORKING' : 'FREE') : 'SHIFT_OFF';
+        } else if (techAttendance.status === 'SHIFT_B' || techAttendance.status === 'SHIFT_2_6') {
+          const now = new Date();
+          const currentHour = now.getHours();
+          const isWorkingShift = currentHour >= 14 && currentHour < 22;
+          u.status = isWorkingShift ? (hasRunningTasks ? 'WORKING' : 'FREE') : 'SHIFT_OFF';
         }
       } else {
         // Default to FREE if no attendance yet, but check for running tasks
@@ -3154,18 +3152,24 @@ async function startServer() {
   });
 
   app.get("/api/attendance", authenticate, async (req: Request, res: Response) => {
-    const today = new Date().toISOString().split('T')[0];
+    const todayIso = new Date().toISOString().split('T')[0];
+    const todayLocal = new Date().toLocaleDateString('en-CA');
     const trackableStaff = users.filter(u => u.role !== 'SUPER_ADMIN');
     
     let updated = false;
     trackableStaff.forEach(staff => {
-      const existingRecord = attendanceRecords.find(r => r.technicianId === staff.employeeId && r.date === today);
+      const empId = String(staff.employeeId || '').trim();
+      if (!empId) return;
+      const existingRecord = attendanceRecords.find(r => 
+        (String(r.technicianId || '').trim() === empId || String((r as any).employeeId || '').trim() === empId) && 
+        (r.date === todayIso || r.date === todayLocal)
+      );
       if (!existingRecord) {
         const newRecord = {
           id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-          technicianId: staff.employeeId,
+          technicianId: empId,
           status: 'PRESENT' as const,
-          date: today
+          date: todayIso
         };
         attendanceRecords.push(newRecord);
         updated = true;
@@ -3181,49 +3185,81 @@ async function startServer() {
   });
 
   app.post("/api/attendance", authenticate, async (req: Request, res: Response) => {
-    const { technicianId, status } = req.body;
-    const today = new Date().toISOString().split('T')[0];
-    const index = attendanceRecords.findIndex(r => r.technicianId === technicianId && r.date === today);
-    if (index !== -1) {
-      attendanceRecords[index].status = status;
+    const { technicianId, employeeId, status, date } = req.body;
+    const targetEmpId = String(technicianId || employeeId || '').trim();
+    if (!targetEmpId) {
+      return res.status(400).json({ error: "technicianId or employeeId is required" });
+    }
+
+    const todayIso = new Date().toISOString().split('T')[0];
+    const todayLocal = new Date().toLocaleDateString('en-CA');
+    const targetDate = date || todayIso;
+
+    // Normalize status
+    let normalizedStatus = status as Attendance['status'];
+    if (status === 'SHIFT_6_2') normalizedStatus = 'SHIFT_A';
+    if (status === 'SHIFT_2_6') normalizedStatus = 'SHIFT_B';
+
+    // Find existing record matching target date or today
+    const existingIdx = attendanceRecords.findIndex(r => 
+      (String(r.technicianId || '').trim() === targetEmpId || String((r as any).employeeId || '').trim() === targetEmpId) && 
+      (r.date === targetDate || r.date === todayIso || r.date === todayLocal)
+    );
+
+    let updatedRecord: any;
+    if (existingIdx !== -1) {
+      attendanceRecords[existingIdx].status = normalizedStatus;
+      attendanceRecords[existingIdx].date = targetDate;
+      updatedRecord = attendanceRecords[existingIdx];
     } else {
-      attendanceRecords.push({ id: Date.now().toString(), technicianId, status: status as Attendance['status'], date: today });
+      updatedRecord = { 
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 5), 
+        technicianId: targetEmpId, 
+        status: normalizedStatus, 
+        date: targetDate 
+      };
+      attendanceRecords.unshift(updatedRecord);
+    }
+
+    // Clean up any extra duplicates for targetDate / today
+    for (let i = attendanceRecords.length - 1; i >= 0; i--) {
+      const rec = attendanceRecords[i];
+      if (rec !== updatedRecord && 
+          (String(rec.technicianId || '').trim() === targetEmpId || String((rec as any).employeeId || '').trim() === targetEmpId) && 
+          (rec.date === targetDate || rec.date === todayIso || rec.date === todayLocal)) {
+        attendanceRecords.splice(i, 1);
+      }
     }
 
     // Update Staff Status based on attendance
-    const staffMember = users.find(u => u.employeeId === technicianId);
+    const staffMember = users.find(u => String(u.employeeId || '').trim() === targetEmpId || u.id === targetEmpId);
     if (staffMember) {
-      if (status === 'PRESENT') {
-        const hasRunningTasks = tasks.some(t => 
-          t.status === 'RUNNING' && 
-          (t.assignedTo === technicianId || (t.assignedTechnicians && t.assignedTechnicians.some((at: any) => at.employeeId === technicianId)))
-        );
+      const hasRunningTasks = tasks.some(t => 
+        (t.status === 'RUNNING' || (t.status === 'PENDING' && t.requestStatus === 'RECOMMENDED')) && 
+        (String(t.assignedTo || '').trim() === targetEmpId || t.assignedTo === staffMember.name || t.assignedTo === staffMember.id || (t.assignedTechnicians && t.assignedTechnicians.some((at: any) => String(at.employeeId || '').trim() === targetEmpId)))
+      );
+
+      if (normalizedStatus === 'PRESENT') {
         staffMember.status = hasRunningTasks ? 'WORKING' : 'FREE';
-      } else if (status === 'LEAVE' || status === 'ABSENT') {
+      } else if (normalizedStatus === 'LEAVE' || normalizedStatus === 'ABSENT') {
         staffMember.status = 'ON_LEAVE';
-      } else if (status === 'SHORT_LEAVE') {
+      } else if (normalizedStatus === 'SHORT_LEAVE') {
         staffMember.status = 'SHORT_LEAVE';
-      } else if (status === 'SHIFT_A' || status === 'SHIFT_B' || status === 'SHIFT_6_2' || status === 'SHIFT_2_6') {
+      } else if (normalizedStatus === 'SHIFT_A') {
         const now = new Date();
         const currentHour = now.getHours();
-        let isWorkingShift = false;
-        if (status === 'SHIFT_A' || status === 'SHIFT_6_2') isWorkingShift = currentHour >= 6 && currentHour < 14;
-        else if (status === 'SHIFT_B' || status === 'SHIFT_2_6') isWorkingShift = currentHour >= 14 && currentHour < 22;
-        
-        if (isWorkingShift) {
-          const hasRunningTasks = tasks.some(t => 
-            t.status === 'RUNNING' && 
-            (t.assignedTo === technicianId || (t.assignedTechnicians && t.assignedTechnicians.some((at: any) => at.employeeId === technicianId)))
-          );
-          staffMember.status = hasRunningTasks ? 'WORKING' : 'FREE';
-        } else {
-          staffMember.status = 'SHIFT_OFF';
-        }
+        const isWorkingShift = currentHour >= 6 && currentHour < 14;
+        staffMember.status = isWorkingShift ? (hasRunningTasks ? 'WORKING' : 'FREE') : 'SHIFT_OFF';
+      } else if (normalizedStatus === 'SHIFT_B') {
+        const now = new Date();
+        const currentHour = now.getHours();
+        const isWorkingShift = currentHour >= 14 && currentHour < 22;
+        staffMember.status = isWorkingShift ? (hasRunningTasks ? 'WORKING' : 'FREE') : 'SHIFT_OFF';
       }
     }
 
     await saveData();
-    res.json({ success: true });
+    res.json({ success: true, technicianId: targetEmpId, status: normalizedStatus, date: targetDate, staffStatus: staffMember?.status });
   });
 
   app.put("/api/tasks/:id", authenticate, async (req: Request, res: Response) => {

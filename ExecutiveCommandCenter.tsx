@@ -176,11 +176,22 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
 
   // Helper to get person attendance status today
   const getPersonTodayAttendance = (empId: string): string => {
-    const rec = attendance.find(a => a.technicianId === empId && a.date === todayDateStr);
-    if (rec) return rec.status;
-    const u = staffList.find(s => s.employeeId === empId);
+    const targetId = String(empId || '').trim();
+    const todayIso = new Date().toISOString().split('T')[0];
+    const todayLocal = new Date().toLocaleDateString('en-CA');
+    const rec = attendance.slice().reverse().find(a => 
+      (String(a.technicianId || '').trim() === targetId || String((a as any).employeeId || '').trim() === targetId) && 
+      (a.date === todayIso || a.date === todayLocal || a.date === todayDateStr)
+    );
+    if (rec && rec.status) {
+      if (rec.status === 'SHIFT_6_2') return 'SHIFT_A';
+      if (rec.status === 'SHIFT_2_6') return 'SHIFT_B';
+      return rec.status;
+    }
+    const u = staffList.find(s => String(s.employeeId || '').trim() === targetId || s.id === targetId);
     if (u?.status === 'ON_LEAVE') return 'LEAVE';
     if (u?.status === 'SHORT_LEAVE') return 'SHORT_LEAVE';
+    if (u?.status === 'SHIFT_OFF') return 'SHIFT_A';
     return 'PRESENT'; // default standard present
   };
 
@@ -888,7 +899,7 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
                           title="Mark Present"
                           className={cn(
                             "px-2 py-0.5 rounded text-[10px] font-bold transition-all",
-                            status === 'PRESENT' ? "bg-emerald-500 text-white" : "bg-white/5 hover:bg-emerald-500/20 text-slate-400"
+                            status === 'PRESENT' ? "bg-emerald-500 text-white shadow-sm" : "bg-white/5 hover:bg-emerald-500/20 text-slate-400"
                           )}
                         >
                           P
@@ -898,20 +909,50 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
                           title="Mark Leave"
                           className={cn(
                             "px-2 py-0.5 rounded text-[10px] font-bold transition-all",
-                            status === 'LEAVE' ? "bg-amber-500 text-white" : "bg-white/5 hover:bg-amber-500/20 text-slate-400"
+                            status === 'LEAVE' ? "bg-amber-500 text-white shadow-sm" : "bg-white/5 hover:bg-amber-500/20 text-slate-400"
                           )}
                         >
                           L
+                        </button>
+                        <button
+                          onClick={() => onUpdateAttendance(person.employeeId, 'SHORT_LEAVE')}
+                          title="Mark Short-Leave"
+                          className={cn(
+                            "px-2 py-0.5 rounded text-[10px] font-bold transition-all",
+                            status === 'SHORT_LEAVE' ? "bg-purple-500 text-white shadow-sm" : "bg-white/5 hover:bg-purple-500/20 text-slate-400"
+                          )}
+                        >
+                          SL
+                        </button>
+                        <button
+                          onClick={() => onUpdateAttendance(person.employeeId, 'SHIFT_A')}
+                          title="Shift A (6AM-2PM)"
+                          className={cn(
+                            "px-2 py-0.5 rounded text-[10px] font-bold transition-all",
+                            status === 'SHIFT_A' ? "bg-blue-500 text-white shadow-sm" : "bg-white/5 hover:bg-blue-500/20 text-slate-400"
+                          )}
+                        >
+                          ShA
+                        </button>
+                        <button
+                          onClick={() => onUpdateAttendance(person.employeeId, 'SHIFT_B')}
+                          title="Shift B (2PM-10PM)"
+                          className={cn(
+                            "px-2 py-0.5 rounded text-[10px] font-bold transition-all",
+                            status === 'SHIFT_B' ? "bg-indigo-500 text-white shadow-sm" : "bg-white/5 hover:bg-indigo-500/20 text-slate-400"
+                          )}
+                        >
+                          ShB
                         </button>
                         <button
                           onClick={() => onUpdateAttendance(person.employeeId, 'ABSENT')}
                           title="Mark Absent"
                           className={cn(
                             "px-2 py-0.5 rounded text-[10px] font-bold transition-all",
-                            status === 'ABSENT' ? "bg-red-500 text-white" : "bg-white/5 hover:bg-red-500/20 text-slate-400"
+                            status === 'ABSENT' ? "bg-red-500 text-white shadow-sm" : "bg-white/5 hover:bg-red-500/20 text-slate-400"
                           )}
                         >
-                          A
+                          Abs
                         </button>
                       </div>
                     )}
@@ -1320,9 +1361,57 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
 
                       {/* Attendance */}
                       <td className="py-3 px-3">
-                        <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider inline-block", attClass)}>
-                          {attendanceStatus}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider inline-block", attClass)}>
+                            {attendanceStatus}
+                          </span>
+                          {onUpdateAttendance && (
+                            <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); onUpdateAttendance(person.employeeId, 'PRESENT'); }}
+                                title="Mark Present"
+                                className={cn("px-1.5 py-0.5 rounded text-[9px] font-bold transition-all", attendanceStatus === 'PRESENT' ? "bg-emerald-500 text-white" : "bg-white/10 hover:bg-emerald-500/30 text-slate-300")}
+                              >
+                                P
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); onUpdateAttendance(person.employeeId, 'LEAVE'); }}
+                                title="Mark Leave"
+                                className={cn("px-1.5 py-0.5 rounded text-[9px] font-bold transition-all", attendanceStatus === 'LEAVE' ? "bg-amber-500 text-white" : "bg-white/10 hover:bg-amber-500/30 text-slate-300")}
+                              >
+                                L
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); onUpdateAttendance(person.employeeId, 'SHORT_LEAVE'); }}
+                                title="Mark Short-Leave"
+                                className={cn("px-1.5 py-0.5 rounded text-[9px] font-bold transition-all", attendanceStatus === 'SHORT_LEAVE' ? "bg-purple-500 text-white" : "bg-white/10 hover:bg-purple-500/30 text-slate-300")}
+                              >
+                                SL
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); onUpdateAttendance(person.employeeId, 'SHIFT_A'); }}
+                                title="Shift A (6AM-2PM)"
+                                className={cn("px-1.5 py-0.5 rounded text-[9px] font-bold transition-all", attendanceStatus === 'SHIFT_A' ? "bg-blue-500 text-white" : "bg-white/10 hover:bg-blue-500/30 text-slate-300")}
+                              >
+                                ShA
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); onUpdateAttendance(person.employeeId, 'SHIFT_B'); }}
+                                title="Shift B (2PM-10PM)"
+                                className={cn("px-1.5 py-0.5 rounded text-[9px] font-bold transition-all", attendanceStatus === 'SHIFT_B' ? "bg-indigo-500 text-white" : "bg-white/10 hover:bg-indigo-500/30 text-slate-300")}
+                              >
+                                ShB
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); onUpdateAttendance(person.employeeId, 'ABSENT'); }}
+                                title="Mark Absent"
+                                className={cn("px-1.5 py-0.5 rounded text-[9px] font-bold transition-all", attendanceStatus === 'ABSENT' ? "bg-rose-500 text-white" : "bg-white/10 hover:bg-rose-500/30 text-slate-300")}
+                              >
+                                Abs
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </td>
 
                       {/* Total Tasks Given */}
@@ -1487,6 +1576,52 @@ export const ExecutiveCommandCenter: React.FC<ExecutiveCommandCenterProps> = ({
                   <div>
                     <span className="text-slate-400 block text-[10px] uppercase font-bold">Today Status</span>
                     <span className="text-emerald-400 font-bold uppercase">{getPersonTodayAttendance(selectedPerson.employeeId)}</span>
+                    {onUpdateAttendance && (
+                      <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+                        <button
+                          onClick={() => onUpdateAttendance(selectedPerson.employeeId, 'PRESENT')}
+                          title="Mark Present"
+                          className={cn("px-1.5 py-0.5 rounded text-[9px] font-bold transition-all", getPersonTodayAttendance(selectedPerson.employeeId) === 'PRESENT' ? "bg-emerald-500 text-white" : "bg-white/10 hover:bg-emerald-500/20 text-slate-300")}
+                        >
+                          P
+                        </button>
+                        <button
+                          onClick={() => onUpdateAttendance(selectedPerson.employeeId, 'LEAVE')}
+                          title="Mark Leave"
+                          className={cn("px-1.5 py-0.5 rounded text-[9px] font-bold transition-all", getPersonTodayAttendance(selectedPerson.employeeId) === 'LEAVE' ? "bg-amber-500 text-white" : "bg-white/10 hover:bg-amber-500/20 text-slate-300")}
+                        >
+                          L
+                        </button>
+                        <button
+                          onClick={() => onUpdateAttendance(selectedPerson.employeeId, 'SHORT_LEAVE')}
+                          title="Mark Short-Leave"
+                          className={cn("px-1.5 py-0.5 rounded text-[9px] font-bold transition-all", getPersonTodayAttendance(selectedPerson.employeeId) === 'SHORT_LEAVE' ? "bg-purple-500 text-white" : "bg-white/10 hover:bg-purple-500/20 text-slate-300")}
+                        >
+                          SL
+                        </button>
+                        <button
+                          onClick={() => onUpdateAttendance(selectedPerson.employeeId, 'SHIFT_A')}
+                          title="Shift A (6AM-2PM)"
+                          className={cn("px-1.5 py-0.5 rounded text-[9px] font-bold transition-all", getPersonTodayAttendance(selectedPerson.employeeId) === 'SHIFT_A' ? "bg-blue-500 text-white" : "bg-white/10 hover:bg-blue-500/20 text-slate-300")}
+                        >
+                          ShA
+                        </button>
+                        <button
+                          onClick={() => onUpdateAttendance(selectedPerson.employeeId, 'SHIFT_B')}
+                          title="Shift B (2PM-10PM)"
+                          className={cn("px-1.5 py-0.5 rounded text-[9px] font-bold transition-all", getPersonTodayAttendance(selectedPerson.employeeId) === 'SHIFT_B' ? "bg-indigo-500 text-white" : "bg-white/10 hover:bg-indigo-500/20 text-slate-300")}
+                        >
+                          ShB
+                        </button>
+                        <button
+                          onClick={() => onUpdateAttendance(selectedPerson.employeeId, 'ABSENT')}
+                          title="Mark Absent"
+                          className={cn("px-1.5 py-0.5 rounded text-[9px] font-bold transition-all", getPersonTodayAttendance(selectedPerson.employeeId) === 'ABSENT' ? "bg-red-500 text-white" : "bg-white/10 hover:bg-red-500/20 text-slate-300")}
+                        >
+                          Abs
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <div>
                     <span className="text-slate-400 block text-[10px] uppercase font-bold">Filtered Period</span>
