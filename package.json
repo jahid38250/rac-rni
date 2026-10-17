@@ -16,6 +16,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@google-cloud/firestore": "^9.3.1",
     "@google/genai": "^1.29.0",
     "@tailwindcss/vite": "^4.1.14",
     "@types/multer": "^2.1.0",
@@ -27,6 +28,7 @@
     "dotenv": "^17.2.3",
     "esbuild": "^0.27.4",
     "express": "^4.22.1",
+    "firebase": "^13.0.0",
     "jsonwebtoken": "^9.0.3",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",

@@ -2313,22 +2313,18 @@ export default function App() {
 
     // 1. Optimistically update attendance state immediately
     setAttendance(prev => {
-      const next = [...prev];
-      const idx = next.findIndex(a => 
-        (a.technicianId === empId || (a as any).employeeId === empId) && 
-        (a.date === todayIso || a.date === todayLocal)
+      // Remove any duplicate records for this technician for today
+      const filtered = prev.filter(a => 
+        !((a.technicianId === empId || (a as any).employeeId === empId) && 
+          (a.date === todayIso || a.date === todayLocal))
       );
-      if (idx !== -1) {
-        next[idx] = { ...next[idx], status: status as any, date: todayIso };
-      } else {
-        next.unshift({
-          id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-          technicianId: empId,
-          status: status as any,
-          date: todayIso
-        });
-      }
-      return next;
+      filtered.unshift({
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+        technicianId: empId,
+        status: status as any,
+        date: todayIso
+      });
+      return filtered;
     });
 
     // 2. Optimistically update staffList user status immediately
@@ -4353,7 +4349,7 @@ export default function App() {
     // If Present, they are available (standard shift)
     if (status === 'PRESENT') return true;
 
-    const currentHour = now.getHours();
+    const currentHour = new Date().getHours();
     
     // Shifting Duty (Shift A: 6 AM – 2 PM)
     if (status === 'SHIFT_A' || (status as any) === 'SHIFT_6_2') {
@@ -4369,7 +4365,7 @@ export default function App() {
   };
 
   // Rule: If a technician is in leave status (LEAVE), or short-leave (SHORT_LEAVE), or outside their shift time (SHIFT_A/SHIFT_B/SHIFT_OFF),
-  // they are COMPLETELY REMOVED from Technician Monitoring
+  // they are COMPLETELY REMOVED from Active Technician Monitoring
   const isTechnicianActiveForMonitoring = (tech: User): boolean => {
     if (tech.role !== 'TECHNICIAN') return false;
 
@@ -4384,7 +4380,7 @@ export default function App() {
       return false;
     }
 
-    const currentHour = now.getHours();
+    const currentHour = new Date().getHours();
     if (attendanceStatus === 'SHIFT_A' || (attendanceStatus as any) === 'SHIFT_6_2') {
       // Shift A: 6 AM – 2 PM (6:00 - 14:00)
       if (currentHour < 6 || currentHour >= 14) return false;
@@ -8805,8 +8801,7 @@ export default function App() {
                     return (
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {filteredAssociates.map(person => {
-                          const personAttendance = attendance.find(a => a.technicianId === person.employeeId);
-                          const currentStatus = personAttendance?.status || (person.status === 'ON_LEAVE' ? 'LEAVE' : 'PRESENT');
+                          const currentStatus = getStaffAttendanceStatus(person);
                           
                           let statusBadge = "bg-emerald-500/20 text-emerald-400 border-emerald-500/30";
                           if (currentStatus === 'ABSENT') statusBadge = "bg-red-500/20 text-red-400 border-red-500/30";
@@ -8920,7 +8915,7 @@ export default function App() {
                     {staffList
                       .filter(s => s.role === 'TECHNICIAN' && isStaffInScope(s))
                       .map((tech, i) => {
-                        const techAttendance = attendance.find(a => a.technicianId === tech.employeeId);
+                        const currentStatus = getStaffAttendanceStatus(tech);
                         return (
                           <GlassCard key={tech.id} className="flex flex-col">
                             <div className="flex items-center gap-4 mb-6">
@@ -8939,16 +8934,17 @@ export default function App() {
                                 { label: 'Leave', value: 'LEAVE' },
                                 { label: 'Short-Leave', value: 'SHORT_LEAVE' },
                                 { label: 'Shift A (6AM-2PM)', value: 'SHIFT_A' },
-                                { label: 'Shift B (2PM-10PM)', value: 'SHIFT_B' }
+                                { label: 'Shift B (2PM-10PM)', value: 'SHIFT_B' },
+                                { label: 'Absent', value: 'ABSENT' }
                               ].map(opt => (
                                 <button 
                                   key={opt.value}
                                   onClick={() => handleUpdateAttendance(tech.employeeId, opt.value)}
                                   className={cn(
                                     "py-2 rounded-lg text-[10px] font-bold transition-all",
-                                    techAttendance?.status === opt.value 
-                                      ? "bg-blue-600 text-white" 
-                                      : "bg-white/5 text-gray-500 hover:bg-white/10"
+                                    currentStatus === opt.value 
+                                      ? "bg-blue-600 text-white shadow-md shadow-blue-500/20" 
+                                      : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white"
                                   )}
                                 >
                                   {opt.label}
@@ -9161,7 +9157,7 @@ export default function App() {
                       {staffList.filter(s => {
                         if (s.role !== 'TECHNICIAN') return false;
                         if (user?.role !== 'OFFICER' && !isStaffInScope(s)) return false;
-                        return getTechnicianStatus(s.employeeId).status === 'Working';
+                        return isTechnicianActiveForMonitoring(s) && getTechnicianStatus(s.employeeId).status === 'Working';
                       }).length} Working
                     </span>
                   </div>
@@ -9171,8 +9167,18 @@ export default function App() {
                       {staffList.filter(s => {
                         if (s.role !== 'TECHNICIAN') return false;
                         if (user?.role !== 'OFFICER' && !isStaffInScope(s)) return false;
-                        return getTechnicianStatus(s.employeeId).status !== 'Working';
+                        return isTechnicianActiveForMonitoring(s) && getTechnicianStatus(s.employeeId).status !== 'Working';
                       }).length} Free
+                    </span>
+                  </div>
+                  <div className="px-4 py-2 bg-amber-400/10 border border-amber-400/20 rounded-xl flex items-center gap-2">
+                    <div className="w-2 h-2 bg-amber-400 rounded-full" />
+                    <span className="text-xs font-bold text-amber-400">
+                      {staffList.filter(s => {
+                        if (s.role !== 'TECHNICIAN') return false;
+                        if (user?.role !== 'OFFICER' && !isStaffInScope(s)) return false;
+                        return !isTechnicianActiveForMonitoring(s);
+                      }).length} On Leave / Off-Duty
                     </span>
                   </div>
                 </div>
@@ -9188,7 +9194,7 @@ export default function App() {
                       {staffList.filter(s => {
                         if (s.role !== 'TECHNICIAN') return false;
                         if (user?.role !== 'OFFICER' && !isStaffInScope(s)) return false;
-                        return getTechnicianStatus(s.employeeId).status === 'Working';
+                        return isTechnicianActiveForMonitoring(s) && getTechnicianStatus(s.employeeId).status === 'Working';
                       }).length}
                     </span>
                   </div>
@@ -9197,13 +9203,13 @@ export default function App() {
                       .filter(s => {
                         if (s.role !== 'TECHNICIAN') return false;
                         if (user?.role !== 'OFFICER' && !isStaffInScope(s)) return false;
-                        return getTechnicianStatus(s.employeeId).status === 'Working';
+                        return isTechnicianActiveForMonitoring(s) && getTechnicianStatus(s.employeeId).status === 'Working';
                       })
                       .map((tech) => renderTechnicianCard(tech))}
                     {staffList.filter(s => {
                       if (s.role !== 'TECHNICIAN') return false;
                       if (user?.role !== 'OFFICER' && !isStaffInScope(s)) return false;
-                      return getTechnicianStatus(s.employeeId).status === 'Working';
+                      return isTechnicianActiveForMonitoring(s) && getTechnicianStatus(s.employeeId).status === 'Working';
                     }).length === 0 && (
                       <div className="col-span-full py-12 text-center bg-white/5 rounded-3xl border border-dashed border-white/10">
                         <p className="text-gray-500">No technicians are currently working on tasks.</p>
@@ -9221,7 +9227,7 @@ export default function App() {
                       {staffList.filter(s => {
                         if (s.role !== 'TECHNICIAN') return false;
                         if (user?.role !== 'OFFICER' && !isStaffInScope(s)) return false;
-                        return getTechnicianStatus(s.employeeId).status !== 'Working';
+                        return isTechnicianActiveForMonitoring(s) && getTechnicianStatus(s.employeeId).status !== 'Working';
                       }).length}
                     </span>
                   </div>
@@ -9230,13 +9236,13 @@ export default function App() {
                       .filter(s => {
                         if (s.role !== 'TECHNICIAN') return false;
                         if (user?.role !== 'OFFICER' && !isStaffInScope(s)) return false;
-                        return getTechnicianStatus(s.employeeId).status !== 'Working';
+                        return isTechnicianActiveForMonitoring(s) && getTechnicianStatus(s.employeeId).status !== 'Working';
                       })
                       .map((tech) => renderTechnicianCard(tech))}
                     {staffList.filter(s => {
                       if (s.role !== 'TECHNICIAN') return false;
                       if (user?.role !== 'OFFICER' && !isStaffInScope(s)) return false;
-                      return getTechnicianStatus(s.employeeId).status !== 'Working';
+                      return isTechnicianActiveForMonitoring(s) && getTechnicianStatus(s.employeeId).status !== 'Working';
                     }).length === 0 && (
                       <div className="col-span-full py-12 text-center bg-white/5 rounded-3xl border border-dashed border-white/10">
                         <p className="text-gray-500">No free technicians available at the moment.</p>
@@ -9244,6 +9250,32 @@ export default function App() {
                     )}
                   </div>
                 </section>
+
+                {/* On Leave / Off-Duty Technicians Section */}
+                {staffList.some(s => s.role === 'TECHNICIAN' && (user?.role === 'OFFICER' || isStaffInScope(s)) && !isTechnicianActiveForMonitoring(s)) && (
+                  <section>
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="w-1.5 h-6 bg-amber-500 rounded-full" />
+                      <h2 className="text-2xl font-bold text-white">On Leave / Off-Duty Technicians</h2>
+                      <span className="px-2.5 py-0.5 bg-amber-500/10 text-amber-500 text-xs font-bold rounded-full border border-amber-500/20">
+                        {staffList.filter(s => {
+                          if (s.role !== 'TECHNICIAN') return false;
+                          if (user?.role !== 'OFFICER' && !isStaffInScope(s)) return false;
+                          return !isTechnicianActiveForMonitoring(s);
+                        }).length}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {staffList
+                        .filter(s => {
+                          if (s.role !== 'TECHNICIAN') return false;
+                          if (user?.role !== 'OFFICER' && !isStaffInScope(s)) return false;
+                          return !isTechnicianActiveForMonitoring(s);
+                        })
+                        .map((tech) => renderTechnicianCard(tech))}
+                    </div>
+                  </section>
+                )}
               </div>
             </div>
           )}

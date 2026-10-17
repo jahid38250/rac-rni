@@ -1,0 +1,79 @@
+{
+  "entities": {
+    "UserRecord": {
+      "title": "UserRecord",
+      "description": "Enterprise staff user record with role, credentials, and profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "employeeId": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "department": { "type": "string" },
+        "designation": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "employeeId", "name", "role"]
+    },
+    "TaskRecord": {
+      "title": "TaskRecord",
+      "description": "Enterprise work order and task lifecycle record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "model": { "type": "string" },
+        "status": { "type": "string" },
+        "priority": { "type": "string" },
+        "assignedTo": { "type": "string" }
+      },
+      "required": ["id", "title", "status"]
+    },
+    "SystemState": {
+      "title": "SystemState",
+      "description": "Global operational state for attendance, deleted task tracking, and settings",
+      "type": "object",
+      "properties": {
+        "key": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["key", "updatedAt"]
+    },
+    "BackupSnapshot": {
+      "title": "BackupSnapshot",
+      "description": "Persistent backup snapshot metadata and records",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "type": { "type": "string" },
+        "status": { "type": "string" },
+        "totalTasks": { "type": "number" },
+        "totalUsers": { "type": "number" }
+      },
+      "required": ["id", "timestamp", "type", "status"]
+    }
+  },
+  "firestore": {
+    "/production_users/{userId}": {
+      "schema": "UserRecord",
+      "description": "Individual persistent employee records"
+    },
+    "/production_tasks/{taskId}": {
+      "schema": "TaskRecord",
+      "description": "Individual persistent task and work order records"
+    },
+    "/production_state/{stateDoc}": {
+      "schema": "SystemState",
+      "description": "Global application state, attendance, points, and deleted task IDs"
+    },
+    "/production_backups/{backupId}": {
+      "schema": "BackupSnapshot",
+      "description": "5-minute automatic and manual persistent backup records"
+    },
+    "/system_health/{docId}": {
+      "schema": "SystemState",
+      "description": "System health and connection diagnostics"
+    }
+  }
+}

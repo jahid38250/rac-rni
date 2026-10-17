@@ -12,6 +12,15 @@ import XLSX from "xlsx";
 import multer from "multer";
 import { GoogleGenAI } from "@google/genai";
 import type { Role, User, Task, Attendance, TaskLog, TaskStatus, ActivityLog, AdminAuditLog, UserSession, FailedLoginAttempt, LockedDevice } from './types.js';
+import {
+  initCloudDb,
+  checkCloudDbHealth,
+  loadCloudProductionData,
+  saveCloudProductionData,
+  saveCloudBackupSnapshot,
+  getPersistentBackupList,
+  getPersistentBackupData
+} from './cloudDb.js';
 
 let genAIClient: GoogleGenAI | null = null;
 function getGenAI(): GoogleGenAI | null {
@@ -130,10 +139,10 @@ async function startServer() {
     }
   }
 
-  // Auto-backup configuration state
+  // Auto-backup configuration state (Default 5-minute automated snapshot schedule)
   let autoBackupSettings = {
     enabled: true,
-    intervalMinutes: 60,
+    intervalMinutes: 5,
     lastBackupTime: null as string | null,
     nextBackupTime: null as string | null,
     retentionCount: 5000 // Permanent retention: backups are preserved and never auto-deleted
@@ -152,44 +161,88 @@ async function startServer() {
     let loadedContent: any = null;
     let loadedFrom: string = '';
 
-    // 1. Attempt to load from primary DATA_FILE (data.json)
+    // 0. Primary Authoritative Source: Attempt to load from Google Cloud Firestore
     try {
-      if (fsSync.existsSync(DATA_FILE)) {
-        console.log(`Checking data from primary file: ${DATA_FILE}`);
-        const content = await fs.readFile(DATA_FILE, "utf-8");
-        const parsed = JSON.parse(content);
-        if (parsed && typeof parsed === 'object') {
-          loadedContent = parsed;
-          loadedFrom = DATA_FILE;
-        }
+      const cloudData = await loadCloudProductionData();
+      if (cloudData && Array.isArray(cloudData.users) && cloudData.users.length > 0) {
+        console.log(`[CLOUD RECOVERY] Authoritative production data loaded from Firestore (${cloudData.users.length} users, ${cloudData.tasks?.length || 0} tasks)`);
+        loadedContent = cloudData;
+        loadedFrom = 'FIRESTORE_CLOUD';
       }
-    } catch (err: any) {
-      console.error(`Error reading ${DATA_FILE}:`, err.message);
+    } catch (cloudErr: any) {
+      console.warn('[CLOUD RECOVERY] Could not load from Firestore, falling back to disk cache:', cloudErr.message);
     }
 
-    // 2. Inspect DB_FILE (data/db.json). Compare timestamps to pick the freshest version
-    try {
-      if (fsSync.existsSync(DB_FILE)) {
-        console.log(`Checking data from database file: ${DB_FILE}`);
-        const dbContent = await fs.readFile(DB_FILE, "utf-8");
-        const parsedDb = JSON.parse(dbContent);
-        if (parsedDb && typeof parsedDb === 'object') {
-          if (!loadedContent) {
-            loadedContent = parsedDb;
-            loadedFrom = DB_FILE;
-          } else {
-            const dataTime = loadedContent.lastSavedAt ? new Date(loadedContent.lastSavedAt).getTime() : 0;
-            const dbTime = parsedDb.lastSavedAt ? new Date(parsedDb.lastSavedAt).getTime() : 0;
-            if (dbTime > dataTime) {
-              console.log(`[DATA RECOVERY] DB_FILE has fresher timestamp (${parsedDb.lastSavedAt}) than DATA_FILE (${loadedContent.lastSavedAt}). Using DB_FILE.`);
-              loadedContent = parsedDb;
-              loadedFrom = DB_FILE;
+    // If loaded from Firestore, check if local disk has any newer unsaved tasks to reconcile
+    if (loadedContent && loadedFrom === 'FIRESTORE_CLOUD') {
+      try {
+        const localPath = fsSync.existsSync(DB_FILE) ? DB_FILE : (fsSync.existsSync(DATA_FILE) ? DATA_FILE : null);
+        if (localPath) {
+          const localContent = JSON.parse(await fs.readFile(localPath, 'utf-8'));
+          if (Array.isArray(localContent.tasks)) {
+            const cloudTaskIds = new Set((loadedContent.tasks || []).map((t: any) => String(t.id || t.taskId || '').trim()));
+            const deletedIds = new Set((loadedContent.deletedTaskIds || []).map((id: any) => String(id).trim()));
+            let addedFromDisk = 0;
+            for (const lt of localContent.tasks) {
+              const ltId = String(lt.id || lt.taskId || '').trim();
+              if (ltId && !cloudTaskIds.has(ltId) && !deletedIds.has(ltId)) {
+                loadedContent.tasks.push(lt);
+                cloudTaskIds.add(ltId);
+                addedFromDisk++;
+              }
+            }
+            if (addedFromDisk > 0) {
+              console.log(`[CLOUD RECOVERY] Reconciled ${addedFromDisk} additional local tasks into Firestore state.`);
             }
           }
         }
+      } catch (reconErr: any) {
+        console.warn("[CLOUD RECOVERY] Error checking local file reconciliation:", reconErr.message);
       }
-    } catch (err: any) {
-      console.error(`Error reading ${DB_FILE}:`, err.message);
+    }
+
+    // 1. Attempt to load from primary DATA_FILE (data.json) if Firestore was not available
+    if (!loadedContent) {
+      try {
+        if (fsSync.existsSync(DATA_FILE)) {
+          console.log(`Checking data from primary file: ${DATA_FILE}`);
+          const content = await fs.readFile(DATA_FILE, "utf-8");
+          const parsed = JSON.parse(content);
+          if (parsed && typeof parsed === 'object') {
+            loadedContent = parsed;
+            loadedFrom = DATA_FILE;
+          }
+        }
+      } catch (err: any) {
+        console.error(`Error reading ${DATA_FILE}:`, err.message);
+      }
+    }
+
+    // 2. Inspect DB_FILE (data/db.json). Compare timestamps to pick the freshest version
+    if (!loadedContent || loadedFrom === DATA_FILE) {
+      try {
+        if (fsSync.existsSync(DB_FILE)) {
+          console.log(`Checking data from database file: ${DB_FILE}`);
+          const dbContent = await fs.readFile(DB_FILE, "utf-8");
+          const parsedDb = JSON.parse(dbContent);
+          if (parsedDb && typeof parsedDb === 'object') {
+            if (!loadedContent) {
+              loadedContent = parsedDb;
+              loadedFrom = DB_FILE;
+            } else {
+              const dataTime = loadedContent.lastSavedAt ? new Date(loadedContent.lastSavedAt).getTime() : 0;
+              const dbTime = parsedDb.lastSavedAt ? new Date(parsedDb.lastSavedAt).getTime() : 0;
+              if (dbTime > dataTime) {
+                console.log(`[DATA RECOVERY] DB_FILE has fresher timestamp (${parsedDb.lastSavedAt}) than DATA_FILE (${loadedContent.lastSavedAt}). Using DB_FILE.`);
+                loadedContent = parsedDb;
+                loadedFrom = DB_FILE;
+              }
+            }
+          }
+        }
+      } catch (err: any) {
+        console.error(`Error reading ${DB_FILE}:`, err.message);
+      }
     }
 
     // 3. Fallback to DATA_FILE.bak if primary files could not be loaded
@@ -1088,6 +1141,26 @@ async function startServer() {
         await fs.rename(tmpStaffFile, PERMANENT_STAFF_FILE);
       }
 
+      // 5. Authoritative Cloud Persistence: Commit records to Google Cloud Firestore
+      try {
+        await saveCloudProductionData({
+          users,
+          tasks,
+          deletedTaskIds,
+          attendanceRecords,
+          pointTransactions,
+          technicianPerformance,
+          assignmentRequests,
+          activityLogs,
+          adminAuditLogs,
+          lockedDevices,
+          autoBackupSettings,
+          lastSavedAt: dataToSave.lastSavedAt
+        });
+      } catch (cloudSaveErr: any) {
+        console.error("[CLOUD PERSISTENCE] Error saving to Firestore:", cloudSaveErr.message);
+      }
+
     } catch (err) {
       console.error("[DATABASE ERROR] Failed to save data to disk:", err);
       throw err;
@@ -1181,12 +1254,19 @@ async function startServer() {
       await fs.writeFile(tmpLatestBackup, jsonStr, 'utf-8');
       await fs.rename(tmpLatestBackup, latestBackupPath);
 
+      // 3. Durable Cloud Backup Snapshot in Google Cloud Firestore
+      try {
+        await saveCloudBackupSnapshot(backupPayload, backupType, metaDetails);
+      } catch (cloudBackupErr: any) {
+        console.error("[CLOUD BACKUP] Error saving backup snapshot to Firestore:", cloudBackupErr.message);
+      }
+
       autoBackupSettings.lastBackupTime = now.toISOString();
-      autoBackupSettings.nextBackupTime = new Date(now.getTime() + (autoBackupSettings.intervalMinutes || 60) * 60 * 1000).toISOString();
+      autoBackupSettings.nextBackupTime = new Date(now.getTime() + (autoBackupSettings.intervalMinutes || 5) * 60 * 1000).toISOString();
 
       await pruneOldBackups();
 
-      console.log(`[BACKUP SUCCESS] [${backupType}] Backup created: ${filename} (Tasks: ${tasks.length}, Users: ${users.length}, Size: ${Buffer.byteLength(jsonStr)} bytes, Source Folder: backups/)`);
+      console.log(`[BACKUP SUCCESS] [${backupType}] Backup created: ${filename} (Tasks: ${tasks.length}, Users: ${users.length}, Size: ${Buffer.byteLength(jsonStr)} bytes, Source: Firestore & backups/)`);
 
       return {
         filename,
@@ -1196,7 +1276,7 @@ async function startServer() {
         tasksCount: tasks.length,
         usersCount: users.length,
         details: metaDetails || null,
-        sourceFolder: 'backups/'
+        sourceFolder: 'backups/ (Firestore & Local Disk)'
       };
     } catch (err) {
       console.error("[BACKUP ERROR] Failed to create backup:", err);
@@ -1229,17 +1309,17 @@ async function startServer() {
       }
     }, 5000);
 
-    const intervalMs = Math.max(5, autoBackupSettings.intervalMinutes || 60) * 60 * 1000;
+    const intervalMs = Math.max(5, autoBackupSettings.intervalMinutes || 5) * 60 * 1000;
     autoBackupInterval = setInterval(async () => {
       if (!autoBackupSettings.enabled) return;
       try {
-        console.log(`[AUTO-BACKUP] Triggering scheduled hourly backup...`);
+        console.log(`[AUTO-BACKUP] Triggering scheduled backup (every ${autoBackupSettings.intervalMinutes || 5}m)...`);
         await createHourlyBackup(false);
       } catch (err) {
-        console.error("[AUTO-BACKUP] Scheduled hourly backup error:", err);
+        console.error("[AUTO-BACKUP] Scheduled backup error:", err);
       }
     }, intervalMs);
-    console.log(`[AUTO-BACKUP] Hourly auto-backup scheduler initialized (Every ${autoBackupSettings.intervalMinutes}m / 1 hour).`);
+    console.log(`[AUTO-BACKUP] Automated backup scheduler initialized (Every ${autoBackupSettings.intervalMinutes || 5}m).`);
   }
 
   function rebuildTechnicianStatuses() {
@@ -2372,54 +2452,26 @@ async function startServer() {
     if (req.user.role !== 'SUPER_ADMIN') return res.status(403).json({ error: "Forbidden" });
     try {
       await fs.mkdir(BACKUPS_DIR, { recursive: true });
-      const files = await fs.readdir(BACKUPS_DIR);
-      const backupFiles = files.filter(f => f.startsWith('db-backup-') && f.endsWith('.json'));
+      const persistentBackups = await getPersistentBackupList();
 
-      const backupsWithMeta = await Promise.all(
-        backupFiles.sort().reverse().slice(0, 50).map(async (filename) => {
-          const filePath = path.join(BACKUPS_DIR, filename);
-          const stat = await fs.stat(filePath);
-          let tasksCount = 0;
-          let usersCount = 0;
-          let type = 'HOURLY_AUTO';
-          let timestamp = stat.mtime.toISOString();
-          let details: any = null;
-          try {
-            const content = await fs.readFile(filePath, 'utf-8');
-            const parsed = JSON.parse(content);
-            tasksCount = Array.isArray(parsed.tasks) ? parsed.tasks.length : 0;
-            usersCount = Array.isArray(parsed.users) ? parsed.users.length : 0;
-            if (parsed.backupMeta) {
-              type = parsed.backupMeta.type || type;
-              timestamp = parsed.backupMeta.timestamp || timestamp;
-              details = parsed.backupMeta.details || null;
-            } else if (filename.includes('task-entry')) {
-              type = 'TASK_ENTRY';
-            } else if (filename.includes('task-delete')) {
-              type = 'TASK_DELETED';
-            } else if (filename.includes('manual')) {
-              type = 'MANUAL';
-            }
-          } catch (e) {}
-          return {
-            filename,
-            timestamp,
-            size: stat.size,
-            tasksCount,
-            usersCount,
-            type,
-            details,
-            sourceFolder: 'backups/'
-          };
-        })
-      );
+      const backupsWithMeta = persistentBackups.slice(0, 100).map(b => ({
+        filename: b.filename,
+        timestamp: b.timestamp,
+        size: b.sizeBytes,
+        tasksCount: b.totalTasks,
+        usersCount: b.totalUsers,
+        type: b.type,
+        details: b.metaDetails || null,
+        verified: b.verified,
+        sourceFolder: 'backups/ (Firestore Durable Storage)'
+      }));
 
       res.json({
         autoBackupEnabled: autoBackupSettings.enabled,
         intervalMinutes: autoBackupSettings.intervalMinutes,
         lastBackupTime: autoBackupSettings.lastBackupTime,
         nextBackupTime: autoBackupSettings.nextBackupTime,
-        sourceFolder: 'backups/',
+        sourceFolder: 'backups/ (Firestore Cloud & Local Disk)',
         liveStats: {
           tasksCount: tasks.length,
           usersCount: users.length,
@@ -2469,14 +2521,21 @@ async function startServer() {
     }
   });
 
-  app.get("/api/system/backups/:filename", authenticate, (req: Request, res: Response) => {
+  app.get("/api/system/backups/:filename", authenticate, async (req: Request, res: Response) => {
     if (req.user.role !== 'SUPER_ADMIN') return res.status(403).json({ error: "Forbidden" });
     const filename = path.basename(req.params.filename);
     const filePath = path.join(BACKUPS_DIR, filename);
-    if (!fsSync.existsSync(filePath)) {
-      return res.status(404).json({ error: "Backup snapshot file not found" });
+    if (fsSync.existsSync(filePath)) {
+      return res.download(filePath, filename);
     }
-    res.download(filePath, filename);
+    // Fallback to durable cloud storage in Firestore
+    const cloudData = await getPersistentBackupData(filename);
+    if (!cloudData) {
+      return res.status(404).json({ error: "Backup snapshot file not found on disk or cloud" });
+    }
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Type', 'application/json');
+    res.send(JSON.stringify(cloudData, null, 2));
   });
 
   app.post("/api/system/restore-backup", authenticate, async (req: Request, res: Response) => {
@@ -2486,13 +2545,19 @@ async function startServer() {
 
     const safeName = path.basename(filename);
     const filePath = path.join(BACKUPS_DIR, safeName);
-    if (!fsSync.existsSync(filePath)) {
-      return res.status(404).json({ error: "Backup snapshot file not found" });
-    }
 
     try {
-      const content = await fs.readFile(filePath, "utf-8");
-      const data = JSON.parse(content);
+      let data: any = null;
+      if (fsSync.existsSync(filePath)) {
+        const content = await fs.readFile(filePath, "utf-8");
+        data = JSON.parse(content);
+      } else {
+        data = await getPersistentBackupData(safeName);
+      }
+
+      if (!data) {
+        return res.status(404).json({ error: "Backup snapshot file not found on disk or cloud" });
+      }
       
       const replaceArray = (target: any[], source: any) => {
         if (Array.isArray(source)) {

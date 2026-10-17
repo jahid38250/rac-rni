@@ -4,7 +4,7 @@
       "id": "1774775754483iyriq",
       "employeeId": "jhfboss",
       "name": "JHF Boss",
-      "password": "$2b$10$8/Do3eiv9I92qr9E9X9RcexHMyadrs0LEpkIE20qRdsIlW/Jy.T6u",
+      "password": "$2b$10$j59u.2U7sSCPdFTkcPSO1OrvSpWOYb2xrJBzMjBFwK/7BctQ8wVkW",
       "role": "SUPER_ADMIN",
       "supervisorId": "",
       "assignedEngineers": [],
@@ -47,7 +47,7 @@
       "employeeId": "19219",
       "name": "Ariful Islam",
       "role": "HOD",
-      "password": "$2b$10$DBhagGDreEvIrAQEKlP5JOJSurgQ3GKwa7.YY/sYRbmjsusCnEgGi",
+      "password": "$2b$10$55tP.ROjSfIPDs40aUUOQOPBh.Pz821jQJOIQMMn8MSFhVAXbieay",
       "supervisorId": "",
       "assignedEngineers": [
         "17668",
@@ -879,7 +879,7 @@
       "email": "",
       "department": "RAC R&I",
       "avatar": "data:image/jpeg;base64,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",
-      "status": "ON_LEAVE",
+      "status": "FREE",
       "completedTask": 0,
       "total_point": 0
     },
@@ -1544,387 +1544,387 @@
   ],
   "tasks": [
     {
-      "title": "6set Eva Ready From Line",
-      "model": "18K",
-      "details": "6*6*6 5mm New D-IDU Eva Complete From Line For final production trial",
-      "urgency": "REGULAR",
       "assignedTo": "Selim",
-      "deadline": "2026-09-29",
-      "points": 1,
-      "customStartTime": "2026-09-28T09:50:41.195Z",
-      "estimatedDuration": "60",
-      "workType": "SINGLE",
-      "createdBy": "45213",
-      "assignedBy": "38250",
-      "id": "1790588405245",
-      "taskId": "20260928-940-937",
-      "createdAt": "2026-09-28T09:40:05.245Z",
-      "responsibleOfficerId": "38250",
-      "concernEngineerId": "45213",
-      "dhodId": "17668",
-      "hodId": "19219",
-      "status": "COMPLETED",
-      "requestStatus": "APPROVED",
-      "startedAt": "2026-09-28T09:50:41.087Z",
+      "model": "18K",
+      "actualCompletionTime": "2026-09-29T05:13:00.000Z",
       "progress": 100,
-      "assignedTechnicians": [],
+      "pointAdded": true,
+      "createdBy": "45213",
+      "dhodId": "17668",
+      "remainingTime": "0h 0m",
+      "id": "1790588405245",
+      "createdAt": "2026-09-28T09:40:05.245Z",
+      "taskTakenTime": "19h 22m",
       "logs": [
         {
+          "user": "Md. Sadid Hossain",
           "id": "1790588405245",
-          "action": "Task Created",
           "timestamp": "2026-09-28T09:40:05.245Z",
-          "user": "Md. Sadid Hossain"
+          "action": "Task Created"
         },
         {
-          "id": "1790589041195",
-          "action": "Assigned to Selim",
           "timestamp": "2026-09-28T09:50:41.195Z",
-          "user": "Md. Jahid Hasan"
+          "user": "Md. Jahid Hasan",
+          "id": "1790589041195",
+          "action": "Assigned to Selim"
         },
         {
-          "id": "1790589041087",
           "action": "Task assigned to Selim - Started",
-          "timestamp": "2026-09-28T09:50:41.087Z",
-          "user": "Md. Jahid Hasan"
+          "user": "Md. Jahid Hasan",
+          "id": "1790589041087",
+          "timestamp": "2026-09-28T09:50:41.087Z"
         },
         {
-          "id": "1790658856332",
-          "action": "Status updated to COMPLETED (100%)",
           "timestamp": "2026-09-29T05:14:16.332Z",
-          "user": "Md. Jahid Hasan"
+          "action": "Status updated to COMPLETED (100%)",
+          "user": "Md. Jahid Hasan",
+          "id": "1790658856332"
         }
       ],
-      "remarks": "2set complete, 4set new distribution change",
-      "actualCompletionTime": "2026-09-29T05:13:00.000Z",
+      "requestStatus": "APPROVED",
+      "status": "COMPLETED",
+      "details": "6*6*6 5mm New D-IDU Eva Complete From Line For final production trial",
+      "title": "6set Eva Ready From Line",
+      "customStartTime": "2026-09-28T09:50:41.195Z",
+      "assignedTechnicians": [],
+      "urgency": "REGULAR",
+      "taskId": "20260928-940-937",
+      "startedAt": "2026-09-28T09:50:41.087Z",
+      "hodId": "19219",
+      "workType": "SINGLE",
+      "overTime": "18h 22m",
       "completedAt": "2026-09-29T05:13:00.000Z",
-      "pointAdded": true,
-      "taskTakenTime": "19h 22m",
-      "remainingTime": "0h 0m",
-      "overTime": "18h 22m"
+      "responsibleOfficerId": "38250",
+      "deadline": "2026-09-29",
+      "concernEngineerId": "45213",
+      "points": 1,
+      "estimatedDuration": "60",
+      "assignedBy": "38250",
+      "remarks": "2set complete, 4set new distribution change"
     },
     {
-      "title": "Market Sample Service Thickness Report Ready",
-      "model": "18K",
-      "details": "Ready a google sheet & send me a link",
-      "urgency": "REGULAR",
-      "assignedTo": "Md. Lablue Islam",
-      "deadline": "2026-09-28",
-      "points": 1,
-      "customStartTime": "2026-09-28T09:50:27.373Z",
-      "estimatedDuration": "60",
       "workType": "SINGLE",
-      "createdBy": "45213",
-      "assignedBy": "38250",
-      "id": "1790588469000",
       "taskId": "20260928-941-240",
-      "createdAt": "2026-09-28T09:41:09.000Z",
-      "responsibleOfficerId": "38250",
-      "concernEngineerId": "45213",
-      "dhodId": "17668",
-      "hodId": "19219",
-      "status": "COMPLETED",
-      "requestStatus": "APPROVED",
+      "overTime": "18h 22m",
+      "details": "Ready a google sheet & send me a link",
+      "assignedBy": "38250",
+      "actualCompletionTime": "2026-09-29T05:13:00.000Z",
       "startedAt": "2026-09-28T09:50:27.263Z",
-      "progress": 100,
+      "title": "Market Sample Service Thickness Report Ready",
+      "concernEngineerId": "45213",
       "assignedTechnicians": [],
+      "points": 1,
+      "hodId": "19219",
+      "estimatedDuration": "60",
+      "deadline": "2026-09-28",
+      "completedAt": "2026-09-29T05:13:00.000Z",
+      "createdAt": "2026-09-28T09:41:09.000Z",
+      "requestStatus": "APPROVED",
+      "dhodId": "17668",
+      "taskTakenTime": "19h 22m",
+      "remarks": "running",
+      "customStartTime": "2026-09-28T09:50:27.373Z",
+      "progress": 100,
+      "urgency": "REGULAR",
+      "remainingTime": "0h 0m",
+      "model": "18K",
       "logs": [
         {
-          "id": "1790588469000",
           "action": "Task Created",
-          "timestamp": "2026-09-28T09:41:09.000Z",
-          "user": "Md. Sadid Hossain"
+          "id": "1790588469000",
+          "user": "Md. Sadid Hossain",
+          "timestamp": "2026-09-28T09:41:09.000Z"
         },
         {
           "id": "1790589027373",
           "action": "Assigned to Md. Lablue Islam",
-          "timestamp": "2026-09-28T09:50:27.373Z",
-          "user": "Md. Jahid Hasan"
+          "user": "Md. Jahid Hasan",
+          "timestamp": "2026-09-28T09:50:27.373Z"
         },
         {
           "id": "1790589027263",
-          "action": "Task assigned to Md. Lablue Islam - Started",
           "timestamp": "2026-09-28T09:50:27.263Z",
-          "user": "Md. Jahid Hasan"
+          "user": "Md. Jahid Hasan",
+          "action": "Task assigned to Md. Lablue Islam - Started"
         },
         {
           "id": "1790658726461",
-          "action": "Status updated to RUNNING (45%)",
+          "user": "Md. Jahid Hasan",
           "timestamp": "2026-09-29T05:12:06.461Z",
-          "user": "Md. Jahid Hasan"
+          "action": "Status updated to RUNNING (45%)"
         },
         {
+          "user": "Md. Jahid Hasan",
           "id": "1790658811830",
           "action": "Status updated to COMPLETED (100%)",
-          "timestamp": "2026-09-29T05:13:31.831Z",
-          "user": "Md. Jahid Hasan"
+          "timestamp": "2026-09-29T05:13:31.831Z"
         }
       ],
-      "remarks": "running",
-      "actualCompletionTime": "2026-09-29T05:13:00.000Z",
-      "completedAt": "2026-09-29T05:13:00.000Z",
+      "assignedTo": "Md. Lablue Islam",
+      "status": "COMPLETED",
+      "id": "1790588469000",
       "pointAdded": true,
-      "taskTakenTime": "19h 22m",
-      "remainingTime": "0h 0m",
-      "overTime": "18h 22m"
+      "createdBy": "45213",
+      "responsibleOfficerId": "38250"
     },
     {
-      "title": "Casset IDU Service",
-      "model": "Cleaning Work",
-      "details": "Engr. Room AC sweeting , water driping, call HVAC",
-      "urgency": "REGULAR",
-      "assignedTo": "Md. Sadikur Rahman",
       "deadline": "2026-09-28",
-      "points": 1,
-      "customStartTime": "2026-09-28T09:50:13.131Z",
-      "estimatedDuration": "60",
-      "workType": "SINGLE",
-      "createdBy": "45213",
-      "assignedBy": "38250",
-      "id": "1790588587256",
-      "taskId": "20260928-943-005",
-      "createdAt": "2026-09-28T09:43:07.256Z",
-      "responsibleOfficerId": "38250",
-      "concernEngineerId": "45213",
-      "dhodId": "17668",
       "hodId": "19219",
-      "status": "COMPLETED",
-      "requestStatus": "APPROVED",
+      "concernEngineerId": "45213",
+      "id": "1790588587256",
       "startedAt": "2026-09-28T09:50:13.027Z",
-      "progress": 100,
+      "title": "Casset IDU Service",
+      "urgency": "REGULAR",
+      "status": "COMPLETED",
+      "estimatedDuration": "60",
+      "pointAdded": true,
+      "remarks": "call & inform to HVAC Rajib - Fixed",
+      "overTime": "0h 0m",
+      "dhodId": "17668",
+      "workType": "SINGLE",
       "assignedTechnicians": [],
+      "assignedTo": "Md. Sadikur Rahman",
+      "actualCompletionTime": "2026-09-28T10:40:00.000Z",
+      "assignedBy": "38250",
+      "taskTakenTime": "0h 49m",
+      "createdBy": "45213",
+      "model": "Cleaning Work",
+      "points": 1,
+      "requestStatus": "APPROVED",
+      "responsibleOfficerId": "38250",
+      "createdAt": "2026-09-28T09:43:07.256Z",
+      "taskId": "20260928-943-005",
+      "completedAt": "2026-09-28T10:40:00.000Z",
+      "progress": 100,
+      "details": "Engr. Room AC sweeting , water driping, call HVAC",
+      "customStartTime": "2026-09-28T09:50:13.131Z",
       "logs": [
         {
-          "id": "1790588587256",
           "action": "Task Created",
+          "id": "1790588587256",
           "timestamp": "2026-09-28T09:43:07.256Z",
           "user": "Md. Sadid Hossain"
         },
         {
           "id": "1790589013131",
+          "user": "Md. Jahid Hasan",
           "action": "Assigned to Md. Sadikur Rahman",
-          "timestamp": "2026-09-28T09:50:13.131Z",
-          "user": "Md. Jahid Hasan"
+          "timestamp": "2026-09-28T09:50:13.131Z"
         },
         {
-          "id": "1790589013027",
-          "action": "Task assigned to Md. Sadikur Rahman - Started",
+          "user": "Md. Jahid Hasan",
           "timestamp": "2026-09-28T09:50:13.027Z",
-          "user": "Md. Jahid Hasan"
+          "action": "Task assigned to Md. Sadikur Rahman - Started",
+          "id": "1790589013027"
         },
         {
+          "user": "Md. Jahid Hasan",
           "id": "1790589079684",
-          "action": "Status updated to RUNNING (40%)",
           "timestamp": "2026-09-28T09:51:19.684Z",
-          "user": "Md. Jahid Hasan"
+          "action": "Status updated to RUNNING (40%)"
         },
         {
-          "id": "1790593664725",
-          "action": "Status updated to COMPLETED (100%)",
           "timestamp": "2026-09-28T11:07:44.725Z",
-          "user": "Md. Jahid Hasan"
+          "action": "Status updated to COMPLETED (100%)",
+          "user": "Md. Jahid Hasan",
+          "id": "1790593664725"
         }
       ],
-      "remarks": "call & inform to HVAC Rajib - Fixed",
-      "actualCompletionTime": "2026-09-28T10:40:00.000Z",
-      "completedAt": "2026-09-28T10:40:00.000Z",
-      "pointAdded": true,
-      "taskTakenTime": "0h 49m",
-      "remainingTime": "0h 11m",
-      "overTime": "0h 0m"
+      "remainingTime": "0h 11m"
     },
     {
-      "title": "Move Order all  spare parts collect from line",
-      "model": "18K",
-      "details": "brass distributor , 28mm insulation, distribution tube collect",
-      "urgency": "REGULAR",
-      "assignedTo": "Raju Ahmmed",
-      "deadline": "2026-09-28",
-      "points": 1,
       "customStartTime": "2026-09-28T03:20:00.000Z",
-      "estimatedDuration": "180",
+      "model": "18K",
       "workType": "SINGLE",
-      "createdBy": "45213",
-      "assignedBy": "38250",
-      "id": "1790588839936",
       "taskId": "20260928-947-564",
+      "overTime": "3h 32m",
+      "assignedTo": "Raju Ahmmed",
       "createdAt": "2026-09-28T09:47:19.936Z",
+      "completedAt": "2026-09-28T09:52:00.000Z",
+      "details": "brass distributor , 28mm insulation, distribution tube collect",
+      "pointAdded": true,
       "responsibleOfficerId": "38250",
-      "concernEngineerId": "45213",
-      "dhodId": "17668",
-      "hodId": "19219",
-      "status": "COMPLETED",
+      "points": 1,
+      "deadline": "2026-09-28",
+      "createdBy": "45213",
+      "title": "Move Order all  spare parts collect from line",
       "requestStatus": "APPROVED",
-      "startedAt": "2026-09-28T09:49:41.378Z",
-      "progress": 100,
-      "assignedTechnicians": [],
+      "actualCompletionTime": "2026-09-28T09:52:00.000Z",
       "logs": [
         {
           "id": "1790588839936",
+          "user": "Md. Sadid Hossain",
           "action": "Task Created",
-          "timestamp": "2026-09-28T09:47:19.936Z",
-          "user": "Md. Sadid Hossain"
+          "timestamp": "2026-09-28T09:47:19.936Z"
         },
         {
+          "timestamp": "2026-09-28T09:49:41.411Z",
           "id": "1790588981411",
           "action": "Assigned to Raju Ahmmed",
-          "timestamp": "2026-09-28T09:49:41.411Z",
           "user": "Md. Jahid Hasan"
         },
         {
           "id": "1790588981378",
           "action": "Task assigned to Raju Ahmmed - Started",
-          "timestamp": "2026-09-28T09:49:41.378Z",
-          "user": "Md. Jahid Hasan"
+          "user": "Md. Jahid Hasan",
+          "timestamp": "2026-09-28T09:49:41.378Z"
         },
         {
-          "id": "1790589128685",
           "action": "Status updated to COMPLETED (100%)",
           "timestamp": "2026-09-28T09:52:08.685Z",
+          "id": "1790589128685",
           "user": "Md. Jahid Hasan"
         },
         {
-          "id": "1790589161230",
+          "user": "Md. Jahid Hasan",
           "action": "Task updated by Md. Jahid Hasan",
-          "timestamp": "2026-09-28T09:52:41.230Z",
-          "user": "Md. Jahid Hasan"
+          "id": "1790589161230",
+          "timestamp": "2026-09-28T09:52:41.230Z"
         }
       ],
-      "remarks": "all collected",
-      "actualCompletionTime": "2026-09-28T09:52:00.000Z",
-      "completedAt": "2026-09-28T09:52:00.000Z",
-      "pointAdded": true,
+      "hodId": "19219",
       "taskTakenTime": "6h 32m",
+      "dhodId": "17668",
+      "assignedTechnicians": [],
+      "remarks": "all collected",
+      "progress": 100,
+      "startedAt": "2026-09-28T09:49:41.378Z",
+      "urgency": "REGULAR",
+      "estimatedDuration": "180",
       "remainingTime": "0h 0m",
-      "overTime": "3h 32m"
+      "id": "1790588839936",
+      "status": "COMPLETED",
+      "concernEngineerId": "45213",
+      "assignedBy": "38250"
     },
     {
-      "title": "New Model Instruction ready 18J",
-      "model": "18K",
-      "details": "Collect all picture",
-      "urgency": "REGULAR",
-      "assignedTo": "Md. Jahid Hasan",
-      "deadline": "2026-10-01",
-      "points": 1,
-      "customStartTime": "",
-      "estimatedDuration": "",
-      "workType": "SINGLE",
-      "createdBy": "45213",
-      "assignedBy": "45213",
-      "id": "1790589264736",
       "taskId": "20260928-954-048",
-      "createdAt": "2026-09-28T09:54:24.736Z",
-      "responsibleOfficerId": "38250",
-      "concernEngineerId": "45213",
-      "dhodId": "17668",
-      "hodId": "19219",
-      "status": "PENDING",
-      "progress": 0,
       "logs": [
         {
-          "id": "1790589264736",
           "action": "Task Created",
           "timestamp": "2026-09-28T09:54:24.736Z",
-          "user": "Md. Sadid Hossain"
+          "user": "Md. Sadid Hossain",
+          "id": "1790589264736"
         }
-      ]
+      ],
+      "dhodId": "17668",
+      "assignedTo": "Md. Jahid Hasan",
+      "id": "1790589264736",
+      "details": "Collect all picture",
+      "deadline": "2026-10-01",
+      "createdBy": "45213",
+      "concernEngineerId": "45213",
+      "hodId": "19219",
+      "urgency": "REGULAR",
+      "workType": "SINGLE",
+      "assignedBy": "45213",
+      "createdAt": "2026-09-28T09:54:24.736Z",
+      "title": "New Model Instruction ready 18J",
+      "model": "18K",
+      "responsibleOfficerId": "38250",
+      "estimatedDuration": "",
+      "status": "PENDING",
+      "points": 1,
+      "progress": 0,
+      "customStartTime": ""
     },
     {
-      "title": "Compressor Wastage Work Next Day",
-      "model": "Store Related Work",
-      "details": "Listout all wastage compressor",
-      "urgency": "REGULAR",
-      "assignedTo": "Md. Rasel Ahmmed Khan",
-      "deadline": "2026-09-30",
-      "points": 1,
-      "customStartTime": "",
-      "estimatedDuration": "360",
-      "workType": "SINGLE",
-      "createdBy": "38250",
-      "assignedBy": "38250",
-      "id": "1790593461818",
-      "taskId": "20260928-114-365",
       "createdAt": "2026-09-28T11:04:21.818Z",
+      "remarks": "hold for man power",
+      "assignedTo": "Md. Rasel Ahmmed Khan",
       "responsibleOfficerId": "38250",
-      "concernEngineerId": "45213",
-      "dhodId": "17668",
-      "hodId": "19219",
-      "status": "HOLD",
+      "workType": "SINGLE",
+      "points": 1,
       "requestStatus": "APPROVED",
-      "startedAt": "2026-09-28T11:04:48.092Z",
+      "deadline": "2026-09-30",
+      "taskId": "20260928-114-365",
+      "model": "Store Related Work",
+      "urgency": "REGULAR",
+      "createdBy": "38250",
+      "id": "1790593461818",
+      "approvedBy": "45213",
+      "details": "Listout all wastage compressor",
       "progress": 0,
+      "status": "HOLD",
+      "currentHoldStartTime": "2026-09-29T05:15:00.706Z",
+      "customStartTime": "",
+      "title": "Compressor Wastage Work Next Day",
+      "actualCompletionTime": "",
+      "concernEngineerId": "45213",
+      "startedAt": "2026-09-28T11:04:48.092Z",
+      "assignedBy": "38250",
+      "estimatedDuration": "360",
       "logs": [
         {
-          "id": "1790593461818",
           "action": "Task Created (Sent for Engineer Recommendation)",
-          "timestamp": "2026-09-28T11:04:21.818Z",
-          "user": "Md. Jahid Hasan"
+          "user": "Md. Jahid Hasan",
+          "id": "1790593461818",
+          "timestamp": "2026-09-28T11:04:21.818Z"
         },
         {
           "id": "1790593477484",
-          "action": "Request Approved by Supervisor Papon Chandra Das (Sent for Engineer Recommendation)",
+          "user": "Papon Chandra Das",
           "timestamp": "2026-09-28T11:04:37.484Z",
-          "user": "Papon Chandra Das"
+          "action": "Request Approved by Supervisor Papon Chandra Das (Sent for Engineer Recommendation)"
         },
         {
-          "id": "1790593488092",
-          "action": "Task Approved by Engineer Md. Sadid Hossain with 1 points",
           "timestamp": "2026-09-28T11:04:48.092Z",
-          "user": "Md. Sadid Hossain"
+          "user": "Md. Sadid Hossain",
+          "id": "1790593488092",
+          "action": "Task Approved by Engineer Md. Sadid Hossain with 1 points"
         },
         {
-          "id": "1790658900706",
           "action": "Status updated to HOLD (0%)",
           "timestamp": "2026-09-29T05:15:00.706Z",
+          "id": "1790658900706",
           "user": "Md. Jahid Hasan"
         }
       ],
+      "hodId": "19219",
       "engineer_deadline": "2026-09-30",
-      "approvedBy": "45213",
-      "remarks": "hold for man power",
-      "actualCompletionTime": "",
-      "currentHoldStartTime": "2026-09-29T05:15:00.706Z"
+      "dhodId": "17668"
     },
     {
-      "title": "Service pipe market sample thickness confirmation",
-      "model": "18K",
-      "details": "12.7mm or 12mm \n\n6.35mm or 6mm",
+      "remainingTime": "0h 59m",
       "urgency": "REGULAR",
-      "assignedTo": "Md. Khurshid Alam",
-      "deadline": "2026-09-30",
-      "points": 1,
-      "customStartTime": "",
+      "progress": 100,
       "estimatedDuration": "",
-      "workType": "SINGLE",
-      "createdBy": "19219",
-      "assignedBy": "19219",
-      "id": "1790594216799",
-      "taskId": "20260928-1116-365",
-      "createdAt": "2026-09-28T11:16:56.799Z",
-      "dhodId": "17668",
-      "hodId": "19219",
       "status": "COMPLETED",
       "requestStatus": "APPROVED",
-      "progress": 100,
+      "assignedTo": "Md. Khurshid Alam",
+      "remarks": "done",
+      "taskTakenTime": "0h 1m",
+      "id": "1790594216799",
+      "dhodId": "17668",
+      "model": "18K",
+      "overTime": "0h 0m",
+      "workType": "SINGLE",
+      "actualCompletionTime": "2026-09-28T11:18:00.000Z",
+      "createdAt": "2026-09-28T11:16:56.799Z",
       "logs": [
         {
-          "id": "1790594216799",
           "action": "Task Created",
           "timestamp": "2026-09-28T11:16:56.799Z",
+          "id": "1790594216799",
           "user": "Ariful Islam"
         },
         {
-          "id": "1790594320319",
-          "action": "Status updated to COMPLETED (100%)",
+          "user": "Md. Khurshid Alam",
           "timestamp": "2026-09-28T11:18:40.319Z",
-          "user": "Md. Khurshid Alam"
+          "action": "Status updated to COMPLETED (100%)",
+          "id": "1790594320319"
         }
       ],
-      "remarks": "done",
-      "actualCompletionTime": "2026-09-28T11:18:00.000Z",
+      "points": 1,
+      "assignedBy": "19219",
       "completedAt": "2026-09-28T11:18:00.000Z",
-      "taskTakenTime": "0h 1m",
-      "remainingTime": "0h 59m",
-      "overTime": "0h 0m"
+      "taskId": "20260928-1116-365",
+      "details": "12.7mm or 12mm \n\n6.35mm or 6mm",
+      "createdBy": "19219",
+      "hodId": "19219",
+      "deadline": "2026-09-30",
+      "customStartTime": "",
+      "title": "Service pipe market sample thickness confirmation"
     }
   ],
   "deletedTaskIds": [
@@ -1936,104 +1936,104 @@
   "attendanceRecords": [
     {
       "id": "1791950772084m66rc",
-      "technicianId": "17668",
       "status": "PRESENT",
-      "date": "2026-10-14"
+      "date": "2026-10-14",
+      "technicianId": "17668"
     },
     {
+      "date": "2026-10-14",
       "id": "1791950772084lvgcg",
       "technicianId": "19219",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "status": "PRESENT"
     },
     {
-      "id": "1791950772084hyq6m",
+      "date": "2026-10-14",
       "technicianId": "29766",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "id": "1791950772084hyq6m",
+      "status": "PRESENT"
     },
     {
+      "date": "2026-10-14",
       "id": "1791950772084r002m",
       "technicianId": "35866",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "status": "PRESENT"
     },
     {
-      "id": "1791950772084kunia",
+      "date": "2026-10-14",
       "technicianId": "37091",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "id": "1791950772084kunia",
+      "status": "PRESENT"
     },
     {
+      "status": "PRESENT",
       "id": "1791950772084qq2jg",
       "technicianId": "38056",
-      "status": "PRESENT",
       "date": "2026-10-14"
     },
     {
-      "id": "1791950772084cec0i",
+      "date": "2026-10-14",
       "technicianId": "39301",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "id": "1791950772084cec0i",
+      "status": "PRESENT"
     },
     {
       "id": "1791950772084bm3mw",
-      "technicianId": "41527",
       "status": "PRESENT",
-      "date": "2026-10-14"
+      "date": "2026-10-14",
+      "technicianId": "41527"
     },
     {
       "id": "1791950772084rd9cx",
+      "date": "2026-10-14",
       "technicianId": "41053",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "status": "PRESENT"
     },
     {
-      "id": "17919507720846x6hc",
+      "date": "2026-10-14",
+      "status": "PRESENT",
       "technicianId": "43924",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "id": "17919507720846x6hc"
     },
     {
-      "id": "1791950772084j432o",
+      "date": "2026-10-14",
       "technicianId": "45213",
       "status": "PRESENT",
-      "date": "2026-10-14"
+      "id": "1791950772084j432o"
     },
     {
-      "id": "17919507720844niay",
-      "technicianId": "40760",
+      "date": "2026-10-14",
       "status": "PRESENT",
-      "date": "2026-10-14"
+      "technicianId": "40760",
+      "id": "17919507720844niay"
     },
     {
       "id": "179195077208425pni",
-      "technicianId": "39766",
       "status": "PRESENT",
+      "technicianId": "39766",
       "date": "2026-10-14"
     },
     {
+      "date": "2026-10-14",
       "id": "1791950772084puyf4",
-      "technicianId": "45064",
       "status": "PRESENT",
-      "date": "2026-10-14"
+      "technicianId": "45064"
     },
     {
       "id": "1791950772084w46av",
-      "technicianId": "54589",
       "status": "PRESENT",
+      "technicianId": "54589",
       "date": "2026-10-14"
     },
     {
-      "id": "1791950772084oh4or",
       "technicianId": "50177",
       "status": "PRESENT",
-      "date": "2026-10-14"
+      "date": "2026-10-14",
+      "id": "1791950772084oh4or"
     },
     {
-      "id": "1791950772084gprwh",
-      "technicianId": "41043",
       "status": "PRESENT",
+      "technicianId": "41043",
+      "id": "1791950772084gprwh",
       "date": "2026-10-14"
     },
     {
@@ -2043,100 +2043,100 @@
       "date": "2026-10-14"
     },
     {
-      "id": "1791950772084shv9u",
       "technicianId": "53127",
       "status": "PRESENT",
+      "id": "1791950772084shv9u",
       "date": "2026-10-14"
     },
     {
-      "id": "1791950772084kxx6p",
+      "date": "2026-10-14",
       "technicianId": "5101",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "id": "1791950772084kxx6p",
+      "status": "PRESENT"
     },
     {
-      "id": "179195077208471wg0",
+      "date": "2026-10-14",
+      "status": "PRESENT",
       "technicianId": "57772",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "id": "179195077208471wg0"
     },
     {
+      "date": "2026-10-14",
+      "status": "PRESENT",
       "id": "17919507720840ijug",
-      "technicianId": "66063",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "technicianId": "66063"
     },
     {
-      "id": "1791950772084ickki",
+      "status": "PRESENT",
       "technicianId": "68016",
-      "status": "PRESENT",
+      "id": "1791950772084ickki",
       "date": "2026-10-14"
     },
     {
+      "status": "PRESENT",
       "id": "179195077208444mnz",
-      "technicianId": "39823",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "date": "2026-10-14",
+      "technicianId": "39823"
     },
     {
-      "id": "1791950772084joba6",
       "technicianId": "19359",
       "status": "PRESENT",
-      "date": "2026-10-14"
+      "date": "2026-10-14",
+      "id": "1791950772084joba6"
     },
     {
+      "date": "2026-10-14",
       "id": "17919507720842uk8f",
       "technicianId": "19348",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "status": "PRESENT"
     },
     {
-      "id": "1791950772084n8gnb",
+      "status": "PRESENT",
       "technicianId": "42949",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "date": "2026-10-14",
+      "id": "1791950772084n8gnb"
     },
     {
-      "id": "1791950772084e5yds",
       "technicianId": "4461",
+      "date": "2026-10-14",
       "status": "PRESENT",
-      "date": "2026-10-14"
+      "id": "1791950772084e5yds"
     },
     {
+      "date": "2026-10-14",
+      "status": "PRESENT",
       "id": "1791950772084hepot",
-      "technicianId": "58175",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "technicianId": "58175"
     },
     {
+      "status": "PRESENT",
+      "date": "2026-10-14",
       "id": "1791950772084z6hd1",
-      "technicianId": "38250",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "technicianId": "38250"
     },
     {
+      "date": "2026-10-14",
       "id": "1791950772084cggwi",
       "technicianId": "67123",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "status": "PRESENT"
     },
     {
+      "status": "PRESENT",
       "id": "17919507720840n68s",
       "technicianId": "41412",
-      "status": "PRESENT",
       "date": "2026-10-14"
     },
     {
-      "id": "17919507720840wyru",
-      "technicianId": "39939",
       "status": "PRESENT",
-      "date": "2026-10-14"
+      "technicianId": "39939",
+      "date": "2026-10-14",
+      "id": "17919507720840wyru"
     },
     {
       "id": "17919507720847xrtk",
-      "technicianId": "7669",
       "status": "PRESENT",
-      "date": "2026-10-14"
+      "date": "2026-10-14",
+      "technicianId": "7669"
     },
     {
       "id": "1791950772084i92d0",
@@ -2145,28 +2145,28 @@
       "date": "2026-10-14"
     },
     {
-      "id": "1791950772084edxrn",
       "technicianId": "21527",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "id": "1791950772084edxrn",
+      "date": "2026-10-14",
+      "status": "PRESENT"
     },
     {
       "id": "1791950772084vnymx",
-      "technicianId": "30644",
       "status": "PRESENT",
+      "technicianId": "30644",
       "date": "2026-10-14"
     },
     {
-      "id": "1791950772084nqlnt",
-      "technicianId": "22760",
+      "date": "2026-10-14",
       "status": "PRESENT",
-      "date": "2026-10-14"
+      "technicianId": "22760",
+      "id": "1791950772084nqlnt"
     },
     {
       "id": "17919507720847gj3t",
-      "technicianId": "20368",
+      "date": "2026-10-14",
       "status": "PRESENT",
-      "date": "2026-10-14"
+      "technicianId": "20368"
     },
     {
       "id": "1791950772084d9qg7",
@@ -2175,22 +2175,22 @@
       "date": "2026-10-14"
     },
     {
-      "id": "17919507720849gc1a",
-      "technicianId": "48566",
       "status": "LEAVE",
-      "date": "2026-10-14"
+      "date": "2026-10-14",
+      "technicianId": "48566",
+      "id": "17919507720849gc1a"
     },
     {
+      "date": "2026-10-14",
       "id": "1791950772084jmwht",
-      "technicianId": "52903",
       "status": "PRESENT",
-      "date": "2026-10-14"
+      "technicianId": "52903"
     },
     {
       "id": "1791950772084rh5pd",
-      "technicianId": "37413",
+      "date": "2026-10-14",
       "status": "PRESENT",
-      "date": "2026-10-14"
+      "technicianId": "37413"
     },
     {
       "id": "1791950772084j8d5q",
@@ -2199,99 +2199,99 @@
       "date": "2026-10-14"
     },
     {
-      "id": "1791950772084y66jj",
       "technicianId": "42234",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "date": "2026-10-14",
+      "id": "1791950772084y66jj",
+      "status": "PRESENT"
     },
     {
-      "id": "1791950772084qu6l9",
       "technicianId": "43081",
+      "id": "1791950772084qu6l9",
       "status": "PRESENT",
       "date": "2026-10-14"
     },
     {
-      "id": "1791950772084fm7at",
+      "date": "2026-10-14",
+      "status": "PRESENT",
       "technicianId": "44415",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "id": "1791950772084fm7at"
     },
     {
-      "id": "1791950772084vwu8x",
       "technicianId": "56489",
+      "id": "1791950772084vwu8x",
       "status": "PRESENT",
       "date": "2026-10-14"
     },
     {
-      "id": "17919507720847hhpg",
+      "date": "2026-10-14",
       "technicianId": "50328",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "id": "17919507720847hhpg",
+      "status": "PRESENT"
     },
     {
       "id": "1791950772084y2g4d",
       "technicianId": "40660",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "date": "2026-10-14",
+      "status": "PRESENT"
     },
     {
-      "id": "179195077208441u5q",
+      "date": "2026-10-14",
+      "status": "PRESENT",
       "technicianId": "42692",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "id": "179195077208441u5q"
     },
     {
+      "status": "PRESENT",
       "id": "1791950772084lyffo",
-      "technicianId": "43264",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "date": "2026-10-14",
+      "technicianId": "43264"
     },
     {
-      "id": "1791950772084wr9ru",
       "technicianId": "57041",
+      "date": "2026-10-14",
       "status": "PRESENT",
-      "date": "2026-10-14"
+      "id": "1791950772084wr9ru"
     },
     {
+      "status": "PRESENT",
       "id": "1791950772084u5fxc",
       "technicianId": "41904",
-      "status": "PRESENT",
       "date": "2026-10-14"
     },
     {
       "id": "17919507720840iyor",
       "technicianId": "43249",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "date": "2026-10-14",
+      "status": "PRESENT"
     },
     {
-      "id": "1791950772084ciyav",
+      "status": "PRESENT",
       "technicianId": "60321",
-      "status": "PRESENT",
+      "id": "1791950772084ciyav",
       "date": "2026-10-14"
     },
     {
-      "id": "1791950772084ter8x",
+      "status": "PRESENT",
+      "date": "2026-10-14",
       "technicianId": "57208",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "id": "1791950772084ter8x"
     },
     {
+      "status": "PRESENT",
+      "date": "2026-10-14",
       "id": "1791950772084vn5w8",
-      "technicianId": "60578",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "technicianId": "60578"
     },
     {
-      "id": "179195077208424k0j",
       "technicianId": "60586",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "id": "179195077208424k0j",
+      "date": "2026-10-14",
+      "status": "PRESENT"
     },
     {
-      "id": "1791950772084p0yh1",
       "technicianId": "60914",
       "status": "PRESENT",
+      "id": "1791950772084p0yh1",
       "date": "2026-10-14"
     },
     {
@@ -2301,16 +2301,16 @@
       "date": "2026-10-14"
     },
     {
-      "id": "17919507720841z6dv",
       "technicianId": "61650",
       "status": "PRESENT",
+      "id": "17919507720841z6dv",
       "date": "2026-10-14"
     },
     {
-      "id": "1791950772084gf4eg",
+      "date": "2026-10-14",
       "technicianId": "61674",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "id": "1791950772084gf4eg",
+      "status": "PRESENT"
     },
     {
       "id": "1791950772084lw223",
@@ -2319,88 +2319,1024 @@
       "date": "2026-10-14"
     },
     {
-      "id": "179195077208465yye",
-      "technicianId": "62536",
+      "date": "2026-10-14",
       "status": "PRESENT",
-      "date": "2026-10-14"
+      "id": "179195077208465yye",
+      "technicianId": "62536"
     },
     {
-      "id": "1791950772084poxyf",
       "technicianId": "63089",
       "status": "PRESENT",
-      "date": "2026-10-14"
+      "date": "2026-10-14",
+      "id": "1791950772084poxyf"
     },
     {
-      "id": "1791950772084t9kzp",
       "technicianId": "63107",
+      "date": "2026-10-14",
       "status": "PRESENT",
-      "date": "2026-10-14"
+      "id": "1791950772084t9kzp"
     },
     {
+      "date": "2026-10-14",
+      "status": "PRESENT",
       "id": "1791950772084bjgvj",
-      "technicianId": "63137",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "technicianId": "63137"
     },
     {
-      "id": "1791950772084ht87p",
       "technicianId": "63195",
       "status": "PRESENT",
-      "date": "2026-10-14"
+      "date": "2026-10-14",
+      "id": "1791950772084ht87p"
     },
     {
-      "id": "1791950772084il93e",
+      "date": "2026-10-14",
+      "status": "PRESENT",
       "technicianId": "63513",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "id": "1791950772084il93e"
     },
     {
-      "id": "1791950772084zu6ow",
       "technicianId": "65683",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "date": "2026-10-14",
+      "id": "1791950772084zu6ow",
+      "status": "PRESENT"
     },
     {
-      "id": "17919507720849zxjd",
       "technicianId": "63124",
+      "id": "17919507720849zxjd",
       "status": "PRESENT",
       "date": "2026-10-14"
     },
     {
-      "id": "1791950772084o7cxw",
       "technicianId": "1007",
       "status": "PRESENT",
-      "date": "2026-10-14"
+      "date": "2026-10-14",
+      "id": "1791950772084o7cxw"
     },
     {
+      "status": "PRESENT",
+      "date": "2026-10-14",
       "id": "1791950772084ctk2l",
-      "technicianId": "12467",
-      "status": "PRESENT",
-      "date": "2026-10-14"
+      "technicianId": "12467"
     },
     {
-      "id": "1791950772084jh9bj",
       "technicianId": "69646",
+      "id": "1791950772084jh9bj",
       "status": "PRESENT",
       "date": "2026-10-14"
     },
     {
-      "id": "1791950772084vt6tz",
       "technicianId": "69695",
       "status": "PRESENT",
+      "id": "1791950772084vt6tz",
       "date": "2026-10-14"
     },
     {
-      "id": "1791950772084m1afr",
       "technicianId": "69810",
       "status": "PRESENT",
+      "id": "1791950772084m1afr",
       "date": "2026-10-14"
+    },
+    {
+      "id": "1792063868348aldxz",
+      "technicianId": "17668",
+      "status": "PRESENT",
+      "date": "2026-10-15"
+    },
+    {
+      "id": "17920638683480ifvu",
+      "date": "2026-10-15",
+      "technicianId": "19219",
+      "status": "PRESENT"
+    },
+    {
+      "id": "1792063868348rj5li",
+      "status": "PRESENT",
+      "technicianId": "29766",
+      "date": "2026-10-15"
+    },
+    {
+      "status": "PRESENT",
+      "id": "17920638683489z0lo",
+      "technicianId": "35866",
+      "date": "2026-10-15"
+    },
+    {
+      "date": "2026-10-15",
+      "status": "PRESENT",
+      "id": "179206386834837znn",
+      "technicianId": "37091"
+    },
+    {
+      "date": "2026-10-15",
+      "technicianId": "38056",
+      "id": "1792063868348ennwj",
+      "status": "PRESENT"
+    },
+    {
+      "id": "1792063868348vfzed",
+      "technicianId": "39301",
+      "status": "PRESENT",
+      "date": "2026-10-15"
+    },
+    {
+      "technicianId": "41527",
+      "id": "1792063868348qpnkh",
+      "status": "PRESENT",
+      "date": "2026-10-15"
+    },
+    {
+      "date": "2026-10-15",
+      "technicianId": "41053",
+      "status": "PRESENT",
+      "id": "1792063868348khwj7"
+    },
+    {
+      "technicianId": "43924",
+      "status": "PRESENT",
+      "id": "17920638683488vy2w",
+      "date": "2026-10-15"
+    },
+    {
+      "id": "1792063868348krq0m",
+      "status": "PRESENT",
+      "technicianId": "45213",
+      "date": "2026-10-15"
+    },
+    {
+      "id": "1792063868348g0t64",
+      "technicianId": "40760",
+      "status": "PRESENT",
+      "date": "2026-10-15"
+    },
+    {
+      "status": "PRESENT",
+      "technicianId": "39766",
+      "id": "1792063868348sat2g",
+      "date": "2026-10-15"
+    },
+    {
+      "date": "2026-10-15",
+      "status": "PRESENT",
+      "technicianId": "45064",
+      "id": "1792063868348kvtfl"
+    },
+    {
+      "date": "2026-10-15",
+      "status": "PRESENT",
+      "technicianId": "54589",
+      "id": "1792063868348hwexl"
+    },
+    {
+      "technicianId": "50177",
+      "id": "17920638683482hxdf",
+      "date": "2026-10-15",
+      "status": "PRESENT"
+    },
+    {
+      "id": "1792063868348ubh76",
+      "status": "PRESENT",
+      "date": "2026-10-15",
+      "technicianId": "41043"
+    },
+    {
+      "technicianId": "46419",
+      "status": "PRESENT",
+      "date": "2026-10-15",
+      "id": "1792063868348s2b6s"
+    },
+    {
+      "status": "PRESENT",
+      "date": "2026-10-15",
+      "technicianId": "53127",
+      "id": "1792063868348z09p5"
+    },
+    {
+      "status": "PRESENT",
+      "date": "2026-10-15",
+      "id": "1792063868348ro7tz",
+      "technicianId": "5101"
+    },
+    {
+      "status": "PRESENT",
+      "technicianId": "57772",
+      "date": "2026-10-15",
+      "id": "1792063868348tmn9j"
+    },
+    {
+      "id": "17920638683497ahd3",
+      "date": "2026-10-15",
+      "technicianId": "66063",
+      "status": "PRESENT"
+    },
+    {
+      "id": "17920638683496b5il",
+      "status": "PRESENT",
+      "technicianId": "68016",
+      "date": "2026-10-15"
+    },
+    {
+      "date": "2026-10-15",
+      "status": "PRESENT",
+      "technicianId": "39823",
+      "id": "1792063868349dfguq"
+    },
+    {
+      "id": "17920638683498pb58",
+      "technicianId": "19359",
+      "date": "2026-10-15",
+      "status": "PRESENT"
+    },
+    {
+      "id": "1792063868349mti3k",
+      "technicianId": "19348",
+      "date": "2026-10-15",
+      "status": "PRESENT"
+    },
+    {
+      "id": "1792063868349rxki5",
+      "technicianId": "42949",
+      "date": "2026-10-15",
+      "status": "PRESENT"
+    },
+    {
+      "technicianId": "4461",
+      "status": "PRESENT",
+      "date": "2026-10-15",
+      "id": "17920638683496t9nk"
+    },
+    {
+      "id": "1792063868349gm825",
+      "technicianId": "58175",
+      "date": "2026-10-15",
+      "status": "PRESENT"
+    },
+    {
+      "technicianId": "38250",
+      "status": "PRESENT",
+      "id": "179206386834954te8",
+      "date": "2026-10-15"
+    },
+    {
+      "id": "1792063868349mfxzj",
+      "date": "2026-10-15",
+      "technicianId": "67123",
+      "status": "PRESENT"
+    },
+    {
+      "date": "2026-10-15",
+      "technicianId": "41412",
+      "id": "1792063868349eo241",
+      "status": "PRESENT"
+    },
+    {
+      "date": "2026-10-15",
+      "status": "PRESENT",
+      "id": "1792063868349kkk4d",
+      "technicianId": "39939"
+    },
+    {
+      "technicianId": "7669",
+      "date": "2026-10-15",
+      "id": "1792063868349ltrwn",
+      "status": "PRESENT"
+    },
+    {
+      "date": "2026-10-15",
+      "status": "PRESENT",
+      "id": "1792063868349i01td",
+      "technicianId": "6810"
+    },
+    {
+      "technicianId": "21527",
+      "date": "2026-10-15",
+      "status": "PRESENT",
+      "id": "17920638683496xdjj"
+    },
+    {
+      "technicianId": "30644",
+      "id": "17920638683498g8dm",
+      "date": "2026-10-15",
+      "status": "PRESENT"
+    },
+    {
+      "date": "2026-10-15",
+      "id": "1792063868349iy6r2",
+      "technicianId": "22760",
+      "status": "PRESENT"
+    },
+    {
+      "status": "PRESENT",
+      "technicianId": "20368",
+      "id": "1792063868349nhwyp",
+      "date": "2026-10-15"
+    },
+    {
+      "id": "1792063868349ubvo8",
+      "date": "2026-10-15",
+      "technicianId": "48309",
+      "status": "PRESENT"
+    },
+    {
+      "date": "2026-10-15",
+      "status": "PRESENT",
+      "id": "17920638683498lny3",
+      "technicianId": "48566"
+    },
+    {
+      "date": "2026-10-15",
+      "technicianId": "52903",
+      "status": "PRESENT",
+      "id": "1792063868349sceck"
+    },
+    {
+      "technicianId": "37413",
+      "date": "2026-10-15",
+      "id": "179206386834916v9n",
+      "status": "PRESENT"
+    },
+    {
+      "id": "1792063868349lwx9n",
+      "date": "2026-10-15",
+      "technicianId": "40664",
+      "status": "PRESENT"
+    },
+    {
+      "status": "PRESENT",
+      "technicianId": "42234",
+      "id": "17920638683495iuke",
+      "date": "2026-10-15"
+    },
+    {
+      "technicianId": "43081",
+      "date": "2026-10-15",
+      "id": "1792063868349xp44p",
+      "status": "PRESENT"
+    },
+    {
+      "status": "PRESENT",
+      "date": "2026-10-15",
+      "id": "17920638683495iind",
+      "technicianId": "44415"
+    },
+    {
+      "status": "PRESENT",
+      "date": "2026-10-15",
+      "technicianId": "56489",
+      "id": "1792063868349qur1f"
+    },
+    {
+      "technicianId": "50328",
+      "date": "2026-10-15",
+      "status": "PRESENT",
+      "id": "17920638683492lyxo"
+    },
+    {
+      "id": "1792063868349i6dmc",
+      "status": "PRESENT",
+      "date": "2026-10-15",
+      "technicianId": "40660"
+    },
+    {
+      "status": "PRESENT",
+      "date": "2026-10-15",
+      "technicianId": "42692",
+      "id": "17920638683494saj3"
+    },
+    {
+      "status": "PRESENT",
+      "technicianId": "43264",
+      "date": "2026-10-15",
+      "id": "179206386834960gzq"
+    },
+    {
+      "status": "PRESENT",
+      "technicianId": "57041",
+      "date": "2026-10-15",
+      "id": "1792063868349xvdq7"
+    },
+    {
+      "technicianId": "41904",
+      "status": "PRESENT",
+      "date": "2026-10-15",
+      "id": "1792063868349y9b1s"
+    },
+    {
+      "technicianId": "43249",
+      "status": "PRESENT",
+      "date": "2026-10-15",
+      "id": "1792063868349sg6b8"
+    },
+    {
+      "status": "PRESENT",
+      "date": "2026-10-15",
+      "technicianId": "60321",
+      "id": "1792063868349pusrh"
+    },
+    {
+      "id": "17920638683494d2dn",
+      "status": "PRESENT",
+      "date": "2026-10-15",
+      "technicianId": "57208"
+    },
+    {
+      "date": "2026-10-15",
+      "technicianId": "60578",
+      "id": "1792063868349bntx2",
+      "status": "PRESENT"
+    },
+    {
+      "date": "2026-10-15",
+      "status": "PRESENT",
+      "technicianId": "60586",
+      "id": "17920638683499ovok"
+    },
+    {
+      "id": "17920638683493fgza",
+      "status": "PRESENT",
+      "date": "2026-10-15",
+      "technicianId": "60914"
+    },
+    {
+      "date": "2026-10-15",
+      "status": "PRESENT",
+      "id": "17920638683496or17",
+      "technicianId": "61071"
+    },
+    {
+      "date": "2026-10-15",
+      "technicianId": "61650",
+      "status": "PRESENT",
+      "id": "17920638683494phmd"
+    },
+    {
+      "status": "PRESENT",
+      "date": "2026-10-15",
+      "id": "1792063868349kcr7m",
+      "technicianId": "61674"
+    },
+    {
+      "status": "PRESENT",
+      "id": "1792063868349lyp6f",
+      "technicianId": "62193",
+      "date": "2026-10-15"
+    },
+    {
+      "date": "2026-10-15",
+      "technicianId": "62536",
+      "id": "1792063868349zu1oa",
+      "status": "PRESENT"
+    },
+    {
+      "date": "2026-10-15",
+      "technicianId": "63089",
+      "id": "1792063868349ig9ir",
+      "status": "PRESENT"
+    },
+    {
+      "id": "17920638683490jnkm",
+      "technicianId": "63107",
+      "status": "PRESENT",
+      "date": "2026-10-15"
+    },
+    {
+      "date": "2026-10-15",
+      "id": "1792063868349b39ld",
+      "status": "PRESENT",
+      "technicianId": "63137"
+    },
+    {
+      "technicianId": "63195",
+      "id": "1792063868349ah7dk",
+      "status": "PRESENT",
+      "date": "2026-10-15"
+    },
+    {
+      "technicianId": "63513",
+      "status": "PRESENT",
+      "date": "2026-10-15",
+      "id": "1792063868349umj9s"
+    },
+    {
+      "status": "PRESENT",
+      "technicianId": "65683",
+      "id": "1792063868349s9nx7",
+      "date": "2026-10-15"
+    },
+    {
+      "status": "PRESENT",
+      "technicianId": "63124",
+      "id": "179206386835039coq",
+      "date": "2026-10-15"
+    },
+    {
+      "id": "1792063868350shcsl",
+      "technicianId": "1007",
+      "status": "PRESENT",
+      "date": "2026-10-15"
+    },
+    {
+      "id": "17920638683506rehr",
+      "technicianId": "12467",
+      "date": "2026-10-15",
+      "status": "PRESENT"
+    },
+    {
+      "technicianId": "69646",
+      "date": "2026-10-15",
+      "status": "PRESENT",
+      "id": "1792063868350gt3ez"
+    },
+    {
+      "id": "17920638683506t4gl",
+      "date": "2026-10-15",
+      "technicianId": "69695",
+      "status": "PRESENT"
+    },
+    {
+      "id": "1792063868350xncke",
+      "date": "2026-10-15",
+      "technicianId": "69810",
+      "status": "PRESENT"
+    },
+    {
+      "date": "2026-10-15",
+      "technicianId": "45660",
+      "status": "PRESENT",
+      "id": "1792063930284tv9gn"
+    },
+    {
+      "technicianId": "17668",
+      "status": "PRESENT",
+      "id": "17922076954271y81d",
+      "date": "2026-10-17"
+    },
+    {
+      "date": "2026-10-17",
+      "technicianId": "19219",
+      "status": "PRESENT",
+      "id": "1792207695427ekr3r"
+    },
+    {
+      "status": "PRESENT",
+      "id": "1792207695428dskc1",
+      "date": "2026-10-17",
+      "technicianId": "29766"
+    },
+    {
+      "technicianId": "35866",
+      "date": "2026-10-17",
+      "status": "PRESENT",
+      "id": "17922076954287lmne"
+    },
+    {
+      "id": "1792207695428b78rn",
+      "technicianId": "37091",
+      "date": "2026-10-17",
+      "status": "PRESENT"
+    },
+    {
+      "date": "2026-10-17",
+      "status": "PRESENT",
+      "technicianId": "38056",
+      "id": "1792207695428vkipe"
+    },
+    {
+      "id": "1792207695428quh7x",
+      "technicianId": "39301",
+      "status": "PRESENT",
+      "date": "2026-10-17"
+    },
+    {
+      "id": "1792207695428zcd1s",
+      "status": "PRESENT",
+      "technicianId": "41527",
+      "date": "2026-10-17"
+    },
+    {
+      "id": "1792207695428fr3ek",
+      "date": "2026-10-17",
+      "technicianId": "41053",
+      "status": "PRESENT"
+    },
+    {
+      "status": "PRESENT",
+      "id": "1792207695428peal3",
+      "technicianId": "43924",
+      "date": "2026-10-17"
+    },
+    {
+      "technicianId": "45213",
+      "date": "2026-10-17",
+      "status": "PRESENT",
+      "id": "1792207695428ftn57"
+    },
+    {
+      "technicianId": "40760",
+      "status": "PRESENT",
+      "date": "2026-10-17",
+      "id": "1792207695428ch1k3"
+    },
+    {
+      "date": "2026-10-17",
+      "id": "1792207695428rtets",
+      "status": "PRESENT",
+      "technicianId": "39766"
+    },
+    {
+      "technicianId": "45064",
+      "date": "2026-10-17",
+      "id": "1792207695428g5zha",
+      "status": "PRESENT"
+    },
+    {
+      "technicianId": "54589",
+      "id": "1792207695428by7uf",
+      "date": "2026-10-17",
+      "status": "PRESENT"
+    },
+    {
+      "status": "PRESENT",
+      "id": "1792207695428hghw5",
+      "date": "2026-10-17",
+      "technicianId": "50177"
+    },
+    {
+      "technicianId": "41043",
+      "status": "PRESENT",
+      "date": "2026-10-17",
+      "id": "1792207695428acomf"
+    },
+    {
+      "id": "1792207695428sseq5",
+      "technicianId": "46419",
+      "date": "2026-10-17",
+      "status": "PRESENT"
+    },
+    {
+      "date": "2026-10-17",
+      "id": "1792207695428an0a7",
+      "technicianId": "53127",
+      "status": "PRESENT"
+    },
+    {
+      "id": "1792207695428y6wmq",
+      "date": "2026-10-17",
+      "technicianId": "5101",
+      "status": "PRESENT"
+    },
+    {
+      "technicianId": "57772",
+      "status": "PRESENT",
+      "date": "2026-10-17",
+      "id": "17922076954282b19p"
+    },
+    {
+      "date": "2026-10-17",
+      "technicianId": "66063",
+      "id": "1792207695428dopzi",
+      "status": "PRESENT"
+    },
+    {
+      "date": "2026-10-17",
+      "status": "PRESENT",
+      "technicianId": "68016",
+      "id": "1792207695428t12qy"
+    },
+    {
+      "date": "2026-10-17",
+      "id": "1792207695428w4vtp",
+      "status": "PRESENT",
+      "technicianId": "39823"
+    },
+    {
+      "date": "2026-10-17",
+      "status": "PRESENT",
+      "id": "1792207695428m89fb",
+      "technicianId": "19359"
+    },
+    {
+      "technicianId": "19348",
+      "status": "PRESENT",
+      "date": "2026-10-17",
+      "id": "1792207695428smxth"
+    },
+    {
+      "technicianId": "42949",
+      "id": "1792207695428hs5ny",
+      "date": "2026-10-17",
+      "status": "PRESENT"
+    },
+    {
+      "date": "2026-10-17",
+      "technicianId": "4461",
+      "status": "PRESENT",
+      "id": "1792207695428eqkcp"
+    },
+    {
+      "technicianId": "58175",
+      "id": "179220769542803xv6",
+      "status": "PRESENT",
+      "date": "2026-10-17"
+    },
+    {
+      "status": "PRESENT",
+      "technicianId": "38250",
+      "id": "1792207695428sp03w",
+      "date": "2026-10-17"
+    },
+    {
+      "status": "PRESENT",
+      "date": "2026-10-17",
+      "id": "1792207695428k7m98",
+      "technicianId": "67123"
+    },
+    {
+      "technicianId": "41412",
+      "status": "PRESENT",
+      "id": "179220769542865sxa",
+      "date": "2026-10-17"
+    },
+    {
+      "status": "PRESENT",
+      "id": "179220769542861e72",
+      "technicianId": "39939",
+      "date": "2026-10-17"
+    },
+    {
+      "id": "1792207695428afuku",
+      "technicianId": "7669",
+      "status": "PRESENT",
+      "date": "2026-10-17"
+    },
+    {
+      "id": "1792207695429krvts",
+      "status": "PRESENT",
+      "date": "2026-10-17",
+      "technicianId": "6810"
+    },
+    {
+      "id": "1792207695429tgrdc",
+      "date": "2026-10-17",
+      "technicianId": "21527",
+      "status": "PRESENT"
+    },
+    {
+      "technicianId": "30644",
+      "id": "1792207695429clld9",
+      "date": "2026-10-17",
+      "status": "PRESENT"
+    },
+    {
+      "technicianId": "22760",
+      "status": "PRESENT",
+      "id": "1792207695429fx7no",
+      "date": "2026-10-17"
+    },
+    {
+      "date": "2026-10-17",
+      "id": "1792207695429zq8nw",
+      "technicianId": "20368",
+      "status": "PRESENT"
+    },
+    {
+      "date": "2026-10-17",
+      "id": "1792207695429t7fuk",
+      "status": "PRESENT",
+      "technicianId": "48309"
+    },
+    {
+      "status": "PRESENT",
+      "id": "1792207695429zizn9",
+      "date": "2026-10-17",
+      "technicianId": "48566"
+    },
+    {
+      "date": "2026-10-17",
+      "status": "PRESENT",
+      "technicianId": "52903",
+      "id": "1792207695429833pl"
+    },
+    {
+      "date": "2026-10-17",
+      "status": "PRESENT",
+      "id": "1792207695429i1iau",
+      "technicianId": "37413"
+    },
+    {
+      "technicianId": "40664",
+      "id": "17922076954296gcmc",
+      "date": "2026-10-17",
+      "status": "PRESENT"
+    },
+    {
+      "technicianId": "42234",
+      "status": "PRESENT",
+      "date": "2026-10-17",
+      "id": "17922076954292snua"
+    },
+    {
+      "technicianId": "43081",
+      "id": "1792207695429d27ke",
+      "date": "2026-10-17",
+      "status": "PRESENT"
+    },
+    {
+      "id": "1792207695429swcfl",
+      "status": "PRESENT",
+      "technicianId": "44415",
+      "date": "2026-10-17"
+    },
+    {
+      "id": "1792207695429c7cgy",
+      "technicianId": "56489",
+      "date": "2026-10-17",
+      "status": "PRESENT"
+    },
+    {
+      "date": "2026-10-17",
+      "technicianId": "50328",
+      "status": "PRESENT",
+      "id": "1792207695429q2kys"
+    },
+    {
+      "status": "PRESENT",
+      "technicianId": "40660",
+      "date": "2026-10-17",
+      "id": "17922076954295vnjc"
+    },
+    {
+      "status": "PRESENT",
+      "technicianId": "42692",
+      "id": "1792207695429u6exw",
+      "date": "2026-10-17"
+    },
+    {
+      "status": "PRESENT",
+      "date": "2026-10-17",
+      "id": "1792207695429le8sd",
+      "technicianId": "43264"
+    },
+    {
+      "technicianId": "57041",
+      "id": "17922076954295o6hc",
+      "status": "PRESENT",
+      "date": "2026-10-17"
+    },
+    {
+      "technicianId": "41904",
+      "date": "2026-10-17",
+      "id": "17922076954290fj2u",
+      "status": "PRESENT"
+    },
+    {
+      "date": "2026-10-17",
+      "technicianId": "43249",
+      "status": "PRESENT",
+      "id": "1792207695429a4vk8"
+    },
+    {
+      "status": "PRESENT",
+      "id": "17922076954297vjxd",
+      "technicianId": "60321",
+      "date": "2026-10-17"
+    },
+    {
+      "status": "PRESENT",
+      "date": "2026-10-17",
+      "id": "1792207695429xfey6",
+      "technicianId": "57208"
+    },
+    {
+      "id": "1792207695429uakvq",
+      "technicianId": "60578",
+      "date": "2026-10-17",
+      "status": "PRESENT"
+    },
+    {
+      "id": "1792207695429cn5y0",
+      "technicianId": "60586",
+      "date": "2026-10-17",
+      "status": "PRESENT"
+    },
+    {
+      "id": "1792207695429lnz34",
+      "technicianId": "60914",
+      "status": "PRESENT",
+      "date": "2026-10-17"
+    },
+    {
+      "technicianId": "61071",
+      "date": "2026-10-17",
+      "id": "1792207695429ls9bf",
+      "status": "PRESENT"
+    },
+    {
+      "status": "PRESENT",
+      "technicianId": "61650",
+      "id": "1792207695429d8omn",
+      "date": "2026-10-17"
+    },
+    {
+      "status": "PRESENT",
+      "id": "1792207695429iao0u",
+      "date": "2026-10-17",
+      "technicianId": "61674"
+    },
+    {
+      "id": "1792207695429gwk72",
+      "date": "2026-10-17",
+      "technicianId": "62193",
+      "status": "PRESENT"
+    },
+    {
+      "technicianId": "62536",
+      "id": "1792207695429on3f5",
+      "date": "2026-10-17",
+      "status": "PRESENT"
+    },
+    {
+      "status": "PRESENT",
+      "id": "17922076954294jlab",
+      "date": "2026-10-17",
+      "technicianId": "63089"
+    },
+    {
+      "date": "2026-10-17",
+      "status": "PRESENT",
+      "technicianId": "63107",
+      "id": "1792207695429c207r"
+    },
+    {
+      "date": "2026-10-17",
+      "technicianId": "63137",
+      "id": "1792207695429e1mvx",
+      "status": "PRESENT"
+    },
+    {
+      "date": "2026-10-17",
+      "id": "17922076954290mkwu",
+      "status": "PRESENT",
+      "technicianId": "63195"
+    },
+    {
+      "technicianId": "63513",
+      "date": "2026-10-17",
+      "status": "PRESENT",
+      "id": "17922076954302wxmv"
+    },
+    {
+      "id": "17922076954309mfin",
+      "technicianId": "65683",
+      "status": "PRESENT",
+      "date": "2026-10-17"
+    },
+    {
+      "date": "2026-10-17",
+      "status": "PRESENT",
+      "id": "1792207695430ycpso",
+      "technicianId": "63124"
+    },
+    {
+      "technicianId": "1007",
+      "date": "2026-10-17",
+      "id": "1792207695430ps1ud",
+      "status": "PRESENT"
+    },
+    {
+      "technicianId": "12467",
+      "date": "2026-10-17",
+      "status": "PRESENT",
+      "id": "17922076954307qfx3"
+    },
+    {
+      "date": "2026-10-17",
+      "id": "1792207695430pl82f",
+      "status": "PRESENT",
+      "technicianId": "69646"
+    },
+    {
+      "technicianId": "69695",
+      "status": "PRESENT",
+      "date": "2026-10-17",
+      "id": "1792207695430mftpu"
+    },
+    {
+      "status": "PRESENT",
+      "date": "2026-10-17",
+      "technicianId": "69810",
+      "id": "1792207695430vj3c5"
+    },
+    {
+      "technicianId": "45660",
+      "id": "179220769543090qmb",
+      "status": "PRESENT",
+      "date": "2026-10-17"
     }
   ],
   "notifications": [],
   "pointTransactions": [
     {
-      "id": "17919517584154po4r",
+      "id": "1792207719327ejfxc",
       "taskId": "1790588405245",
       "officerId": "1774775807698asgwa",
       "engineerId": "45213",
@@ -2409,7 +3345,7 @@
       "completedAt": "2026-09-29T05:13:00.000Z"
     },
     {
-      "id": "1791951758415yocmb",
+      "id": "1792207719327v865b",
       "taskId": "1790588469000",
       "officerId": "1774775807698asgwa",
       "engineerId": "45213",
@@ -2418,7 +3354,7 @@
       "completedAt": "2026-09-29T05:13:00.000Z"
     },
     {
-      "id": "1791951758415g6xr8",
+      "id": "1792207719328d2sbq",
       "taskId": "1790588587256",
       "officerId": "1774775807698asgwa",
       "engineerId": "45213",
@@ -2427,7 +3363,7 @@
       "completedAt": "2026-09-28T10:40:00.000Z"
     },
     {
-      "id": "1791951758415r6h0i",
+      "id": "179220771932839jjx",
       "taskId": "1790588839936",
       "officerId": "1774775807698asgwa",
       "engineerId": "45213",
@@ -2441,426 +3377,384 @@
   "activityLogs": [
     {
       "id": "1790847309198",
-      "userId": "1790847054373lufvs",
-      "employeeId": "jhfboss",
-      "name": "JHF Boss",
-      "role": "SUPER_ADMIN",
-      "loginTime": "2026-10-01T09:35:09.198Z",
-      "ipAddress": "127.0.0.1",
-      "browser": "Unknown",
-      "os": "Unknown",
       "deviceType": "Desktop",
-      "loginStatus": "FAILED",
+      "os": "Unknown",
+      "name": "JHF Boss",
+      "browser": "Unknown",
+      "ipAddress": "127.0.0.1",
+      "employeeId": "jhfboss",
+      "userId": "1790847054373lufvs",
       "failedAttemptCount": 1,
+      "loginTime": "2026-10-01T09:35:09.198Z",
+      "role": "SUPER_ADMIN",
+      "loginStatus": "FAILED",
       "createdAt": "2026-10-01T09:35:09.198Z"
     },
     {
-      "id": "1790847313220",
-      "userId": "1790847054373lufvs",
+      "deviceType": "Desktop",
       "employeeId": "jhfboss",
+      "ipAddress": "127.0.0.1",
+      "failedAttemptCount": 2,
+      "loginStatus": "FAILED",
       "name": "JHF Boss",
       "role": "SUPER_ADMIN",
+      "userId": "1790847054373lufvs",
       "loginTime": "2026-10-01T09:35:13.220Z",
-      "ipAddress": "127.0.0.1",
       "browser": "Unknown",
       "os": "Unknown",
-      "deviceType": "Desktop",
-      "loginStatus": "FAILED",
-      "failedAttemptCount": 2,
-      "createdAt": "2026-10-01T09:35:13.220Z"
+      "createdAt": "2026-10-01T09:35:13.220Z",
+      "id": "1790847313220"
     },
     {
-      "id": "1790847327301sxrjr",
-      "userId": "1790847054373lufvs",
-      "employeeId": "jhfboss",
-      "name": "JHF Boss",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
       "role": "SUPER_ADMIN",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "employeeId": "jhfboss",
+      "deviceType": "Desktop",
+      "loginStatus": "SUCCESS",
+      "createdAt": "2026-10-01T09:35:27.305Z",
       "loginTime": "2026-10-01T09:35:27.304Z",
-      "ipAddress": "127.0.0.1",
-      "browser": "Unknown",
       "os": "Unknown",
-      "deviceType": "Desktop",
-      "deviceName": "Unknown Device",
-      "platform": "Unknown",
-      "loginStatus": "SUCCESS",
-      "createdAt": "2026-10-01T09:35:27.305Z"
+      "id": "1790847327301sxrjr",
+      "name": "JHF Boss",
+      "userId": "1790847054373lufvs"
     },
     {
+      "browser": "Unknown",
+      "employeeId": "jhfboss",
+      "role": "SUPER_ADMIN",
+      "deviceType": "Desktop",
+      "deviceName": "Unknown Device",
+      "userId": "1790847054373lufvs",
+      "ipAddress": "127.0.0.1",
+      "os": "Unknown",
       "id": "1790847333187eezz6",
-      "userId": "1790847054373lufvs",
-      "employeeId": "jhfboss",
-      "name": "JHF Boss",
-      "role": "SUPER_ADMIN",
-      "loginTime": "2026-10-01T09:35:33.188Z",
-      "ipAddress": "127.0.0.1",
-      "browser": "Unknown",
-      "os": "Unknown",
-      "deviceType": "Desktop",
-      "deviceName": "Unknown Device",
+      "createdAt": "2026-10-01T09:35:33.188Z",
       "platform": "Unknown",
+      "name": "JHF Boss",
       "loginStatus": "SUCCESS",
-      "createdAt": "2026-10-01T09:35:33.188Z"
+      "loginTime": "2026-10-01T09:35:33.188Z"
     },
     {
-      "id": "179084784697607329",
-      "userId": "1790847054373lufvs",
-      "employeeId": "jhfboss",
       "name": "JHF Boss",
-      "role": "SUPER_ADMIN",
+      "createdAt": "2026-10-01T09:44:06.988Z",
+      "platform": "Unknown",
+      "deviceName": "Unknown Device",
       "loginTime": "2026-10-01T09:44:06.988Z",
+      "deviceType": "Desktop",
+      "employeeId": "jhfboss",
+      "loginStatus": "SUCCESS",
       "ipAddress": "127.0.0.1",
       "browser": "Unknown",
-      "os": "Unknown",
-      "deviceType": "Desktop",
-      "deviceName": "Unknown Device",
-      "platform": "Unknown",
-      "loginStatus": "SUCCESS",
-      "createdAt": "2026-10-01T09:44:06.988Z"
-    },
-    {
-      "id": "1790847847403otygh",
-      "userId": "1774775807698asgwa",
-      "employeeId": "38250",
-      "name": "Md. Jahid Hasan",
-      "role": "OFFICER",
-      "loginTime": "2026-10-01T09:44:07.404Z",
-      "ipAddress": "127.0.0.1",
-      "browser": "Unknown",
-      "os": "Unknown",
-      "deviceType": "Desktop",
-      "deviceName": "Unknown Device",
-      "platform": "Unknown",
-      "loginStatus": "SUCCESS",
-      "createdAt": "2026-10-01T09:44:07.404Z"
-    },
-    {
-      "id": "1790847868275gvjnz",
+      "id": "179084784697607329",
+      "role": "SUPER_ADMIN",
       "userId": "1790847054373lufvs",
-      "employeeId": "jhfboss",
-      "name": "JHF Boss",
-      "role": "SUPER_ADMIN",
-      "loginTime": "2026-10-01T09:44:28.277Z",
-      "ipAddress": "127.0.0.1",
-      "browser": "Unknown",
-      "os": "Unknown",
-      "deviceType": "Desktop",
-      "deviceName": "Unknown Device",
+      "os": "Unknown"
+    },
+    {
+      "loginStatus": "SUCCESS",
       "platform": "Unknown",
-      "loginStatus": "SUCCESS",
-      "createdAt": "2026-10-01T09:44:28.277Z"
-    },
-    {
-      "id": "1791950771953pt5zd",
-      "userId": "1774775754483iyriq",
-      "employeeId": "jhfboss",
-      "name": "JHF Boss",
-      "role": "SUPER_ADMIN",
-      "loginTime": "2026-10-14T04:06:11.956Z",
-      "ipAddress": "127.0.0.1",
-      "browser": "Unknown",
+      "id": "1790847847403otygh",
       "os": "Unknown",
-      "deviceType": "Desktop",
-      "deviceName": "Unknown Device",
-      "platform": "Unknown",
-      "loginStatus": "SUCCESS",
-      "createdAt": "2026-10-14T04:06:11.956Z"
-    },
-    {
-      "id": "1791951146056",
-      "userId": "1774775804446xjkgr",
-      "employeeId": "17668",
-      "name": "Abdul Aowal",
-      "role": "DHOD",
-      "loginTime": "2026-10-14T04:12:26.056Z",
       "ipAddress": "127.0.0.1",
-      "browser": "Unknown",
-      "os": "Unknown",
-      "deviceType": "Desktop",
-      "loginStatus": "FAILED",
-      "failedAttemptCount": 1,
-      "createdAt": "2026-10-14T04:12:26.056Z"
-    },
-    {
-      "id": "1791951160737",
-      "userId": "1774775804446xjkgr",
-      "employeeId": "17668",
-      "name": "Abdul Aowal",
-      "role": "DHOD",
-      "loginTime": "2026-10-14T04:12:40.737Z",
-      "ipAddress": "127.0.0.1",
-      "browser": "Unknown",
-      "os": "Unknown",
-      "deviceType": "Desktop",
-      "loginStatus": "FAILED",
-      "failedAttemptCount": 2,
-      "createdAt": "2026-10-14T04:12:40.737Z"
-    },
-    {
-      "id": "1791951183923shkzw",
-      "userId": "1774775804446xjkgr",
-      "employeeId": "17668",
-      "name": "Abdul Aowal",
-      "role": "DHOD",
-      "loginTime": "2026-10-14T04:13:03.923Z",
-      "ipAddress": "127.0.0.1",
-      "browser": "Unknown",
-      "os": "Unknown",
-      "deviceType": "Desktop",
-      "deviceName": "Unknown Device",
-      "platform": "Unknown",
-      "loginStatus": "SUCCESS",
-      "createdAt": "2026-10-14T04:13:03.924Z"
-    },
-    {
-      "id": "1791951759280lnpg9",
-      "userId": "1774775804541i25mj",
-      "employeeId": "19219",
-      "name": "Ariful Islam",
-      "role": "HOD",
-      "loginTime": "2026-10-14T04:22:39.284Z",
-      "ipAddress": "115.127.145.133",
-      "browser": "Chrome",
-      "os": "Windows",
-      "deviceType": "Desktop",
-      "deviceName": "Web-Client",
-      "platform": "Win32",
-      "loginStatus": "SUCCESS",
-      "createdAt": "2026-10-14T04:22:39.284Z",
-      "logoutTime": "2026-10-14T04:22:50.105Z",
-      "sessionDuration": "0m 10s"
-    },
-    {
-      "id": "1791951774581opysn",
-      "userId": "1774775807698asgwa",
-      "employeeId": "38250",
-      "name": "Md. Jahid Hasan",
       "role": "OFFICER",
-      "loginTime": "2026-10-14T04:22:54.582Z",
-      "ipAddress": "115.127.145.133",
-      "browser": "Chrome",
-      "os": "Windows",
-      "deviceType": "Desktop",
-      "deviceName": "Web-Client",
-      "platform": "Win32",
+      "browser": "Unknown",
+      "deviceName": "Unknown Device",
+      "name": "Md. Jahid Hasan",
+      "createdAt": "2026-10-01T09:44:07.404Z",
+      "userId": "1774775807698asgwa",
+      "loginTime": "2026-10-01T09:44:07.404Z",
+      "employeeId": "38250",
+      "deviceType": "Desktop"
+    },
+    {
+      "name": "JHF Boss",
+      "ipAddress": "127.0.0.1",
+      "platform": "Unknown",
+      "userId": "1790847054373lufvs",
+      "deviceName": "Unknown Device",
+      "browser": "Unknown",
+      "createdAt": "2026-10-01T09:44:28.277Z",
+      "role": "SUPER_ADMIN",
+      "employeeId": "jhfboss",
       "loginStatus": "SUCCESS",
+      "os": "Unknown",
+      "deviceType": "Desktop",
+      "id": "1790847868275gvjnz",
+      "loginTime": "2026-10-01T09:44:28.277Z"
+    },
+    {
+      "name": "JHF Boss",
+      "ipAddress": "127.0.0.1",
+      "loginStatus": "SUCCESS",
+      "userId": "1774775754483iyriq",
+      "deviceType": "Desktop",
+      "browser": "Unknown",
+      "employeeId": "jhfboss",
+      "os": "Unknown",
+      "id": "1791950771953pt5zd",
+      "loginTime": "2026-10-14T04:06:11.956Z",
+      "platform": "Unknown",
+      "createdAt": "2026-10-14T04:06:11.956Z",
+      "deviceName": "Unknown Device",
+      "role": "SUPER_ADMIN"
+    },
+    {
+      "employeeId": "17668",
+      "deviceType": "Desktop",
+      "loginStatus": "FAILED",
+      "role": "DHOD",
+      "ipAddress": "127.0.0.1",
+      "os": "Unknown",
+      "id": "1791951146056",
+      "browser": "Unknown",
+      "createdAt": "2026-10-14T04:12:26.056Z",
+      "name": "Abdul Aowal",
+      "userId": "1774775804446xjkgr",
+      "failedAttemptCount": 1,
+      "loginTime": "2026-10-14T04:12:26.056Z"
+    },
+    {
+      "name": "Abdul Aowal",
+      "ipAddress": "127.0.0.1",
+      "employeeId": "17668",
+      "deviceType": "Desktop",
+      "id": "1791951160737",
+      "loginStatus": "FAILED",
+      "createdAt": "2026-10-14T04:12:40.737Z",
+      "os": "Unknown",
+      "loginTime": "2026-10-14T04:12:40.737Z",
+      "browser": "Unknown",
+      "userId": "1774775804446xjkgr",
+      "failedAttemptCount": 2,
+      "role": "DHOD"
+    },
+    {
+      "loginStatus": "SUCCESS",
+      "platform": "Unknown",
+      "browser": "Unknown",
+      "userId": "1774775804446xjkgr",
+      "name": "Abdul Aowal",
+      "ipAddress": "127.0.0.1",
+      "deviceName": "Unknown Device",
+      "role": "DHOD",
+      "createdAt": "2026-10-14T04:13:03.924Z",
+      "employeeId": "17668",
+      "id": "1791951183923shkzw",
+      "deviceType": "Desktop",
+      "loginTime": "2026-10-14T04:13:03.923Z",
+      "os": "Unknown"
+    },
+    {
+      "loginTime": "2026-10-14T04:22:39.284Z",
+      "platform": "Win32",
+      "logoutTime": "2026-10-14T04:22:50.105Z",
+      "role": "HOD",
+      "browser": "Chrome",
+      "id": "1791951759280lnpg9",
+      "os": "Windows",
+      "createdAt": "2026-10-14T04:22:39.284Z",
+      "userId": "1774775804541i25mj",
+      "name": "Ariful Islam",
+      "sessionDuration": "0m 10s",
+      "deviceName": "Web-Client",
+      "ipAddress": "115.127.145.133",
+      "loginStatus": "SUCCESS",
+      "deviceType": "Desktop",
+      "employeeId": "19219"
+    },
+    {
+      "employeeId": "38250",
+      "browser": "Chrome",
+      "deviceType": "Desktop",
+      "ipAddress": "115.127.145.133",
+      "os": "Windows",
+      "role": "OFFICER",
+      "id": "1791951774581opysn",
+      "deviceName": "Web-Client",
+      "sessionDuration": "1m 23s",
+      "platform": "Win32",
       "createdAt": "2026-10-14T04:22:54.582Z",
       "logoutTime": "2026-10-14T04:24:17.764Z",
-      "sessionDuration": "1m 23s"
+      "name": "Md. Jahid Hasan",
+      "loginTime": "2026-10-14T04:22:54.582Z",
+      "userId": "1774775807698asgwa",
+      "loginStatus": "SUCCESS"
+    },
+    {
+      "ipAddress": "115.127.145.133",
+      "logoutTime": "2026-10-15T11:37:27.189Z",
+      "name": "JHF Boss",
+      "browser": "Chrome",
+      "loginStatus": "SUCCESS",
+      "deviceType": "Desktop",
+      "loginTime": "2026-10-15T11:31:08.226Z",
+      "sessionDuration": "6m 18s",
+      "platform": "Windows",
+      "role": "SUPER_ADMIN",
+      "employeeId": "jhfboss",
+      "createdAt": "2026-10-15T11:31:08.226Z",
+      "id": "17920634077112yhcn",
+      "deviceName": "Unknown Device",
+      "os": "Windows",
+      "userId": "1774775754483iyriq"
+    },
+    {
+      "ipAddress": "127.0.0.1",
+      "deviceType": "Desktop",
+      "employeeId": "38250",
+      "name": "Md. Jahid Hasan",
+      "loginStatus": "FAILED",
+      "browser": "Unknown",
+      "id": "1792063889983",
+      "os": "Unknown",
+      "loginTime": "2026-10-15T11:31:29.983Z",
+      "role": "OFFICER",
+      "createdAt": "2026-10-15T11:31:29.983Z",
+      "failedAttemptCount": 1,
+      "userId": "1774775807698asgwa"
+    },
+    {
+      "deviceName": "Web-Client",
+      "userId": "1774775754483iyriq",
+      "createdAt": "2026-10-17T03:28:11.606Z",
+      "employeeId": "jhfboss",
+      "role": "SUPER_ADMIN",
+      "loginTime": "2026-10-17T03:28:11.606Z",
+      "deviceType": "Desktop",
+      "browser": "Chrome",
+      "name": "JHF Boss",
+      "loginStatus": "SUCCESS",
+      "id": "1792207691601p5vjd",
+      "os": "Windows",
+      "platform": "Win32",
+      "ipAddress": "115.127.145.133"
+    },
+    {
+      "id": "1792207734221hlhda",
+      "userId": "1774775807698asgwa",
+      "employeeId": "38250",
+      "name": "Md. Jahid Hasan",
+      "role": "OFFICER",
+      "loginTime": "2026-10-17T03:28:54.226Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceType": "Desktop",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "loginStatus": "SUCCESS",
+      "createdAt": "2026-10-17T03:28:54.226Z"
+    },
+    {
+      "id": "1792207800886ytzty",
+      "userId": "1774775807698asgwa",
+      "employeeId": "38250",
+      "name": "Md. Jahid Hasan",
+      "role": "OFFICER",
+      "loginTime": "2026-10-17T03:30:00.887Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceType": "Desktop",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "loginStatus": "SUCCESS",
+      "createdAt": "2026-10-17T03:30:00.887Z"
+    },
+    {
+      "id": "1792207859672uyri6",
+      "userId": "1774775807698asgwa",
+      "employeeId": "38250",
+      "name": "Md. Jahid Hasan",
+      "role": "OFFICER",
+      "loginTime": "2026-10-17T03:30:59.673Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceType": "Desktop",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "loginStatus": "SUCCESS",
+      "createdAt": "2026-10-17T03:30:59.673Z"
     }
   ],
   "adminAuditLogs": [
     {
+      "ipAddress": "0.0.0.0",
+      "timestamp": "2026-10-01T09:44:08.732Z",
       "id": "1790847848732bhqso",
       "adminId": "1774775807698asgwa",
       "adminName": "Md. Jahid Hasan",
       "actionType": "TASK_DELETED",
-      "targetTask": "1790847847551",
-      "timestamp": "2026-10-01T09:44:08.732Z",
-      "ipAddress": "0.0.0.0",
-      "details": "Deleted task AC Compressor Inspection #1790847847543 (20261001-944-590)"
+      "details": "Deleted task AC Compressor Inspection #1790847847543 (20261001-944-590)",
+      "targetTask": "1790847847551"
     },
     {
+      "details": "Deleted task Test Task 1790847333209 (20261001-935-701)",
       "id": "17908478683596fzw6",
-      "adminId": "1790847054373lufvs",
       "adminName": "JHF Boss",
-      "actionType": "TASK_DELETED",
       "targetTask": "1790847333216",
-      "timestamp": "2026-10-01T09:44:28.359Z",
       "ipAddress": "0.0.0.0",
-      "details": "Deleted task Test Task 1790847333209 (20261001-935-701)"
+      "timestamp": "2026-10-01T09:44:28.359Z",
+      "adminId": "1790847054373lufvs",
+      "actionType": "TASK_DELETED"
     }
   ],
   "userSessions": [
     {
-      "id": "1790847327301sxrjr",
-      "userId": "1790847054373lufvs",
-      "employeeId": "jhfboss",
-      "loginTime": "2026-10-01T09:35:27.304Z",
-      "ipAddress": "127.0.0.1",
-      "browser": "Unknown",
-      "os": "Unknown",
-      "deviceHash": "MTI3LjAuMC4xLW5vZGUtVW5rbm93biBEZXZpY2U=",
-      "deviceName": "Unknown Device",
-      "platform": "Unknown",
-      "active": true,
-      "lastActivity": "2026-10-01T09:35:27.305Z"
-    },
-    {
-      "id": "1790847333187eezz6",
-      "userId": "1790847054373lufvs",
-      "employeeId": "jhfboss",
-      "loginTime": "2026-10-01T09:35:33.188Z",
-      "ipAddress": "127.0.0.1",
-      "browser": "Unknown",
-      "os": "Unknown",
-      "deviceHash": "MTI3LjAuMC4xLW5vZGUtVW5rbm93biBEZXZpY2U=",
-      "deviceName": "Unknown Device",
-      "platform": "Unknown",
-      "active": true,
-      "lastActivity": "2026-10-01T09:35:33.215Z"
-    },
-    {
-      "id": "179084784697607329",
-      "userId": "1790847054373lufvs",
-      "employeeId": "jhfboss",
-      "loginTime": "2026-10-01T09:44:06.988Z",
-      "ipAddress": "127.0.0.1",
-      "browser": "Unknown",
-      "os": "Unknown",
-      "deviceHash": "MTI3LjAuMC4xLW5vZGUtVW5rbm93biBEZXZpY2U=",
-      "deviceName": "Unknown Device",
-      "platform": "Unknown",
-      "active": true,
-      "lastActivity": "2026-10-01T09:44:10.010Z"
-    },
-    {
-      "id": "1790847847403otygh",
+      "id": "1792207734221hlhda",
       "userId": "1774775807698asgwa",
       "employeeId": "38250",
-      "loginTime": "2026-10-01T09:44:07.404Z",
+      "loginTime": "2026-10-17T03:28:54.226Z",
       "ipAddress": "127.0.0.1",
       "browser": "Unknown",
       "os": "Unknown",
-      "deviceHash": "MTI3LjAuMC4xLW5vZGUtVW5rbm93biBEZXZpY2U=",
+      "deviceHash": "MTI3LjAuMC4xLWN1cmwvNy44OC4xLVVua25vd24gRGV2aWNl",
       "deviceName": "Unknown Device",
       "platform": "Unknown",
       "active": true,
-      "lastActivity": "2026-10-01T09:44:08.731Z"
+      "lastActivity": "2026-10-17T03:28:54.226Z"
     },
     {
-      "id": "1790847868275gvjnz",
-      "userId": "1790847054373lufvs",
-      "employeeId": "jhfboss",
-      "loginTime": "2026-10-01T09:44:28.277Z",
-      "ipAddress": "127.0.0.1",
-      "browser": "Unknown",
-      "os": "Unknown",
-      "deviceHash": "MTI3LjAuMC4xLW5vZGUtVW5rbm93biBEZXZpY2U=",
-      "deviceName": "Unknown Device",
-      "platform": "Unknown",
-      "active": true,
-      "lastActivity": "2026-10-01T09:44:28.357Z"
-    },
-    {
-      "id": "1791950771953pt5zd",
-      "userId": "1774775754483iyriq",
-      "employeeId": "jhfboss",
-      "loginTime": "2026-10-14T04:06:11.956Z",
-      "ipAddress": "127.0.0.1",
-      "browser": "Unknown",
-      "os": "Unknown",
-      "deviceHash": "MTI3LjAuMC4xLVVua25vd24tVW5rbm93biBEZXZpY2U=",
-      "deviceName": "Unknown Device",
-      "platform": "Unknown",
-      "active": true,
-      "lastActivity": "2026-10-14T04:06:12.233Z"
-    },
-    {
-      "id": "1791951183923shkzw",
-      "userId": "1774775804446xjkgr",
-      "employeeId": "17668",
-      "loginTime": "2026-10-14T04:13:03.923Z",
-      "ipAddress": "127.0.0.1",
-      "browser": "Unknown",
-      "os": "Unknown",
-      "deviceHash": "MTI3LjAuMC4xLW5vZGUtVW5rbm93biBEZXZpY2U=",
-      "deviceName": "Unknown Device",
-      "platform": "Unknown",
-      "active": true,
-      "lastActivity": "2026-10-14T04:13:04.076Z"
-    },
-    {
-      "id": "1791951759280lnpg9",
-      "userId": "1774775804541i25mj",
-      "employeeId": "19219",
-      "loginTime": "2026-10-14T04:22:39.284Z",
-      "ipAddress": "115.127.145.133",
-      "browser": "Chrome",
-      "os": "Windows",
-      "deviceHash": "MTE1LjEyNy4xNDUuMTMzLU1vemlsbGEvNS4wIChXaW5kb3dzIE5UIDEwLjA7IFdpbjY0OyB4NjQpIEFwcGxlV2ViS2l0LzUzNy4zNiAoS0hUTUwsIGxpa2UgR2Vja28pIENocm9tZS8xNTUuMC4wLjAgU2FmYXJpLzUzNy4zNi1XZWItQ2xpZW50",
-      "deviceName": "Web-Client",
-      "platform": "Win32",
-      "active": false,
-      "lastActivity": "2026-10-14T04:22:50.104Z",
-      "logoutTime": "2026-10-14T04:22:50.105Z",
-      "logoutReason": "USER_LOGOUT"
-    },
-    {
-      "id": "1791951774581opysn",
+      "id": "1792207800886ytzty",
       "userId": "1774775807698asgwa",
       "employeeId": "38250",
-      "loginTime": "2026-10-14T04:22:54.582Z",
-      "ipAddress": "115.127.145.133",
-      "browser": "Chrome",
-      "os": "Windows",
-      "deviceHash": "MTE1LjEyNy4xNDUuMTMzLU1vemlsbGEvNS4wIChXaW5kb3dzIE5UIDEwLjA7IFdpbjY0OyB4NjQpIEFwcGxlV2ViS2l0LzUzNy4zNiAoS0hUTUwsIGxpa2UgR2Vja28pIENocm9tZS8xNTUuMC4wLjAgU2FmYXJpLzUzNy4zNi1XZWItQ2xpZW50",
-      "deviceName": "Web-Client",
-      "platform": "Win32",
-      "active": false,
-      "lastActivity": "2026-10-14T04:24:17.764Z",
-      "logoutTime": "2026-10-14T04:24:17.764Z",
-      "logoutReason": "USER_LOGOUT"
+      "loginTime": "2026-10-17T03:30:00.887Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceHash": "MTI3LjAuMC4xLW5vZGUtVW5rbm93biBEZXZpY2U=",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "active": true,
+      "lastActivity": "2026-10-17T03:30:00.887Z"
+    },
+    {
+      "id": "1792207859672uyri6",
+      "userId": "1774775807698asgwa",
+      "employeeId": "38250",
+      "loginTime": "2026-10-17T03:30:59.673Z",
+      "ipAddress": "127.0.0.1",
+      "browser": "Unknown",
+      "os": "Unknown",
+      "deviceHash": "MTI3LjAuMC4xLW5vZGUtVW5rbm93biBEZXZpY2U=",
+      "deviceName": "Unknown Device",
+      "platform": "Unknown",
+      "active": true,
+      "lastActivity": "2026-10-17T03:30:59.673Z"
     }
   ],
-  "failedLoginAttempts": [
-    {
-      "id": "1790847309198",
-      "employeeId": "jhfboss",
-      "ipAddress": "127.0.0.1",
-      "browser": "Unknown",
-      "os": "Unknown",
-      "timestamp": "2026-10-01T09:35:13.220Z",
-      "attemptCount": 0,
-      "isLocked": false
-    },
-    {
-      "id": "1790847324549",
-      "employeeId": "38250",
-      "ipAddress": "115.127.145.138",
-      "browser": "Chrome",
-      "os": "Windows",
-      "timestamp": "2026-10-01T09:35:24.549Z",
-      "attemptCount": 0,
-      "isLocked": false
-    },
-    {
-      "id": "1790847331144",
-      "employeeId": "45213",
-      "ipAddress": "115.127.145.138",
-      "browser": "Chrome",
-      "os": "Windows",
-      "timestamp": "2026-10-01T09:35:31.144Z",
-      "attemptCount": 1,
-      "isLocked": false
-    },
-    {
-      "id": "1790847453767",
-      "employeeId": "38250",
-      "ipAddress": "127.0.0.1",
-      "browser": "Unknown",
-      "os": "Unknown",
-      "timestamp": "2026-10-01T09:37:33.767Z",
-      "attemptCount": 1,
-      "isLocked": false
-    },
-    {
-      "id": "1791951146055",
-      "employeeId": "17668",
-      "ipAddress": "127.0.0.1",
-      "browser": "Unknown",
-      "os": "Unknown",
-      "timestamp": "2026-10-14T04:12:40.737Z",
-      "attemptCount": 0,
-      "isLocked": false
-    }
-  ],
+  "failedLoginAttempts": [],
   "lockedDevices": [],
   "autoBackupSettings": {
     "enabled": true,
-    "intervalMinutes": 60,
-    "lastBackupTime": "2026-10-14T04:22:41.085Z",
-    "nextBackupTime": "2026-10-14T05:22:41.085Z",
-    "retentionCount": 72
+    "intervalMinutes": 5,
+    "lastBackupTime": "2026-10-17T03:28:41.778Z",
+    "nextBackupTime": "2026-10-17T03:33:41.778Z",
+    "retentionCount": 5000
   },
-  "lastSavedAt": "2026-10-14T04:27:36.086Z"
+  "lastSavedAt": "2026-10-17T03:30:59.674Z"
 }

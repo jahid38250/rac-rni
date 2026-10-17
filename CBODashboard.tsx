@@ -1048,7 +1048,7 @@ export const CBODashboard: React.FC<CBODashboardProps> = ({
                   else if (attendanceStatus === 'SHORT_LEAVE') badgeColor = "text-purple-400 bg-purple-500/10 border-purple-500/20";
 
                   return (
-                    <tr key={person.id} className="hover:bg-white/5 transition-colors">
+                    <tr key={person.id} className="hover:bg-white/5 transition-colors group">
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 rounded-full bg-blue-600/20 border border-blue-500/30 flex items-center justify-center font-bold text-blue-300 text-xs">
@@ -1067,13 +1067,43 @@ export const CBODashboard: React.FC<CBODashboardProps> = ({
                       </td>
 
                       <td className="py-3.5 px-3">
-                        {person.role === 'TECHNICIAN' ? (
-                          <span className="text-slate-500 text-[11px] font-mono" title="Technician attendance managed by Officers">—</span>
-                        ) : (
-                          <span className={cn("px-2 py-0.5 rounded-md border text-[10px] font-bold", badgeColor)}>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={cn("px-2 py-0.5 rounded-md border text-[10px] font-bold uppercase", badgeColor)}>
                             {attendanceStatus}
                           </span>
-                        )}
+                          {onUpdateAttendance && (
+                            <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); onUpdateAttendance(person.employeeId, 'PRESENT'); }}
+                                title="Mark Present"
+                                className={cn("px-1.5 py-0.5 rounded text-[9px] font-bold transition-all cursor-pointer", attendanceStatus === 'PRESENT' ? "bg-emerald-500 text-white" : "bg-white/10 hover:bg-emerald-500/30 text-slate-300")}
+                              >
+                                P
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); onUpdateAttendance(person.employeeId, 'LEAVE'); }}
+                                title="Mark Leave"
+                                className={cn("px-1.5 py-0.5 rounded text-[9px] font-bold transition-all cursor-pointer", attendanceStatus === 'LEAVE' ? "bg-amber-500 text-white" : "bg-white/10 hover:bg-amber-500/30 text-slate-300")}
+                              >
+                                L
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); onUpdateAttendance(person.employeeId, 'SHORT_LEAVE'); }}
+                                title="Mark Short-Leave"
+                                className={cn("px-1.5 py-0.5 rounded text-[9px] font-bold transition-all cursor-pointer", attendanceStatus === 'SHORT_LEAVE' ? "bg-purple-500 text-white" : "bg-white/10 hover:bg-purple-500/30 text-slate-300")}
+                              >
+                                SL
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); onUpdateAttendance(person.employeeId, 'ABSENT'); }}
+                                title="Mark Absent"
+                                className={cn("px-1.5 py-0.5 rounded text-[9px] font-bold transition-all cursor-pointer", attendanceStatus === 'ABSENT' ? "bg-rose-500 text-white" : "bg-white/10 hover:bg-rose-500/30 text-slate-300")}
+                              >
+                                A
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </td>
 
                       <td className="py-3.5 px-3 text-right font-mono font-medium tabular-nums text-white">
