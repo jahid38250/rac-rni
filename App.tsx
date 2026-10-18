@@ -90,7 +90,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { cn } from './utils';
-import { Role, User, Task, Attendance, TaskLog, TaskStatus, PointTransaction, TechnicianPerformance } from './types';
+import { Role, Urgency, User, Task, Attendance, TaskLog, TaskStatus, PointTransaction, TechnicianPerformance } from './types';
 import { toast, Toaster } from 'sonner';
 import { ExecutiveCommandCenter } from './ExecutiveCommandCenter';
 
@@ -1660,34 +1660,34 @@ export default function App() {
     }
 
     const token = localStorage.getItem('token');
-    try {
-      const res = await fetchJson(`/api/admin/tasks/${taskId}/points`, {
-        method: 'PUT',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ newPoints: pointsNum })
-      });
+    if (!token) return;
 
-      if (res.success) {
-        toast.success('Task points updated successfully');
-        // Refresh data
-        const updatedTasks = await fetchJson('/api/tasks', { headers: { 'Authorization': `Bearer ${token}` } });
-        setTasks(updatedTasks);
-        const updatedPoints = await fetchJson('/api/points', { headers: { 'Authorization': `Bearer ${token}` } });
-        setPointTransactions(updatedPoints);
-        const updatedUsers = await fetchJson('/api/users', { headers: { 'Authorization': `Bearer ${token}` } });
-        setStaffList(updatedUsers);
+    // Optimistically update task points in state immediately
+    setTasks(prev => prev.map(t => (t.id === taskId || t.taskId === taskId) ? { ...t, points: pointsNum } : t));
+    toast.success('Task points updated successfully');
 
-        if (viewingStaff) {
-          const updated = updatedUsers.find((u: any) => u.id === viewingStaff.id);
-          if (updated) setViewingStaff(updated);
+    (async () => {
+      try {
+        const res = await fetchJson(`/api/admin/tasks/${taskId}/points`, {
+          method: 'PUT',
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ newPoints: pointsNum })
+        });
+
+        if (res.success) {
+          Promise.allSettled([
+            fetchPoints(token),
+            fetchStaff(token)
+          ]);
         }
+      } catch (err: any) {
+        toast.error(err.message || 'Failed to sync task points');
+        fetchTasks(token, true);
       }
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to update task points');
-    }
+    })();
   };
 
   const getValidOfficerPoints = (officerId: string, monthOnly: boolean = false) => {
@@ -2442,7 +2442,7 @@ export default function App() {
       const method = editingStaff ? 'PUT' : 'POST';
       
       let staffData = { ...newStaff };
-      if (staffData.phone && !staffData.phone.startsWith('0') && /^\d+$/.test(staffData.phone)) {
+      if (staffData.phone && typeof staffData.phone === 'string' && !staffData.phone.startsWith('0') && /^\d+$/.test(staffData.phone)) {
         staffData.phone = '0' + staffData.phone;
       }
 
@@ -3381,7 +3381,7 @@ export default function App() {
         (t.workType === 'TEAM' && t.assignedTechnicians?.some(at => at.employeeId === technician.employeeId));
       // Sync with Running Work: Include all RUNNING tasks + any non-completed tasks for today
       const isRunning = t.status === 'RUNNING';
-      const isForToday = t.deadline.startsWith(today);
+      const isForToday = Boolean(typeof t?.deadline === 'string' && t.deadline.startsWith(today));
       return isAssigned && t.status !== 'COMPLETED' && (isRunning || isForToday);
     });
     
@@ -3406,9 +3406,9 @@ export default function App() {
     let phone = technician.phone || '';
     // Clean phone number
     phone = phone.replace(/\D/g, '');
-    if (phone.startsWith('0')) {
+    if (typeof phone === 'string' && phone.startsWith('0')) {
       phone = '88' + phone;
-    } else if (phone && !phone.startsWith('88')) {
+    } else if (typeof phone === 'string' && phone && !phone.startsWith('88')) {
       phone = '88' + phone;
     }
     
@@ -3426,58 +3426,83 @@ export default function App() {
   };
 
   const handleApproveRequest = async (taskId: string, points?: number, engineer_deadline?: string) => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`/api/tasks/${taskId}/approve`, {
-        method: 'PUT',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ points, engineer_deadline })
-      });
-      if (handleAuthError(response)) {
-        throw new Error('Session expired or invalid. Please log in again.');
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    // Optimistically approve immediately
+    setTasks(prev => prev.map(t => t.id === taskId ? { 
+      ...t, 
+      requestStatus: user?.role === 'ENGINEER' ? 'APPROVED' : 'RECOMMENDED',
+      status: user?.role === 'ENGINEER' ? 'RUNNING' : t.status,
+      points: points !== undefined ? points : t.points
+    } : t));
+    toast.success('Task request approved successfully');
+
+    (async () => {
+      try {
+        const response = await fetch(`/api/tasks/${taskId}/approve`, {
+          method: 'PUT',
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ points, engineer_deadline })
+        });
+        if (handleAuthError(response)) {
+          throw new Error('Session expired or invalid. Please log in again.');
+        }
+        if (response.ok) {
+          Promise.allSettled([
+            fetchStaff(token),
+            fetchPoints(token)
+          ]);
+        } else {
+          const data = await response.json();
+          toast.error(data.error || 'Failed to approve request');
+          fetchTasks(token, true);
+        }
+      } catch (error) {
+        toast.error('Error approving request on server');
+        fetchTasks(token, true);
       }
-      if (response.ok) {
-        toast.success('Task request approved successfully');
-        fetchTasks(token!);
-        fetchStaff(token!);
-        fetchPoints(token!);
-      } else {
-        const data = await response.json();
-        toast.error(data.error || 'Failed to approve request');
-      }
-    } catch (error) {
-      toast.error('Error approving request');
-    }
+    })();
   };
 
   const handleRejectRequest = async (taskId: string, remarks: string) => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`/api/tasks/${taskId}/reject`, {
-        method: 'POST',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ remarks })
-      });
-      if (handleAuthError(response)) {
-        throw new Error('Session expired or invalid. Please log in again.');
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    // Optimistically reject immediately
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, requestStatus: 'REJECTED' } : t));
+    toast.success('Task request rejected');
+
+    (async () => {
+      try {
+        const response = await fetch(`/api/tasks/${taskId}/reject`, {
+          method: 'POST',
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ remarks })
+        });
+        if (handleAuthError(response)) {
+          throw new Error('Session expired or invalid. Please log in again.');
+        }
+        if (response.ok) {
+          Promise.allSettled([
+            fetchStaff(token),
+            fetchPoints(token)
+          ]);
+        } else {
+          toast.error('Failed to reject request');
+          fetchTasks(token, true);
+        }
+      } catch (error) {
+        toast.error('Error rejecting request on server');
+        fetchTasks(token, true);
       }
-      if (response.ok) {
-        toast.success('Task request rejected');
-        fetchTasks(token!);
-        fetchStaff(token!);
-        fetchPoints(token!);
-      } else {
-        toast.error('Failed to reject request');
-      }
-    } catch (error) {
-      toast.error('Error rejecting request');
-    }
+    })();
   };
 
   const isTaskRequestedForMe = (t: Task) => {
@@ -3611,67 +3636,84 @@ export default function App() {
       return;
     }
 
-    setIsLoading(true);
-    try {
-      const token = localStorage.getItem('token');
-      const normalizedCompletionTime = statusUpdateData.actualCompletionTime
-        ? (!isNaN(new Date(statusUpdateData.actualCompletionTime).getTime())
-            ? new Date(statusUpdateData.actualCompletionTime).toISOString()
-            : statusUpdateData.actualCompletionTime)
-        : '';
-      const isHold = statusUpdateData.status === 'HOLD';
-      const wasHold = statusUpdateTask.status === 'HOLD';
-      const isResuming = wasHold && statusUpdateData.status !== 'HOLD';
+    const token = localStorage.getItem('token');
+    if (!token) return;
 
-      const payload: any = {
-        status: statusUpdateData.status,
-        progress: statusUpdateData.progress,
-        remarks: statusUpdateData.remarks,
-        actualCompletionTime: normalizedCompletionTime,
-        logs: [
-          ...(statusUpdateTask.logs || []),
-          {
-            id: Date.now().toString(),
-            action: isHold
-              ? `Task placed on Temporary Hold (Reason: ${statusUpdateData.remarks})`
-              : isResuming
-                ? `Task resumed to ${statusUpdateData.status} (${statusUpdateData.progress}%)`
-                : `Status updated to ${statusUpdateData.status} (${statusUpdateData.progress}%)`,
-            timestamp: new Date().toISOString(),
-            user: user?.name || 'System'
-          }
-        ]
-      };
+    const normalizedCompletionTime = statusUpdateData.actualCompletionTime
+      ? (!isNaN(new Date(statusUpdateData.actualCompletionTime).getTime())
+          ? new Date(statusUpdateData.actualCompletionTime).toISOString()
+          : statusUpdateData.actualCompletionTime)
+      : '';
+    const isHold = statusUpdateData.status === 'HOLD';
+    const wasHold = statusUpdateTask.status === 'HOLD';
+    const isResuming = wasHold && statusUpdateData.status !== 'HOLD';
 
-      if (isHold) {
-        payload.currentHoldStartTime = statusUpdateTask.currentHoldStartTime || new Date().toISOString();
-      }
+    const payload: any = {
+      status: statusUpdateData.status,
+      progress: statusUpdateData.progress,
+      remarks: statusUpdateData.remarks,
+      actualCompletionTime: normalizedCompletionTime,
+      logs: [
+        ...(statusUpdateTask.logs || []),
+        {
+          id: Date.now().toString(),
+          action: isHold
+            ? `Task placed on Temporary Hold (Reason: ${statusUpdateData.remarks})`
+            : isResuming
+              ? `Task resumed to ${statusUpdateData.status} (${statusUpdateData.progress}%)`
+              : `Status updated to ${statusUpdateData.status} (${statusUpdateData.progress}%)`,
+          timestamp: new Date().toISOString(),
+          user: user?.name || 'System'
+        }
+      ]
+    };
 
-      const data = await fetchJson(`/api/tasks/${statusUpdateTask.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(payload)
-      });
-      
-      const token2 = localStorage.getItem('token');
-      if (token2) {
-        await fetchTasks(token2);
-        await fetchStaff(token2);
-        await fetchPoints(token2);
-      }
-      toast.success(isHold ? 'Task placed on Temporary Hold (Timer frozen)' : isResuming ? 'Task resumed successfully' : 'Task status updated successfully');
-      setIsStatusUpdateModalOpen(false);
-      setStatusUpdateTask(null);
-      setStatusUpdateData({ progress: 0, status: 'RUNNING', remarks: '', actualCompletionTime: '' });
-    } catch (err) {
-      console.error('Status update error:', err);
-      toast.error(err instanceof Error ? err.message : 'Error updating task status');
-    } finally {
-      setIsLoading(false);
+    if (isHold) {
+      payload.currentHoldStartTime = statusUpdateTask.currentHoldStartTime || new Date().toISOString();
     }
+
+    const targetId = statusUpdateTask.id;
+    const optimisticTask: Task = {
+      ...statusUpdateTask,
+      ...payload
+    };
+
+    // Instant UI Response: close modal and update task immediately
+    setTasks(prev => prev.map(t => t.id === targetId ? optimisticTask : t));
+    if (selectedTask?.id === targetId) {
+      setSelectedTask(optimisticTask);
+    }
+    toast.success(isHold ? 'Task placed on Temporary Hold (Timer frozen)' : isResuming ? 'Task resumed successfully' : 'Task status updated successfully');
+    setIsStatusUpdateModalOpen(false);
+    setStatusUpdateTask(null);
+    setStatusUpdateData({ progress: 0, status: 'RUNNING', remarks: '', actualCompletionTime: '' });
+    setIsLoading(false);
+
+    // Background Async Sync
+    (async () => {
+      try {
+        const data = await fetchJson(`/api/tasks/${targetId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(payload)
+        });
+        if (data && data.id) {
+          setTasks(prev => prev.map(t => t.id === targetId ? data : t));
+          if (selectedTask?.id === targetId) setSelectedTask(data);
+        }
+        Promise.allSettled([
+          fetchStaff(token),
+          fetchPoints(token)
+        ]);
+      } catch (err: any) {
+        console.error('Status update background error:', err);
+        toast.error(err instanceof Error ? err.message : 'Error updating task status on server');
+        fetchTasks(token, true);
+      }
+    })();
   };
 
   const formatDateForInput = (dateStr: string | undefined, type: 'date' | 'datetime-local') => {
@@ -3770,137 +3812,172 @@ export default function App() {
       return;
     }
 
-    setIsLoading(true);
-    try {
-      const token = localStorage.getItem('token');
-      const url = editingTask ? `/api/tasks/${editingTask.id}` : '/api/tasks';
-      const method = editingTask ? 'PUT' : 'POST';
-      
-      const finalAssignedTo = newTask.assignedTo;
+    const token = localStorage.getItem('token');
+    const isEditing = Boolean(editingTask);
+    const targetTaskId = editingTask?.id;
+    const prevTasks = [...tasks];
+    const clientTimestamp = new Date().toISOString();
+    let tempTaskId = '';
 
-      const finalWorkType = user?.role === 'ENGINEER' ? 'SINGLE' : newTask.workType;
+    const url = editingTask ? `/api/tasks/${editingTask.id}` : '/api/tasks';
+    const method = editingTask ? 'PUT' : 'POST';
+    const finalAssignedTo = newTask.assignedTo;
+    const finalWorkType = user?.role === 'ENGINEER' ? 'SINGLE' : newTask.workType;
 
-      const hasOtherTeamTech = finalWorkType === 'TEAM' && selectedTechs.some((at: any) => {
-        const tech = staffList.find(s => s.employeeId === at.employeeId);
-        return tech && tech.supervisorId !== user?.id;
-      });
+    const normalizedCustomStartTime = newTask.customStartTime
+      ? (!isNaN(new Date(newTask.customStartTime).getTime())
+          ? new Date(newTask.customStartTime).toISOString()
+          : newTask.customStartTime)
+      : '';
 
-      const isAuthorizedOfficer = user?.role === 'OFFICER' && user?.employeeId === '42949';
-      const isEngineer = user?.role === 'ENGINEER';
+    const payload = editingTask ? {
+      ...newTask,
+      customStartTime: normalizedCustomStartTime,
+      workType: finalWorkType,
+      assignedBy: user?.employeeId,
+      assignedTechnicians: finalWorkType === 'TEAM' ? selectedTechs : undefined,
+      status: editingTask.status || 'PENDING',
+      requestStatus: editingTask.requestStatus
+    } : {
+      ...newTask,
+      customStartTime: normalizedCustomStartTime,
+      workType: finalWorkType,
+      assignedTo: finalAssignedTo,
+      createdBy: user?.employeeId,
+      assignedBy: user?.employeeId,
+      assignedTechnicians: finalWorkType === 'TEAM' ? selectedTechs : undefined,
+    };
 
-      const normalizedCustomStartTime = newTask.customStartTime
-        ? (!isNaN(new Date(newTask.customStartTime).getTime())
-            ? new Date(newTask.customStartTime).toISOString()
-            : newTask.customStartTime)
-        : '';
-
-      const payload = editingTask ? {
-        ...newTask,
-        customStartTime: normalizedCustomStartTime,
-        workType: finalWorkType,
-        assignedBy: user?.employeeId,
-        assignedTechnicians: finalWorkType === 'TEAM' ? selectedTechs : undefined,
-        status: editingTask.status || 'PENDING',
-        requestStatus: editingTask.requestStatus
-      } : {
-        ...newTask,
-        customStartTime: normalizedCustomStartTime,
-        workType: finalWorkType,
+    // Instant UI Response: Optimistically update state immediately
+    if (isEditing && editingTask) {
+      const optimisticUpdatedTask: Task = {
+        ...editingTask,
+        ...payload,
+        logs: [
+          ...(editingTask.logs || []),
+          {
+            id: Date.now().toString(),
+            action: `Task updated by ${user?.name || 'User'}`,
+            timestamp: clientTimestamp,
+            user: user?.name || 'User'
+          }
+        ]
+      } as Task;
+      setTasks(prev => prev.map(t => t.id === targetTaskId ? optimisticUpdatedTask : t));
+      if (selectedTask?.id === targetTaskId) setSelectedTask(optimisticUpdatedTask);
+      toast.success('Task updated successfully');
+    } else {
+      tempTaskId = 'temp-' + Date.now();
+      const optimisticNewTask: Task = {
+        id: tempTaskId,
+        taskId: 'TASK-' + Math.floor(1000 + Math.random() * 9000),
+        title: newTask.title,
+        model: newTask.model,
+        details: newTask.details,
+        urgency: (newTask.urgency || 'REGULAR') as Urgency,
         assignedTo: finalAssignedTo,
-        createdBy: user?.employeeId,
-        assignedBy: user?.employeeId,
+        createdBy: user?.employeeId || '',
+        assignedBy: user?.employeeId || '',
+        status: (finalAssignedTo && user?.role === 'OFFICER') ? 'RUNNING' : 'PENDING',
+        points: newTask.points || 1,
+        deadline: newTask.deadline,
+        createdAt: clientTimestamp,
+        workType: finalWorkType,
         assignedTechnicians: finalWorkType === 'TEAM' ? selectedTechs : undefined,
-        // Server will handle status and requestStatus based on role
-      };
-
-      console.log('Submitting task payload:', payload);
-
-      await fetchJson(url, {
-        method,
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(payload)
-      });
-      await fetchTasks(token!);
-      await fetchStaff(token!);
-      await fetchPoints(token!);
-      if (user?.role === 'SUPER_ADMIN') {
-        fetchBackupSettings();
-      }
-      setIsTaskModalOpen(false);
-      setEditingTask(null);
-      setNewTask({ title: '', model: 'Portable', details: '', urgency: 'REGULAR', assignedTo: '', deadline: '', points: 1, customStartTime: '', estimatedDuration: '', workType: 'SINGLE', assignedTechnicians: [] });
-      setSelectedTechs([]);
-    } catch (err) {
-      console.error('Task submit error:', err);
-      toast.error(err instanceof Error ? err.message : 'An unexpected error occurred');
-    } finally {
-      setIsLoading(false);
+        customStartTime: normalizedCustomStartTime,
+        estimatedDuration: newTask.estimatedDuration,
+        ...payload
+      } as Task;
+      setTasks(prev => [optimisticNewTask, ...prev]);
+      toast.success('Task created successfully');
     }
+
+    // Immediately close modal & reset fields
+    setIsTaskModalOpen(false);
+    setEditingTask(null);
+    setNewTask({ title: '', model: 'Portable', details: '', urgency: 'REGULAR', assignedTo: '', deadline: '', points: 1, customStartTime: '', estimatedDuration: '', workType: 'SINGLE', assignedTechnicians: [] });
+    setSelectedTechs([]);
+    setIsLoading(false);
+
+    // Background Async Network Sync - Zero UI lag
+    (async () => {
+      try {
+        const result = await fetchJson(url, {
+          method,
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (!isEditing && result && result.id) {
+          setTasks(prev => prev.map(t => t.id === tempTaskId ? result : t));
+        } else if (isEditing && result && result.id) {
+          setTasks(prev => prev.map(t => t.id === targetTaskId ? result : t));
+          if (selectedTask?.id === targetTaskId) setSelectedTask(result);
+        }
+
+        Promise.allSettled([
+          fetchStaff(token!),
+          fetchPoints(token!)
+        ]);
+        if (user?.role === 'SUPER_ADMIN') {
+          fetchBackupSettings();
+        }
+      } catch (err: any) {
+        console.error('Task submit background sync error:', err);
+        toast.error(err instanceof Error ? err.message : 'Error syncing task with server');
+        setTasks(prevTasks);
+      }
+    })();
   };
 
   const handleDeleteTask = async (taskId: string) => {
     if (!taskId) return;
     
-    setIsLoading(true);
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        toast.error('Authentication token missing. Please log in again.');
-        return;
-      }
-      
-      const cleanTargetId = String(taskId).trim();
-      const endpoint = (user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD')
-        ? `/api/admin/tasks/${encodeURIComponent(cleanTargetId)}` 
-        : `/api/tasks/${encodeURIComponent(cleanTargetId)}`;
-      
-      await fetchJson(endpoint, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      toast.success('Task deleted successfully');
-      setTaskToDelete(null);
-      if (selectedTask?.id === taskId || selectedTask?.taskId === taskId || selectedTask?.id === cleanTargetId || selectedTask?.taskId === cleanTargetId) {
-        setIsTaskDetailsModalOpen(false);
-        setSelectedTask(null);
-      }
-
-      // Optimistically remove deleted task from state immediately
-      setTasks(prev => prev.filter(t => 
-        String(t.id).trim() !== cleanTargetId && 
-        String(t.taskId).trim() !== cleanTargetId
-      ));
-      
-      await fetchTasks(token);
-      await fetchStaff(token);
-      await fetchPoints(token);
-      
-      // Also refresh points and staff if admin / executive
-      if (user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD') {
-        const updatedPoints = await fetchJson('/api/points', { headers: { 'Authorization': `Bearer ${token}` } });
-        if (updatedPoints) setPointTransactions(updatedPoints);
-        const updatedUsers = await fetchJson('/api/users', { headers: { 'Authorization': `Bearer ${token}` } });
-        if (updatedUsers) setStaffList(updatedUsers);
-
-        if (viewingStaff && updatedUsers) {
-          const updated = updatedUsers.find((u: any) => u.id === viewingStaff.id);
-          if (updated) setViewingStaff(updated);
-        }
-
-        if (user?.role === 'SUPER_ADMIN') {
-          fetchBackupSettings();
-        }
-      }
-    } catch (err) {
-      console.error('Delete task error:', err);
-      toast.error(err instanceof Error ? err.message : 'An unexpected error occurred while deleting the task');
-    } finally {
-      setIsLoading(false);
+    const token = localStorage.getItem('token');
+    if (!token) {
+      toast.error('Authentication token missing. Please log in again.');
+      return;
     }
+    
+    const cleanTargetId = String(taskId).trim();
+    const endpoint = (user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD')
+      ? `/api/admin/tasks/${encodeURIComponent(cleanTargetId)}` 
+      : `/api/tasks/${encodeURIComponent(cleanTargetId)}`;
+
+    // Instant UI Response: Optimistically remove from state immediately
+    const prevTasks = [...tasks];
+    setTasks(prev => prev.filter(t => 
+      String(t.id).trim() !== cleanTargetId && 
+      String(t.taskId).trim() !== cleanTargetId
+    ));
+    setTaskToDelete(null);
+    if (selectedTask?.id === taskId || selectedTask?.taskId === taskId || selectedTask?.id === cleanTargetId || selectedTask?.taskId === cleanTargetId) {
+      setIsTaskDetailsModalOpen(false);
+      setSelectedTask(null);
+    }
+    toast.success('Task deleted successfully');
+    setIsLoading(false);
+
+    // Background Async Deletion
+    (async () => {
+      try {
+        await fetchJson(endpoint, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        Promise.allSettled([
+          fetchStaff(token),
+          fetchPoints(token)
+        ]);
+      } catch (err: any) {
+        console.error('Delete task background error:', err);
+        toast.error(err instanceof Error ? err.message : 'Failed to delete task on server');
+        setTasks(prevTasks);
+      }
+    })();
   };
 
   const [activeTaskTab, setActiveTaskTab] = useState<'ALL' | 'PENDING' | 'RUNNING' | 'COMPLETED' | 'Hold Task'>('ALL');
@@ -3990,7 +4067,7 @@ export default function App() {
   const formatPhone = (phone: string | undefined) => {
     if (!phone) return '';
     const trimmed = phone.trim();
-    if (trimmed && !trimmed.startsWith('0') && /^\d+$/.test(trimmed)) {
+    if (trimmed && typeof trimmed === 'string' && !trimmed.startsWith('0') && /^\d+$/.test(trimmed)) {
       return '0' + trimmed;
     }
     return trimmed;
@@ -4006,86 +4083,93 @@ export default function App() {
       return;
     }
 
-    setIsLoading(true);
-    try {
-      const token = localStorage.getItem('token');
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    
+    const newLog: TaskLog = {
+      id: Date.now().toString(),
+      action: updates.status ? `Status changed to ${updates.status}` : 
+              updates.assignedTo ? `Assigned to ${staffList.find(s => s.id === updates.assignedTo)?.name || updates.assignedTo}` :
+              updates.assignedTechnicians ? `Team assignment updated` :
+              updates.remarks ? `Remarks updated` : `Task updated`,
+      timestamp: new Date().toISOString(),
+      user: user?.name || 'Unknown'
+    };
+
+    const finalUpdates: any = {
+      ...updates,
+      assignedBy: updates.assignedTo ? user?.employeeId : currentTask.assignedBy,
+      logs: [...(currentTask.logs || []), newLog]
+    };
+
+    // Handle Team Progress
+    if (currentTask.workType === 'TEAM' && updates.assignedTechnicians) {
+      const totalProgress = updates.assignedTechnicians.reduce((sum, t) => sum + (t.progress || 0), 0);
+      finalUpdates.totalTeamProgress = Math.round(totalProgress / updates.assignedTechnicians.length);
+      finalUpdates.progress = finalUpdates.totalTeamProgress;
       
-      const newLog: TaskLog = {
-        id: Date.now().toString(),
-        action: updates.status ? `Status changed to ${updates.status}` : 
-                updates.assignedTo ? `Assigned to ${staffList.find(s => s.id === updates.assignedTo)?.name || updates.assignedTo}` :
-                updates.assignedTechnicians ? `Team assignment updated` :
-                updates.remarks ? `Remarks updated` : `Task updated`,
-        timestamp: new Date().toISOString(),
-        user: user?.name || 'Unknown'
-      };
-
-      const finalUpdates: any = {
-        ...updates,
-        assignedBy: updates.assignedTo ? user?.employeeId : currentTask.assignedBy,
-        logs: [...(currentTask.logs || []), newLog]
-      };
-
-      // Handle Team Progress
-      if (currentTask.workType === 'TEAM' && updates.assignedTechnicians) {
-        const totalProgress = updates.assignedTechnicians.reduce((sum, t) => sum + (t.progress || 0), 0);
-        finalUpdates.totalTeamProgress = Math.round(totalProgress / updates.assignedTechnicians.length);
-        finalUpdates.progress = finalUpdates.totalTeamProgress;
-        
-        if (updates.assignedTechnicians.every(t => t.status === 'COMPLETED')) {
-          finalUpdates.status = 'COMPLETED';
-          finalUpdates.completedAt = new Date().toISOString();
-        }
+      if (updates.assignedTechnicians.every(t => t.status === 'COMPLETED')) {
+        finalUpdates.status = 'COMPLETED';
+        finalUpdates.completedAt = new Date().toISOString();
       }
-
-      // Handle cross-team request for Officers
-      if (updates.assignedTo && user?.role === 'OFFICER' && currentTask.workType !== 'TEAM') {
-        const assignee = staffList.find(s => s.id === updates.assignedTo || s.name === updates.assignedTo);
-        if (assignee && assignee.supervisorId !== user.id && assignee.role === 'TECHNICIAN') {
-          finalUpdates.status = 'REQUESTED';
-          finalUpdates.requestStatus = 'PENDING';
-        } else if (assignee && assignee.supervisorId === user.id) {
-          // Direct assignment within team: Start countdown instantly
-          finalUpdates.status = 'RUNNING';
-          finalUpdates.requestStatus = 'APPROVED';
-          finalUpdates.startedAt = new Date().toISOString();
-          finalUpdates.customStartTime = new Date().toISOString();
-        }
-      }
-
-      if (updates.status === 'RUNNING' && !currentTask.startedAt) {
-        finalUpdates.startedAt = new Date().toISOString();
-      }
-
-      await fetchJson(`/api/tasks/${taskId}`, {
-        method: 'PUT',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(finalUpdates)
-      });
-      
-      await fetchTasks(token!);
-      await fetchStaff(token!);
-      await fetchPoints(token!);
-      
-      // Update selected task if it's the one being viewed
-      if (selectedTask?.id === taskId) {
-        const updatedTasks = await fetchJson('/api/tasks', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const updatedTask = updatedTasks.find((t: any) => t.id === taskId);
-        if (updatedTask) setSelectedTask(updatedTask);
-      }
-      
-      toast.success('Task updated successfully');
-    } catch (err) {
-      console.error('Update task error:', err);
-      toast.error(err instanceof Error ? err.message : 'An unexpected error occurred');
-    } finally {
-      setIsLoading(false);
     }
+
+    // Handle cross-team request for Officers
+    if (updates.assignedTo && user?.role === 'OFFICER' && currentTask.workType !== 'TEAM') {
+      const assignee = staffList.find(s => s.id === updates.assignedTo || s.name === updates.assignedTo);
+      if (assignee && assignee.supervisorId !== user.id && assignee.role === 'TECHNICIAN') {
+        finalUpdates.status = 'REQUESTED';
+        finalUpdates.requestStatus = 'PENDING';
+      } else if (assignee && assignee.supervisorId === user.id) {
+        // Direct assignment within team: Start countdown instantly
+        finalUpdates.status = 'RUNNING';
+        finalUpdates.requestStatus = 'APPROVED';
+        finalUpdates.startedAt = new Date().toISOString();
+        finalUpdates.customStartTime = new Date().toISOString();
+      }
+    }
+
+    if (updates.status === 'RUNNING' && !currentTask.startedAt) {
+      finalUpdates.startedAt = new Date().toISOString();
+    }
+
+    // Instant UI Response: Optimistically update state immediately
+    const optimisticTask = {
+      ...currentTask,
+      ...finalUpdates
+    };
+    setTasks(prev => prev.map(t => t.id === taskId ? optimisticTask : t));
+    if (selectedTask?.id === taskId) {
+      setSelectedTask(optimisticTask);
+    }
+    toast.success('Task updated successfully');
+    setIsLoading(false);
+
+    // Background Async Network Sync - Zero UI lag
+    (async () => {
+      try {
+        const updated = await fetchJson(`/api/tasks/${taskId}`, {
+          method: 'PUT',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(finalUpdates)
+        });
+        if (updated && updated.id) {
+          setTasks(prev => prev.map(t => t.id === taskId ? updated : t));
+          if (selectedTask?.id === taskId) setSelectedTask(updated);
+        }
+        Promise.allSettled([
+          fetchStaff(token!),
+          fetchPoints(token!)
+        ]);
+      } catch (err: any) {
+        console.error('Update task background error:', err);
+        toast.error(err instanceof Error ? err.message : 'Error syncing task update');
+        fetchTasks(token!, true);
+      }
+    })();
   };
 
   const roles: Role[] = ['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER', 'TECHNICIAN'];
@@ -7488,7 +7572,7 @@ export default function App() {
                         (t.workType === 'TEAM' && t.assignedTechnicians?.some(at => at.employeeId === tech.employeeId));
                       // Sync with Active Work: Include all RUNNING, HOLD, DELAYED tasks + any non-completed tasks for today
                       const isOngoing = t.status === 'RUNNING' || t.status === 'HOLD' || t.status === 'DELAYED';
-                      const isForToday = Boolean(t.deadline && t.deadline.startsWith(today));
+                      const isForToday = Boolean(typeof t?.deadline === 'string' && t.deadline.startsWith(today));
                       return isAssigned && t.status !== 'COMPLETED' && (isOngoing || isForToday);
                     });
 
@@ -7556,7 +7640,7 @@ export default function App() {
                     const isAssigned = t.assignedTo === tech.name || 
                       (t.workType === 'TEAM' && t.assignedTechnicians?.some(at => at.employeeId === tech.employeeId));
                     const isRunning = t.status === 'RUNNING';
-                    const isForToday = t.deadline.startsWith(today);
+                    const isForToday = Boolean(typeof t?.deadline === 'string' && t.deadline.startsWith(today));
                     return isAssigned && t.status !== 'COMPLETED' && (isRunning || isForToday);
                   }).length === 0;
                 }) && (

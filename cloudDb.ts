@@ -134,13 +134,22 @@ export async function loadCloudProductionData(): Promise<any | null> {
     const points = ptsSnap.exists() ? ptsSnap.data() : {};
     const security = secSnap.exists() ? secSnap.data() : {};
 
+    // Filter tasks against deletedTaskIds tombstone
+    const deletedTaskIds: string[] = Array.isArray(metadata.deletedTaskIds) ? metadata.deletedTaskIds.map(String) : [];
+    const delSet = new Set(deletedTaskIds.map(id => id.trim()));
+    const validTasks = tasks.filter(t => {
+      const id = String(t.id || '').trim();
+      const taskId = String(t.taskId || '').trim();
+      return (!id || !delSet.has(id)) && (!taskId || !delSet.has(taskId));
+    });
+
     // Validate that we got a valid dataset (at least users exist)
     if (users.length > 0) {
-      console.log(`[CLOUD DB] Successfully loaded ${users.length} users and ${tasks.length} tasks from Firestore.`);
+      console.log(`[CLOUD DB] Successfully loaded ${users.length} users and ${validTasks.length} tasks from Firestore (${tasks.length - validTasks.length} deleted tasks filtered).`);
       return {
         users,
-        tasks,
-        deletedTaskIds: metadata.deletedTaskIds || [],
+        tasks: validTasks,
+        deletedTaskIds,
         autoBackupSettings: metadata.autoBackupSettings || { enabled: true, intervalMinutes: 5, retentionCount: 5000 },
         attendanceRecords: attendance.records || [],
         pointTransactions: points.pointTransactions || [],
@@ -161,6 +170,29 @@ export async function loadCloudProductionData(): Promise<any | null> {
     return null;
   }
 }
+
+// Universal deep data sanitizer for Firestore (guarantees NO undefined fields or array elements exist)
+export function deepCleanForFirestore<T>(data: T): T {
+  if (data === null || data === undefined) {
+    return null as any;
+  }
+  if (typeof data !== 'object') {
+    return data;
+  }
+  if (Array.isArray(data)) {
+    return data.map(item => item === undefined ? null : deepCleanForFirestore(item)) as any;
+  }
+  const clean: Record<string, any> = {};
+  for (const [key, val] of Object.entries(data as any)) {
+    if (val !== undefined) {
+      clean[key] = deepCleanForFirestore(val);
+    }
+  }
+  return JSON.parse(JSON.stringify(clean));
+}
+
+// Backwards-compatible alias
+export const sanitizeForFirestore = deepCleanForFirestore;
 
 // In-memory delta write cache to prevent redundant Firestore writes and avoid quota exhaustion
 const userWriteCache = new Map<string, string>();
@@ -217,9 +249,10 @@ export async function saveCloudProductionData(payload: {
     for (const u of users) {
       const docId = String(u.employeeId || u.id || '').trim();
       if (!docId) continue;
-      const uHash = crypto.createHash('md5').update(JSON.stringify(u)).digest('hex');
+      const cleanUser = sanitizeForFirestore(u);
+      const uHash = crypto.createHash('md5').update(JSON.stringify(cleanUser)).digest('hex');
       if (userWriteCache.get(docId) !== uHash) {
-        batch.set(doc(firestore, 'production_users', docId), u);
+        batch.set(doc(firestore, 'production_users', docId), cleanUser);
         pendingUserHashes.set(docId, uHash);
         opCount++;
         await commitBatchIfFull();
@@ -231,9 +264,10 @@ export async function saveCloudProductionData(payload: {
     for (const t of tasks) {
       const docId = String(t.id || t.taskId || '').trim();
       if (!docId) continue;
-      const tHash = crypto.createHash('md5').update(JSON.stringify(t)).digest('hex');
+      const cleanTask = sanitizeForFirestore(t);
+      const tHash = crypto.createHash('md5').update(JSON.stringify(cleanTask)).digest('hex');
       if (taskWriteCache.get(docId) !== tHash) {
-        batch.set(doc(firestore, 'production_tasks', docId), t);
+        batch.set(doc(firestore, 'production_tasks', docId), cleanTask);
         pendingTaskHashes.set(docId, tHash);
         opCount++;
         await commitBatchIfFull();
@@ -253,13 +287,13 @@ export async function saveCloudProductionData(payload: {
     }
 
     // 4. Save State documents only if changed
-    const metaPayload = {
+    const metaPayload = sanitizeForFirestore({
       deletedTaskIds: payload.deletedTaskIds || [],
       autoBackupSettings: payload.autoBackupSettings || { enabled: true, intervalMinutes: 5, retentionCount: 5000 },
       assignmentRequests: (payload.assignmentRequests || []).slice(-50),
       lastSavedAt: nowIso
-    };
-    const metaHash = crypto.createHash('md5').update(JSON.stringify(metaPayload.deletedTaskIds) + JSON.stringify(metaPayload.autoBackupSettings)).digest('hex');
+    });
+    const metaHash = crypto.createHash('md5').update(JSON.stringify(metaPayload)).digest('hex');
     if (metaHash !== lastMetaHash) {
       batch.set(doc(firestore, 'production_state', 'metadata'), metaPayload);
       lastMetaHash = metaHash;
@@ -268,37 +302,39 @@ export async function saveCloudProductionData(payload: {
     }
 
     const attRecords = payload.attendanceRecords || [];
-    const attHash = crypto.createHash('md5').update(JSON.stringify(attRecords.slice(-50))).digest('hex');
+    const attClean = sanitizeForFirestore({
+      records: attRecords,
+      lastUpdated: nowIso
+    });
+    const attHash = crypto.createHash('md5').update(JSON.stringify(attClean)).digest('hex');
     if (attHash !== lastAttHash) {
-      batch.set(doc(firestore, 'production_state', 'attendance'), {
-        records: attRecords,
-        lastUpdated: nowIso
-      });
+      batch.set(doc(firestore, 'production_state', 'attendance'), attClean);
       lastAttHash = attHash;
       opCount++;
       await commitBatchIfFull();
     }
 
     const ptsTransactions = (payload.pointTransactions || []).slice(-500);
-    const ptsHash = crypto.createHash('md5').update(JSON.stringify(ptsTransactions.slice(-20))).digest('hex');
+    const ptsClean = sanitizeForFirestore({
+      pointTransactions: ptsTransactions,
+      technicianPerformance: payload.technicianPerformance || [],
+      lastUpdated: nowIso
+    });
+    const ptsHash = crypto.createHash('md5').update(JSON.stringify(ptsClean)).digest('hex');
     if (ptsHash !== lastPtsHash) {
-      batch.set(doc(firestore, 'production_state', 'points'), {
-        pointTransactions: ptsTransactions,
-        technicianPerformance: payload.technicianPerformance || [],
-        lastUpdated: nowIso
-      });
+      batch.set(doc(firestore, 'production_state', 'points'), ptsClean);
       lastPtsHash = ptsHash;
       opCount++;
       await commitBatchIfFull();
     }
 
-    const secPayload = {
+    const secPayload = sanitizeForFirestore({
       activityLogs: (payload.activityLogs || []).slice(-100),
       adminAuditLogs: (payload.adminAuditLogs || []).slice(-100),
       lockedDevices: payload.lockedDevices || [],
       lastUpdated: nowIso
-    };
-    const secHash = crypto.createHash('md5').update(JSON.stringify(secPayload.lockedDevices) + String(secPayload.activityLogs.length)).digest('hex');
+    });
+    const secHash = crypto.createHash('md5').update(JSON.stringify(secPayload)).digest('hex');
     if (secHash !== lastSecHash) {
       batch.set(doc(firestore, 'production_state', 'security'), secPayload);
       lastSecHash = secHash;
@@ -337,8 +373,8 @@ export async function saveCloudBackupSnapshot(
   const firestore = initCloudDb();
   const now = new Date();
   const timeStr = now.toISOString().replace(/[:.]/g, '-');
-  const backupId = `backup_${timeStr}_${Math.random().toString(36).substr(2, 6)}`;
   const filename = `db-backup-${backupType.toLowerCase().replace(/_/g, '-')}-${timeStr}.json`;
+  const backupId = filename.replace(/\.json$/, '').replace(/[^a-zA-Z0-9_-]/g, '_');
 
   const jsonStr = JSON.stringify(snapshot);
   const checksum = crypto.createHash('sha256').update(jsonStr).digest('hex');
@@ -365,7 +401,7 @@ export async function saveCloudBackupSnapshot(
     try {
       // Store metadata header doc in production_backups
       const headerDoc = doc(firestore, 'production_backups', backupId);
-      const headerPayload = { ...record };
+      const headerPayload = deepCleanForFirestore({ ...record });
       delete (headerPayload as any).data; // Do not store redundant full raw JSON in header doc
       await setDoc(headerDoc, headerPayload);
 
@@ -377,20 +413,20 @@ export async function saveCloudBackupSnapshot(
           })
         : snapshot.users;
 
-      const leanPayload = {
+      const leanPayload = deepCleanForFirestore({
         ...snapshot,
         users: leanUsers
-      };
+      });
 
       const payloadDoc = doc(firestore, 'production_backups_payload', backupId);
-      await setDoc(payloadDoc, {
+      await setDoc(payloadDoc, deepCleanForFirestore({
         id: backupId,
         filename,
         timestamp: now.toISOString(),
         type: backupType,
         checksum,
         data: leanPayload
-      });
+      }));
 
       // Verify read-back of header
       const verifySnap = await getDoc(headerDoc);
@@ -502,14 +538,21 @@ export async function getPersistentBackupData(target: string): Promise<any | nul
   const firestore = initCloudDb();
   if (firestore) {
     try {
-      // Check payload collection
-      const payloadSnap = await getDoc(doc(firestore, 'production_backups_payload', docId));
+      let payloadSnap = await getDoc(doc(firestore, 'production_backups_payload', docId));
+      if (!payloadSnap.exists()) {
+        const cleanId = docId.replace(/[^a-zA-Z0-9_-]/g, '_');
+        payloadSnap = await getDoc(doc(firestore, 'production_backups_payload', cleanId));
+      }
       if (payloadSnap.exists() && payloadSnap.data()?.data) {
         return payloadSnap.data()?.data;
       }
 
       // Check header collection fallback
-      const headerSnap = await getDoc(doc(firestore, 'production_backups', docId));
+      let headerSnap = await getDoc(doc(firestore, 'production_backups', docId));
+      if (!headerSnap.exists()) {
+        const cleanId = docId.replace(/[^a-zA-Z0-9_-]/g, '_');
+        headerSnap = await getDoc(doc(firestore, 'production_backups', cleanId));
+      }
       if (headerSnap.exists() && headerSnap.data()?.data) {
         return headerSnap.data()?.data;
       }
@@ -519,4 +562,21 @@ export async function getPersistentBackupData(target: string): Promise<any | nul
   }
 
   return null;
+}
+
+/**
+ * Permanently delete a task document from Firestore production_tasks
+ */
+export async function deleteCloudTask(taskId: string): Promise<boolean> {
+  const firestore = initCloudDb();
+  if (!firestore || !taskId) return false;
+  try {
+    const cleanId = String(taskId).trim();
+    await deleteDoc(doc(firestore, 'production_tasks', cleanId));
+    taskWriteCache.delete(cleanId);
+    return true;
+  } catch (err: any) {
+    console.warn(`[CLOUD DB] Error deleting task ${taskId}:`, err.message);
+    return false;
+  }
 }
