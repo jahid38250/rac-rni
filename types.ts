@@ -55,6 +55,16 @@ export interface AssignedTechnician {
   completedAt?: string;
 }
 
+export interface TeamApproval {
+  officerId: string;
+  officerName?: string;
+  technicianIds: string[];
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  approvedAt?: string;
+  approvedBy?: string;
+  remarks?: string;
+}
+
 export interface Task {
   id: string;
   taskId: string;
@@ -67,6 +77,7 @@ export interface Task {
   assignedTo: string; // Officer or Technician (for Single Work)
   workType?: 'SINGLE' | 'TEAM';
   assignedTechnicians?: AssignedTechnician[];
+  teamApprovals?: TeamApproval[];
   status: TaskStatus;
   progress: number;
   points?: number; // Performance points

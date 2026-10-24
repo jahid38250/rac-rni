@@ -3215,34 +3215,7 @@ export default function App() {
     e.preventDefault();
     setIsLoading(true);
     try {
-      // Get Local IP safely (handling iframes and environments where RTCPeerConnection is unavailable)
-      let localIp = 'Unknown';
-      try {
-        const RTCPeerConn = (typeof window !== 'undefined' && ((window as any).RTCPeerConnection || (window as any).webkitRTCPeerConnection || (window as any).mozRTCPeerConnection));
-        if (typeof RTCPeerConn === 'function') {
-          const pc = new RTCPeerConn({ iceServers: [] });
-          pc.createDataChannel("");
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          localIp = await new Promise((resolve) => {
-            const timeout = setTimeout(() => resolve('Unknown'), 1000);
-            pc.onicecandidate = (ice: any) => {
-              if (ice && ice.candidate && ice.candidate.candidate) {
-                const ip = /([0-9]{1,3}(\.[0-9]{1,3}){3})/.exec(ice.candidate.candidate)?.[1];
-                if (ip) {
-                  clearTimeout(timeout);
-                  resolve(ip);
-                  pc.onicecandidate = null;
-                }
-              }
-            };
-          });
-        }
-      } catch {
-        // Fallback gracefully without console error
-      }
-
-      // Get or Prompt Device Name safely (no window.prompt in iframe)
+      // Get Device Name safely
       let deviceName = 'Web-Client';
       try {
         deviceName = localStorage.getItem('deviceName') || 'Web-Client';
@@ -3257,7 +3230,7 @@ export default function App() {
         body: JSON.stringify({
           ...loginData,
           deviceName: deviceName,
-          localIp: localIp,
+          localIp: 'Web-Client',
           platform: typeof navigator !== 'undefined' ? navigator.platform : 'Web',
           userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Browser'
         })
@@ -3342,6 +3315,14 @@ export default function App() {
     nextBackupTime: string | null;
     sourceFolder?: string;
     liveStats?: { tasksCount: number; usersCount: number; attendanceCount: number };
+    cloudQuota?: {
+      isQuotaExhausted: boolean;
+      quotaExhaustedUntil: string | null;
+      projectId: string;
+      databaseId: string;
+      upgradeUrl: string;
+      pricingUrl: string;
+    };
     backups: Array<{
       filename: string;
       timestamp: string;
@@ -3429,43 +3410,40 @@ export default function App() {
     const token = localStorage.getItem('token');
     if (!token) return;
 
-    // Optimistically approve immediately
-    setTasks(prev => prev.map(t => t.id === taskId ? { 
-      ...t, 
-      requestStatus: user?.role === 'ENGINEER' ? 'APPROVED' : 'RECOMMENDED',
-      status: user?.role === 'ENGINEER' ? 'RUNNING' : t.status,
-      points: points !== undefined ? points : t.points
-    } : t));
-    toast.success('Task request approved successfully');
-
-    (async () => {
-      try {
-        const response = await fetch(`/api/tasks/${taskId}/approve`, {
-          method: 'PUT',
-          headers: { 
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ points, engineer_deadline })
-        });
-        if (handleAuthError(response)) {
-          throw new Error('Session expired or invalid. Please log in again.');
-        }
-        if (response.ok) {
-          Promise.allSettled([
-            fetchStaff(token),
-            fetchPoints(token)
-          ]);
-        } else {
-          const data = await response.json();
-          toast.error(data.error || 'Failed to approve request');
-          fetchTasks(token, true);
-        }
-      } catch (error) {
-        toast.error('Error approving request on server');
+    try {
+      const response = await fetch(`/api/tasks/${taskId}/approve`, {
+        method: 'PUT',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ points, engineer_deadline })
+      });
+      if (handleAuthError(response)) {
+        throw new Error('Session expired or invalid. Please log in again.');
+      }
+      if (response.ok) {
+        const updatedTask = await response.json();
+        setTasks(prev => prev.map(t => (t.id === taskId || t.taskId === taskId) ? updatedTask : t));
+        toast.success(
+          user?.role === 'ENGINEER' 
+            ? 'Task recommended and points confirmed'
+            : (updatedTask.status === 'RUNNING' ? 'Task request approved and started' : 'Team request approved (waiting for other teams)')
+        );
+        Promise.allSettled([
+          fetchStaff(token),
+          fetchPoints(token),
+          fetchTasks(token, true)
+        ]);
+      } else {
+        const data = await response.json();
+        toast.error(data.error || 'Failed to approve request');
         fetchTasks(token, true);
       }
-    })();
+    } catch (error: any) {
+      toast.error(error.message || 'Error approving request on server');
+      fetchTasks(token, true);
+    }
   };
 
   const handleRejectRequest = async (taskId: string, remarks: string) => {
@@ -3505,12 +3483,60 @@ export default function App() {
     })();
   };
 
+  const canEditTask = (task: Task, currentUser?: User | null): boolean => {
+    if (!currentUser) return false;
+    const isSuperAdmin = currentUser.role === 'SUPER_ADMIN' || currentUser.employeeId === '38250' || currentUser.employeeId === 'jhfboss';
+    const isExecutive = ['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD'].includes(currentUser.role) || isSuperAdmin;
+    if (isExecutive) return true;
+
+    // Completed tasks are strictly locked against ordinary edits
+    if ((task.status || '').toUpperCase() === 'COMPLETED') return false;
+
+    if (currentUser.role === 'OFFICER') {
+      // Officers can edit ONLY tasks they personally created
+      return task.createdBy === currentUser.employeeId || task.createdBy === currentUser.id;
+    }
+
+    if (currentUser.role === 'ENGINEER') {
+      const isCreator = task.createdBy === currentUser.employeeId || task.createdBy === currentUser.id;
+      if (isCreator) return true;
+      const creator = staffList.find(s => s.employeeId === task.createdBy || s.id === task.createdBy);
+      if (creator && (creator.assignedEngineers || []).includes(currentUser.employeeId)) return true;
+      return false;
+    }
+
+    if (currentUser.role === 'IN_CHARGE' || currentUser.role === 'MODEL_MANAGER') {
+      return true;
+    }
+
+    return false;
+  };
+
+  const canDeleteTask = (_task: Task, currentUser?: User | null): boolean => {
+    if (!currentUser) return false;
+    const isSuperAdmin = currentUser.role === 'SUPER_ADMIN' || currentUser.employeeId === '38250' || currentUser.employeeId === 'jhfboss';
+    const isExecutive = ['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD'].includes(currentUser.role) || isSuperAdmin;
+    return isExecutive;
+  };
+
   const isTaskRequestedForMe = (t: Task) => {
     if (t.status !== 'REQUESTED' && !(t.status === 'PENDING' && t.requestStatus === 'PENDING')) return false;
     if (user?.role === 'SUPER_ADMIN') return true;
 
+    // The requesting officer cannot approve their own borrowing request
+    if (t.createdBy === user?.employeeId || t.createdBy === user?.id) return false;
+
     const currentUserId = user?.id;
     const currentEmpId = user?.employeeId;
+    const currentName = user?.name ? user.name.toLowerCase() : '';
+
+    // If task has teamApprovals, check if this officer has a pending approval entry
+    if (t.teamApprovals && Array.isArray(t.teamApprovals)) {
+      return t.teamApprovals.some((a: any) => 
+        (a.officerId === currentEmpId || a.officerId === currentUserId || (a.officerName && a.officerName.toLowerCase() === currentName)) &&
+        a.status === 'PENDING'
+      );
+    }
 
     // Check single assigned technician
     if (t.assignedTo) {
@@ -7344,42 +7370,40 @@ export default function App() {
                                   Update Status
                                 </button>
                               )}
-                              {((['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD', 'IN_CHARGE', 'MODEL_MANAGER', 'ENGINEER', 'OFFICER'].includes(user?.role || '')) || task.createdBy === user?.employeeId || task.createdBy === user?.id) && (
-                                <>
-                                  <button 
-                                    onClick={() => {
-                                      setEditingTask(task);
-                                      setNewTask({
-                                        title: task.title,
-                                        model: task.model,
-                                        details: task.details,
-                                        urgency: task.urgency,
-                                        assignedTo: task.assignedTo,
-                                        deadline: task.deadline,
-                                        points: task.points || 10,
-                                        customStartTime: formatDateForInput(task.customStartTime, 'datetime-local'),
-                                        estimatedDuration: task.estimatedDuration || '',
-                                        workType: task.workType || 'SINGLE',
-                                        assignedTechnicians: task.assignedTechnicians || []
-                                      });
-                                      setSelectedTechs(task.assignedTechnicians || []);
-                                      setIsTaskModalOpen(true);
-                                    }}
-                                    className="p-2 hover:bg-white/10 rounded-lg text-blue-400 transition-all"
-                                    title="Update Task"
-                                  >
-                                    <Edit2 size={16} />
-                                  </button>
-                                  {(user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD' || task.createdBy === user?.employeeId || task.createdBy === user?.id || task.createdBy === user?.name || task.assignedBy === user?.employeeId) && (
-                                    <button 
-                                      onClick={() => setTaskToDelete(task.id)}
-                                      className="p-2 hover:bg-white/10 rounded-lg text-red-400 transition-all"
-                                      title="Delete Task"
-                                    >
-                                      <Trash2 size={16} />
-                                    </button>
-                                  )}
-                                </>
+                              {canEditTask(task, user) && (
+                                <button 
+                                  onClick={() => {
+                                    setEditingTask(task);
+                                    setNewTask({
+                                      title: task.title,
+                                      model: task.model,
+                                      details: task.details,
+                                      urgency: task.urgency,
+                                      assignedTo: task.assignedTo,
+                                      deadline: task.deadline,
+                                      points: task.points || 10,
+                                      customStartTime: formatDateForInput(task.customStartTime, 'datetime-local'),
+                                      estimatedDuration: task.estimatedDuration || '',
+                                      workType: task.workType || 'SINGLE',
+                                      assignedTechnicians: task.assignedTechnicians || []
+                                    });
+                                    setSelectedTechs(task.assignedTechnicians || []);
+                                    setIsTaskModalOpen(true);
+                                  }}
+                                  className="p-2 hover:bg-white/10 rounded-lg text-blue-400 transition-all"
+                                  title="Update Task"
+                                >
+                                  <Edit2 size={16} />
+                                </button>
+                              )}
+                              {canDeleteTask(task, user) && (
+                                <button 
+                                  onClick={() => setTaskToDelete(task.id)}
+                                  className="p-2 hover:bg-white/10 rounded-lg text-red-400 transition-all"
+                                  title="Delete Task"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
                               )}
                               <button 
                                 onClick={() => {
@@ -7765,6 +7789,27 @@ export default function App() {
                                   <p className="text-[10px] text-gray-400">Points: {task.points || 1}</p>
                                 </div>
                               </div>
+
+                              {task.teamApprovals && task.teamApprovals.length > 0 && (
+                                <div className="p-3 bg-white/5 rounded-xl border border-white/10 space-y-2 mt-3">
+                                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                                    Team Approvals Progress ({task.teamApprovals.filter(a => a.status === 'APPROVED').length}/{task.teamApprovals.length} Teams Approved)
+                                  </p>
+                                  <div className="flex flex-wrap gap-2">
+                                    {task.teamApprovals.map((app, aIdx) => (
+                                      <span key={aIdx} className={cn(
+                                        "px-2.5 py-1 text-xs font-semibold rounded-lg flex items-center gap-1.5",
+                                        app.status === 'APPROVED' ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" :
+                                        app.status === 'REJECTED' ? "bg-red-500/20 text-red-400 border border-red-500/30" :
+                                        "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                                      )}>
+                                        <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                                        {app.officerName || app.officerId}: {app.status}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
                             </div>
 
                             <div className="flex flex-row lg:flex-col items-center gap-3 min-w-[140px]">
@@ -7773,7 +7818,7 @@ export default function App() {
                                 className="w-full px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 text-sm"
                               >
                                 <CheckCircle2 size={18} />
-                                Approve & Start
+                                {task.teamApprovals && task.teamApprovals.length > 1 && task.teamApprovals.filter(a => a.status === 'PENDING').length > 1 ? 'Approve My Team' : 'Approve & Start'}
                               </button>
                               <button 
                                 onClick={() => {
@@ -8475,6 +8520,36 @@ export default function App() {
                         {backupSettings?.autoBackupEnabled ? "Hourly Backup: ON" : "Hourly Backup: OFF"}
                       </button>
                     </div>
+
+                    {/* Cloud Quota Status Notice */}
+                    {backupSettings?.cloudQuota?.isQuotaExhausted && (
+                      <div className="mb-6 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                        <div className="flex items-start gap-3">
+                          <span className="p-2 rounded-lg bg-amber-500/20 text-amber-400 mt-0.5">
+                            <Clock size={18} />
+                          </span>
+                          <div>
+                            <p className="text-sm font-bold text-amber-300">
+                              Daily Cloud Firestore Free Tier Write Quota Reached
+                            </p>
+                            <p className="text-xs text-amber-200/80 mt-1">
+                              All task operations and database backups are 100% active, protected, and saved to the local disk mirror. The free tier quota automatically resets every 24 hours.
+                            </p>
+                          </div>
+                        </div>
+                        {backupSettings?.cloudQuota?.upgradeUrl && (
+                          <a
+                            href={backupSettings.cloudQuota.upgradeUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-4 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5"
+                          >
+                            <span>Open Firebase Console</span>
+                            <ExternalLink size={14} />
+                          </a>
+                        )}
+                      </div>
+                    )}
 
                     {/* Operational Metrics & Schedule */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -10679,7 +10754,7 @@ export default function App() {
                             {selectedTask.status === 'PENDING' ? 'Start Task' : 'Complete Task'}
                           </button>
                         )}
-                        {(user?.role === 'SUPER_ADMIN' || user?.role === 'CBO' || user?.role === 'DCBO' || user?.role === 'HOD' || user?.role === 'DHOD' || selectedTask.createdBy === user?.employeeId || selectedTask.createdBy === user?.id || selectedTask.createdBy === user?.name || selectedTask.assignedBy === user?.employeeId) && (
+                        {canDeleteTask(selectedTask, user) && (
                           <button 
                             onClick={() => setTaskToDelete(selectedTask.id)}
                             disabled={isLoading}

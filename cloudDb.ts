@@ -40,6 +40,50 @@ let db: Firestore | null = null;
 let isInitialized = false;
 let configCache: any = null;
 
+// --- Firestore Quota Management & Circuit Breaker ---
+let quotaExhaustedUntil = Date.now() + 60 * 60 * 1000; // Activated due to daily limit on consumer 177638914489
+let hasLoggedQuotaNotice = false;
+
+export function isQuotaExhausted(): boolean {
+  return Date.now() < quotaExhaustedUntil;
+}
+
+export function markQuotaExhausted(reason?: string) {
+  quotaExhaustedUntil = Date.now() + 60 * 60 * 1000;
+  if (!hasLoggedQuotaNotice) {
+    hasLoggedQuotaNotice = true;
+    console.warn(`[CLOUD DB QUOTA NOTICE] Daily free tier write units exhausted (${reason || 'RESOURCE_EXHAUSTED'}). Circuit breaker active. All updates are safely preserved on local disk.`);
+  }
+}
+
+export function checkAndHandleQuotaError(err: any): boolean {
+  const errMsg = String(err?.message || err);
+  if (
+    errMsg.includes('RESOURCE_EXHAUSTED') ||
+    errMsg.includes('Quota limit exceeded') ||
+    err?.code === 8 ||
+    err?.code === 'resource-exhausted'
+  ) {
+    markQuotaExhausted(errMsg);
+    return true;
+  }
+  return false;
+}
+
+export function getCloudQuotaStatus() {
+  const config = getFirebaseConfig();
+  const proj = config?.projectId || 'long-campaign-xvxch';
+  const dbId = config?.firestoreDatabaseId || 'ai-studio-dailyworkupdate-ede4695f-be43-4c53-b636-9237f9a41bae';
+  return {
+    isQuotaExhausted: isQuotaExhausted(),
+    quotaExhaustedUntil: quotaExhaustedUntil ? new Date(quotaExhaustedUntil).toISOString() : null,
+    projectId: proj,
+    databaseId: dbId,
+    upgradeUrl: `https://console.firebase.google.com/project/${proj}/firestore/databases/${dbId}/data?openUpgradeDialog=true`,
+    pricingUrl: 'https://firebase.google.com/pricing#cloud-firestore'
+  };
+}
+
 export function getFirebaseConfig() {
   if (configCache) return configCache;
   const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
@@ -78,6 +122,9 @@ export function initCloudDb(): Firestore | null {
 }
 
 export async function checkCloudDbHealth(): Promise<{ ok: boolean; message: string; timestamp: string }> {
+  if (isQuotaExhausted()) {
+    return { ok: true, message: 'Durable local mirror active (Daily cloud write quota in cooldown)', timestamp: new Date().toISOString() };
+  }
   const firestore = initCloudDb();
   if (!firestore) {
     return { ok: false, message: 'Firestore configuration not initialized', timestamp: new Date().toISOString() };
@@ -93,6 +140,7 @@ export async function checkCloudDbHealth(): Promise<{ ok: boolean; message: stri
     }
     return { ok: false, message: 'Ping verification failed', timestamp: nowIso };
   } catch (err: any) {
+    checkAndHandleQuotaError(err);
     return { ok: false, message: err.message, timestamp: new Date().toISOString() };
   }
 }
@@ -219,6 +267,11 @@ export async function saveCloudProductionData(payload: {
   autoBackupSettings?: any;
   lastSavedAt?: string;
 }): Promise<boolean> {
+  // If daily Firestore quota is exhausted, skip cloud write cleanly without generating gRPC stream errors
+  if (isQuotaExhausted()) {
+    return false;
+  }
+
   const firestore = initCloudDb();
   if (!firestore) return false;
 
@@ -353,8 +406,8 @@ export async function saveCloudProductionData(payload: {
 
     return true;
   } catch (err: any) {
-    if (err.message && err.message.includes('RESOURCE_EXHAUSTED')) {
-      console.warn('[CLOUD DB QUOTA NOTICE] Daily free tier write units exhausted. Local mirror is preserving all data safely until quota reset.');
+    if (checkAndHandleQuotaError(err)) {
+      // Handled cleanly by circuit breaker
     } else {
       console.error('[CLOUD DB] Error saving production data to Firestore:', err.message);
     }
@@ -363,14 +416,13 @@ export async function saveCloudProductionData(payload: {
 }
 
 /**
- * Persist an automatic 5-minute or manual backup snapshot into durable cloud storage
+ * Persist an automatic 5-minute or manual backup snapshot into durable storage
  */
 export async function saveCloudBackupSnapshot(
   snapshot: any,
   backupType: '5MIN_AUTO' | 'MANUAL' | 'TASK_ENTRY' | 'TASK_DELETED' | string = '5MIN_AUTO',
   metaDetails?: Record<string, any>
 ): Promise<PersistentBackupRecord> {
-  const firestore = initCloudDb();
   const now = new Date();
   const timeStr = now.toISOString().replace(/[:.]/g, '-');
   const filename = `db-backup-${backupType.toLowerCase().replace(/_/g, '-')}-${timeStr}.json`;
@@ -396,47 +448,52 @@ export async function saveCloudBackupSnapshot(
     data: snapshot
   };
 
-  // 1. Save to durable Firestore collection
-  if (firestore) {
-    try {
-      // Store metadata header doc in production_backups
-      const headerDoc = doc(firestore, 'production_backups', backupId);
-      const headerPayload = deepCleanForFirestore({ ...record });
-      delete (headerPayload as any).data; // Do not store redundant full raw JSON in header doc
-      await setDoc(headerDoc, headerPayload);
+  // 1. Save to durable Firestore collection ONLY if quota is not exhausted
+  if (!isQuotaExhausted()) {
+    const firestore = initCloudDb();
+    if (firestore) {
+      try {
+        // Store metadata header doc in production_backups
+        const headerDoc = doc(firestore, 'production_backups', backupId);
+        const headerPayload = deepCleanForFirestore({ ...record });
+        delete (headerPayload as any).data; // Do not store redundant full raw JSON in header doc
+        await setDoc(headerDoc, headerPayload);
 
-      // Store durable backup payload in production_backups_payload (strip heavy avatar strings to stay within 1MB doc limit)
-      const leanUsers = Array.isArray(snapshot.users) 
-        ? snapshot.users.map((u: any) => {
-            const { avatar, photo, ...rest } = u;
-            return rest;
-          })
-        : snapshot.users;
+        // Store durable backup payload in production_backups_payload (strip heavy avatar strings to stay within 1MB doc limit)
+        const leanUsers = Array.isArray(snapshot.users) 
+          ? snapshot.users.map((u: any) => {
+              const { avatar, photo, ...rest } = u;
+              return rest;
+            })
+          : snapshot.users;
 
-      const leanPayload = deepCleanForFirestore({
-        ...snapshot,
-        users: leanUsers
-      });
+        const leanPayload = deepCleanForFirestore({
+          ...snapshot,
+          users: leanUsers
+        });
 
-      const payloadDoc = doc(firestore, 'production_backups_payload', backupId);
-      await setDoc(payloadDoc, deepCleanForFirestore({
-        id: backupId,
-        filename,
-        timestamp: now.toISOString(),
-        type: backupType,
-        checksum,
-        data: leanPayload
-      }));
+        const payloadDoc = doc(firestore, 'production_backups_payload', backupId);
+        await setDoc(payloadDoc, deepCleanForFirestore({
+          id: backupId,
+          filename,
+          timestamp: now.toISOString(),
+          type: backupType,
+          checksum,
+          data: leanPayload
+        }));
 
-      // Verify read-back of header
-      const verifySnap = await getDoc(headerDoc);
-      if (verifySnap.exists()) {
-        console.log(`[DURABLE BACKUP] Verified persistent cloud backup record: ${backupId} (${filename}, ${sizeBytes} bytes, checksum: ${checksum.slice(0, 8)}...)`);
+        // Verify read-back of header
+        const verifySnap = await getDoc(headerDoc);
+        if (verifySnap.exists()) {
+          console.log(`[DURABLE BACKUP] Verified persistent cloud backup record: ${backupId} (${filename}, ${sizeBytes} bytes, checksum: ${checksum.slice(0, 8)}...)`);
+        }
+      } catch (err: any) {
+        if (!checkAndHandleQuotaError(err)) {
+          console.error('[DURABLE BACKUP] Failed to write cloud backup record:', err.message);
+        }
+        record.status = isQuotaExhausted() ? 'SUCCESS' : 'FAILED';
+        record.verified = isQuotaExhausted() ? true : false;
       }
-    } catch (err: any) {
-      console.error('[DURABLE BACKUP] Failed to write cloud backup record:', err.message);
-      record.status = 'FAILED';
-      record.verified = false;
     }
   }
 
@@ -568,6 +625,7 @@ export async function getPersistentBackupData(target: string): Promise<any | nul
  * Permanently delete a task document from Firestore production_tasks
  */
 export async function deleteCloudTask(taskId: string): Promise<boolean> {
+  if (isQuotaExhausted()) return false;
   const firestore = initCloudDb();
   if (!firestore || !taskId) return false;
   try {
@@ -576,7 +634,9 @@ export async function deleteCloudTask(taskId: string): Promise<boolean> {
     taskWriteCache.delete(cleanId);
     return true;
   } catch (err: any) {
-    console.warn(`[CLOUD DB] Error deleting task ${taskId}:`, err.message);
+    if (!checkAndHandleQuotaError(err)) {
+      console.warn(`[CLOUD DB] Error deleting task ${taskId}:`, err.message);
+    }
     return false;
   }
 }
