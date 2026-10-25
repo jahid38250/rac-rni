@@ -95,6 +95,22 @@ async function startServer() {
     });
   }
 
+  function isTechnicianSupervisedByOfficer(tech: any, officer: any): boolean {
+    if (!tech || !officer) return false;
+    const offId = String(officer.id || '').trim();
+    const offEmpId = String(officer.employeeId || '').trim();
+    const techSupId = String(tech.supervisorId || '').trim();
+
+    if (techSupId && (techSupId === offId || techSupId === offEmpId)) return true;
+    if (Array.isArray(tech.supervisor_ids)) {
+      if (tech.supervisor_ids.some((sid: any) => String(sid).trim() === offId || String(sid).trim() === offEmpId)) return true;
+    }
+    if (shiftingTechnicianIds.includes(tech.employeeId) && shiftingOfficerIds.includes(officer.employeeId)) {
+      return true;
+    }
+    return false;
+  }
+
   // --- Request Logging ---
   app.use((req, res, next) => {
     const start = Date.now();
@@ -599,34 +615,50 @@ async function startServer() {
       }
 
       if (isCompleted) {
-        // Technician Task Count
+        // Technician Task Count & Points (deduplicating technicians per task)
+        const participatingTechIds = new Set<string>();
         if (t.assignedTo) {
           const tech = userMap.get(t.assignedTo);
           if (tech && tech.role === 'TECHNICIAN') {
-            tech.completedTask = (tech.completedTask || 0) + 1;
-            if (isPointEligible) {
-              tech.total_point = (tech.total_point || 0) + (Number(t.points) || 0);
-            }
+            participatingTechIds.add(tech.employeeId);
           }
         }
-
         if (t.assignedTechnicians && Array.isArray(t.assignedTechnicians)) {
           t.assignedTechnicians.forEach((at: any) => {
             const tech = userMap.get(at.employeeId);
             if (tech && tech.role === 'TECHNICIAN') {
-              tech.completedTask = (tech.completedTask || 0) + 1;
-              if (isPointEligible) {
-                tech.total_point = (tech.total_point || 0) + (Number(t.points) || 0);
-              }
+              participatingTechIds.add(tech.employeeId);
             }
           });
         }
 
+        const rawPoints = Number(t.points) || 1;
+        const techCount = participatingTechIds.size || 1;
+        participatingTechIds.forEach(techEmpId => {
+          const tech = userMap.get(techEmpId);
+          if (tech && tech.role === 'TECHNICIAN') {
+            tech.completedTask = (tech.completedTask || 0) + 1;
+            if (isPointEligible) {
+              const techPointAward = t.workType === 'TEAM' && techCount > 1
+                ? Math.max(1, Math.round(rawPoints / techCount))
+                : rawPoints;
+              tech.total_point = (tech.total_point || 0) + techPointAward;
+            }
+          }
+        });
+
         // Officer Points (Rule 10 & 21: Cross-team technician rule)
         // Task creator / responsible Officer is the source of Officer-side attribution.
+        // Borrowed technician's supervisor NEVER receives points for another Officer's task.
         if (isPointEligible) {
           let assignedOfficer = null;
-          if (creator?.role === 'OFFICER') {
+          if (t.responsibleOfficerId) {
+            const respOff = userMap.get(t.responsibleOfficerId);
+            if (respOff?.role === 'OFFICER') {
+              assignedOfficer = respOff;
+            }
+          }
+          if (!assignedOfficer && creator?.role === 'OFFICER') {
             assignedOfficer = creator;
           }
           if (!assignedOfficer && t.assignedBy) {
@@ -635,19 +667,10 @@ async function startServer() {
               assignedOfficer = assigner;
             }
           }
-          if (!assignedOfficer && t.responsibleOfficerId) {
-            const respOff = userMap.get(t.responsibleOfficerId);
-            if (respOff?.role === 'OFFICER') {
-              assignedOfficer = respOff;
-            }
-          }
           if (!assignedOfficer && t.assignedTo) {
             const assigneeUser = userMap.get(t.assignedTo);
             if (assigneeUser?.role === 'OFFICER') {
               assignedOfficer = assigneeUser;
-            } else if (assigneeUser?.role === 'TECHNICIAN' && assigneeUser.supervisorId) {
-              const sup = userMap.get(assigneeUser.supervisorId);
-              if (sup?.role === 'OFFICER') assignedOfficer = sup;
             }
           }
 
@@ -655,15 +678,16 @@ async function startServer() {
             const pointValue = Number(t.points) || 1;
             assignedOfficer.total_point = (assignedOfficer.total_point || 0) + pointValue;
             
-            // Add to transactions for history - ONE single verified source transaction
+            // Add to transactions with deterministic ID to prevent duplicates
+            const txId = `pt_${t.id}_${assignedOfficer.employeeId || assignedOfficer.id}`;
             pointTransactions.push({
-              id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+              id: txId,
               taskId: t.id,
               officerId: assignedOfficer.id,
-              engineerId: t.approvedBy || (creator?.role !== 'OFFICER' ? creator?.employeeId : ''),
+              engineerId: t.approvedBy || (creator?.role !== 'OFFICER' ? creator?.employeeId : '') || '',
               pointValue: pointValue,
               taskPriority: t.urgency,
-              completedAt: t.completedAt
+              completedAt: t.completedAt || t.createdAt
             });
           }
 
@@ -816,6 +840,7 @@ async function startServer() {
         }
 
         // Responsible Officer (Rule 21: Task creator / assignedBy is the source)
+        // Borrowed technician's supervisor NEVER receives points for another Officer's task.
         let responsibleOfficer = null;
         if (t.responsibleOfficerId) {
           responsibleOfficer = empMap.get(t.responsibleOfficerId) || userMap.get(t.responsibleOfficerId);
@@ -824,10 +849,9 @@ async function startServer() {
         } else if (t.assignedBy) {
           const assigner = empMap.get(t.assignedBy) || userMap.get(t.assignedBy);
           if (assigner?.role === 'OFFICER') responsibleOfficer = assigner;
-        }
-        if (!responsibleOfficer && techUser?.supervisorId) {
-          const sup = userMap.get(techUser.supervisorId) || empMap.get(techUser.supervisorId);
-          if (sup?.role === 'OFFICER') responsibleOfficer = sup;
+        } else if (t.assignedTo) {
+          const assignee = empMap.get(t.assignedTo) || userMap.get(t.assignedTo);
+          if (assignee?.role === 'OFFICER') responsibleOfficer = assignee;
         }
 
         // Concern Engineer (Rule 11: ONLY the specific Engineer who created, assigned, or approved the task)
@@ -976,7 +1000,11 @@ async function startServer() {
 
       if (u.role === 'TECHNICIAN') {
         personTasks.forEach((t: any) => {
-          if ((t.status || '').toUpperCase() === 'COMPLETED') {
+          const isComp = (t.status || '').toUpperCase() === 'COMPLETED';
+          const tCreator = empMap.get(t.createdBy) || userMap.get(t.createdBy);
+          const isOffCreated = tCreator?.role === 'OFFICER' || (!tCreator && t.responsibleOfficerId && (empMap.get(t.responsibleOfficerId)?.role === 'OFFICER' || userMap.get(t.responsibleOfficerId)?.role === 'OFFICER'));
+          const isEligible = isOffCreated ? Boolean(t.engineerApproved) : t.requestStatus !== 'REJECTED';
+          if (isComp && isEligible) {
             personalPoints += Number(t.points) || 1;
           }
         });
@@ -1728,6 +1756,48 @@ async function startServer() {
     res.json({ status: "ok", usersCount: users.length });
   });
 
+  // --- Real-time Server-Sent Events (SSE) Synchronization Engine ---
+  const sseClients = new Set<Response>();
+
+  function broadcastRealtimeUpdate(payload: { type: string; data?: any; taskId?: string; status?: string }) {
+    const dataStr = `data: ${JSON.stringify({ ...payload, timestamp: new Date().toISOString() })}\n\n`;
+    for (const client of sseClients) {
+      try {
+        client.write(dataStr);
+      } catch {
+        sseClients.delete(client);
+      }
+    }
+  }
+
+  // Periodic SSE keep-alive heartbeat (every 25 seconds)
+  setInterval(() => {
+    for (const client of sseClients) {
+      try {
+        client.write(': keepalive\n\n');
+      } catch {
+        sseClients.delete(client);
+      }
+    }
+  }, 25000);
+
+  app.get("/api/events", optionalAuth, (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+
+    // Send immediate confirmation ping
+    res.write(`data: ${JSON.stringify({ type: 'CONNECTED', timestamp: new Date().toISOString() })}\n\n`);
+    sseClients.add(res);
+
+    req.on('close', () => {
+      sseClients.delete(res);
+      res.end();
+    });
+  });
+
   app.post("/api/auth/login", async (req: Request, res: Response) => {
     const { employeeId, password } = req.body;
     const trimmedId = (employeeId || "").toString().trim();
@@ -2110,6 +2180,330 @@ async function startServer() {
     res.json(result);
   });
 
+  // --- Centralized Authoritative Officer Points & Department Aggregates ---
+  app.get("/api/analytics/central", authenticate, (req: Request, res: Response) => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    const officerStats = users
+      .filter((u: any) => u.role === 'OFFICER')
+      .map((off: any) => {
+        // Authoritative eligible completed tasks belonging to this officer
+        const offTasks = tasks.filter((t: any) => {
+          if ((t.status || '').toUpperCase() !== 'COMPLETED') return false;
+          const isMyTask = (t.responsibleOfficerId && (t.responsibleOfficerId === off.employeeId || t.responsibleOfficerId === off.id)) ||
+            (t.createdBy && (t.createdBy === off.employeeId || t.createdBy === off.id)) ||
+            (t.assignedBy && (t.assignedBy === off.employeeId || t.assignedBy === off.id));
+          if (!isMyTask) return false;
+
+          const creator = users.find((u: any) => u.employeeId === t.createdBy || u.id === t.createdBy);
+          const isOffCreated = creator?.role === 'OFFICER' || t.responsibleOfficerId;
+          return isOffCreated ? Boolean(t.engineerApproved) : t.requestStatus !== 'REJECTED';
+        });
+
+        const thisMonthTasks = offTasks.filter((t: any) => {
+          const d = new Date(t.completedAt || t.createdAt);
+          return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+        });
+
+        const points = Number(off.total_point || 0);
+        const thisMonthPoints = thisMonthTasks.reduce((sum: number, t: any) => sum + (Number(t.points) || 1), 0);
+
+        return {
+          id: off.id,
+          employeeId: off.employeeId,
+          name: off.name,
+          designation: off.designation || 'Officer',
+          department: off.department || 'RAC R&I',
+          points,
+          thisMonthPoints,
+          completedTasks: offTasks.length,
+          thisMonthTasks: thisMonthTasks.length
+        };
+      })
+      .sort((a: any, b: any) => b.points - a.points || b.completedTasks - a.completedTasks);
+
+    const totalEligibleTasks = tasks.filter((t: any) => {
+      if ((t.status || '').toUpperCase() !== 'COMPLETED') return false;
+      const creator = users.find((u: any) => u.employeeId === t.createdBy || u.id === t.createdBy);
+      const isOffCreated = creator?.role === 'OFFICER' || t.responsibleOfficerId;
+      return isOffCreated ? Boolean(t.engineerApproved) : t.requestStatus !== 'REJECTED';
+    });
+
+    res.json({
+      officers: officerStats,
+      totalDepartmentPoints: officerStats.reduce((sum: number, o: any) => sum + o.points, 0),
+      totalCompletedTasks: totalEligibleTasks.length
+    });
+  });
+
+  // --- Engineer Performance Analytics (Strict Access: Engineers & Management Only) ---
+  app.get("/api/analytics/engineer-performance", authenticate, (req: Request, res: Response) => {
+    const user = (req as any).user;
+    const authorizedRoles = ['ENGINEER', 'IN_CHARGE', 'MODEL_MANAGER', 'HOD', 'DHOD', 'CBO', 'DCBO', 'SUPER_ADMIN'];
+    
+    // Strict RBAC: Block Officer and Technician
+    if (!authorizedRoles.includes(user.role)) {
+      return res.status(403).json({
+        error: "Access Denied: Engineer Performance Analytics is restricted to Engineers, In-Charges, Model Managers, and Executive Management."
+      });
+    }
+
+    const { period = 'all', startDate, endDate } = req.query;
+    const now = new Date();
+    
+    // Period filter evaluator
+    const isDateInScope = (dateStr?: string): boolean => {
+      if (!dateStr) return false;
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return false;
+
+      if (period === 'today') {
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        return d >= startOfToday;
+      }
+      if (period === 'week') {
+        const startOfWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        return d >= startOfWeek;
+      }
+      if (period === 'month') {
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        return d >= startOfMonth;
+      }
+      if (period === 'custom' && startDate && endDate) {
+        const start = new Date(startDate as string);
+        const end = new Date(endDate as string);
+        end.setHours(23, 59, 59, 999);
+        return d >= start && d <= end;
+      }
+      return true; // 'all'
+    };
+
+    // Scoped engineers determination based on user role
+    let scopedEngineers: any[] = [];
+    let scopeLabel = "Department-Wide";
+
+    if (user.role === 'ENGINEER') {
+      scopeLabel = "Personal Scope: Your Tasks & Points";
+      scopedEngineers = users.filter((u: any) => u.role === 'ENGINEER' && (u.employeeId === user.employeeId || u.id === user.id));
+    } else if (user.role === 'IN_CHARGE') {
+      scopeLabel = "Section Scope: Assigned Engineering Team";
+      const assigned = user.assignedEngineers || [];
+      scopedEngineers = users.filter((u: any) => 
+        u.role === 'ENGINEER' && (
+          assigned.includes(u.employeeId) || 
+          (u.section && user.section && u.section.toLowerCase() === user.section.toLowerCase()) ||
+          u.employeeId === user.employeeId
+        )
+      );
+      if (scopedEngineers.length === 0) {
+        scopedEngineers = users.filter((u: any) => u.role === 'ENGINEER');
+      }
+    } else if (user.role === 'MODEL_MANAGER') {
+      scopeLabel = "Model Scope: Model Engineering Team";
+      const assigned = user.assignedEngineers || [];
+      scopedEngineers = users.filter((u: any) => 
+        u.role === 'ENGINEER' && (
+          assigned.includes(u.employeeId) || 
+          (u.section && user.section && u.section.toLowerCase() === user.section.toLowerCase())
+        )
+      );
+      if (scopedEngineers.length === 0) {
+        scopedEngineers = users.filter((u: any) => u.role === 'ENGINEER');
+      }
+    } else {
+      // HOD, DHOD, CBO, DCBO, SUPER_ADMIN
+      scopeLabel = "Full Department Scope: All Engineers";
+      scopedEngineers = users.filter((u: any) => u.role === 'ENGINEER');
+    }
+
+    const scopedEmpIds = new Set(scopedEngineers.map((e: any) => e.employeeId));
+
+    // Per-engineer metrics calculation
+    const engineerStats = scopedEngineers.map((eng: any) => {
+      // Tasks associated with this engineer
+      const engTasks = tasks.filter((t: any) => 
+        t.concernEngineerId === eng.employeeId ||
+        t.approvedBy === eng.employeeId ||
+        t.recommendedBy === eng.employeeId ||
+        t.createdBy === eng.employeeId ||
+        t.assignedBy === eng.employeeId
+      );
+
+      // 1. Eligible completed tasks in period
+      const completedTasksInPeriod = engTasks.filter((t: any) => {
+        if ((t.status || '').toUpperCase() !== 'COMPLETED') return false;
+        if (!isDateInScope(t.completedAt || t.createdAt)) return false;
+        const creator = users.find((u: any) => u.employeeId === t.createdBy || u.id === t.createdBy);
+        const isOffCreated = creator?.role === 'OFFICER' || t.responsibleOfficerId;
+        return isOffCreated ? Boolean(t.engineerApproved) : t.requestStatus !== 'REJECTED';
+      });
+
+      const earnedPoints = completedTasksInPeriod.reduce((sum: number, t: any) => sum + (Number(t.points) || 1), 0);
+
+      // 2. Workloads (displayed separately from earned points)
+      const runningWorkload = engTasks.filter((t: any) => (t.status || '').toUpperCase() === 'RUNNING').length;
+      const pendingWorkload = engTasks.filter((t: any) => (t.status || '').toUpperCase() === 'PENDING' || (t.status || '').toUpperCase() === 'REQUESTED').length;
+      const holdWorkload = engTasks.filter((t: any) => (t.status || '').toUpperCase() === 'HOLD').length;
+
+      // 3. Awaiting recommendation queue (tasks created by officers that need this engineer's recommendation)
+      const awaitingQueue = tasks.filter((t: any) => {
+        const creator = users.find((u: any) => u.employeeId === t.createdBy || u.id === t.createdBy);
+        if (creator?.role !== 'OFFICER' && !t.responsibleOfficerId) return false;
+        if (Boolean(t.engineerApproved)) return false;
+        if ((t.status || '').toUpperCase() === 'REJECTED' || (t.status || '').toUpperCase() === 'CANCELLED') return false;
+        
+        const isAssigned = (creator?.assignedEngineers || []).includes(eng.employeeId) ||
+          creator?.supervisorId === eng.id || creator?.supervisorId === eng.employeeId ||
+          t.concernEngineerId === eng.employeeId || t.assignedBy === eng.employeeId;
+        return isAssigned;
+      });
+
+      // Model breakdown for this engineer
+      const modelMap: { [key: string]: { completed: number; points: number } } = {};
+      completedTasksInPeriod.forEach((t: any) => {
+        const m = t.model || 'Other';
+        if (!modelMap[m]) modelMap[m] = { completed: 0, points: 0 };
+        modelMap[m].completed += 1;
+        modelMap[m].points += (Number(t.points) || 1);
+      });
+
+      return {
+        id: eng.id,
+        employeeId: eng.employeeId,
+        name: eng.name,
+        section: eng.section || 'RAC R&I',
+        designation: eng.designation || 'Engineer',
+        earnedPoints,
+        completedTasks: completedTasksInPeriod.length,
+        runningWorkload,
+        pendingWorkload,
+        holdWorkload,
+        awaitingRecommendations: awaitingQueue.length,
+        modelBreakdown: Object.keys(modelMap).map(m => ({ model: m, ...modelMap[m] }))
+      };
+    }).sort((a: any, b: any) => b.earnedPoints - a.earnedPoints || b.completedTasks - a.completedTasks);
+
+    // Global awaiting recommendation tasks across scoped engineers
+    const awaitingTasksList = tasks.filter((t: any) => {
+      const creator = users.find((u: any) => u.employeeId === t.createdBy || u.id === t.createdBy);
+      if (creator?.role !== 'OFFICER' && !t.responsibleOfficerId) return false;
+      if (Boolean(t.engineerApproved)) return false;
+      if ((t.status || '').toUpperCase() === 'REJECTED' || (t.status || '').toUpperCase() === 'CANCELLED') return false;
+
+      // Check if any scoped engineer is the target
+      return scopedEngineers.some((eng: any) => 
+        (creator?.assignedEngineers || []).includes(eng.employeeId) ||
+        creator?.supervisorId === eng.id || creator?.supervisorId === eng.employeeId ||
+        t.concernEngineerId === eng.employeeId || t.assignedBy === eng.employeeId
+      );
+    }).map((t: any) => {
+      const creator = users.find((u: any) => u.employeeId === t.createdBy || u.id === t.createdBy);
+      return {
+        id: t.id,
+        taskId: t.taskId,
+        title: t.title,
+        model: t.model,
+        urgency: t.urgency,
+        status: t.status,
+        officerName: creator?.name || t.assignedBy || 'Officer',
+        officerEmployeeId: creator?.employeeId || t.responsibleOfficerId || '',
+        createdAt: t.createdAt,
+        deadline: t.deadline
+      };
+    });
+
+    // Model comparison for scoped engineers
+    const overallModelMap: { [key: string]: { points: number; completed: number; running: number } } = {};
+    tasks.forEach((t: any) => {
+      const isScoped = scopedEngineers.some((eng: any) => 
+        t.concernEngineerId === eng.employeeId ||
+        t.approvedBy === eng.employeeId ||
+        t.recommendedBy === eng.employeeId ||
+        t.createdBy === eng.employeeId ||
+        t.assignedBy === eng.employeeId
+      );
+      if (!isScoped) return;
+
+      const m = t.model || 'Other';
+      if (!overallModelMap[m]) overallModelMap[m] = { points: 0, completed: 0, running: 0 };
+
+      const status = (t.status || '').toUpperCase();
+      if (status === 'COMPLETED' && isDateInScope(t.completedAt || t.createdAt)) {
+        const creator = users.find((u: any) => u.employeeId === t.createdBy || u.id === t.createdBy);
+        const isOff = creator?.role === 'OFFICER' || t.responsibleOfficerId;
+        const eligible = isOff ? Boolean(t.engineerApproved) : t.requestStatus !== 'REJECTED';
+        if (eligible) {
+          overallModelMap[m].completed += 1;
+          overallModelMap[m].points += (Number(t.points) || 1);
+        }
+      } else if (status === 'RUNNING') {
+        overallModelMap[m].running += 1;
+      }
+    });
+
+    const modelDistribution = Object.keys(overallModelMap).map(m => ({
+      name: m,
+      points: overallModelMap[m].points,
+      completed: overallModelMap[m].completed,
+      running: overallModelMap[m].running
+    })).filter(m => m.completed > 0 || m.running > 0);
+
+    // Trend analysis over past 7 days / periods
+    const trendDays: { [key: string]: { name: string; completed: number; points: number; running: number } } = {};
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+      const key = d.toISOString().split('T')[0];
+      const name = d.toLocaleDateString('en-US', { weekday: 'short', month: 'numeric', day: 'numeric' });
+      trendDays[key] = { name, completed: 0, points: 0, running: 0 };
+    }
+
+    tasks.forEach((t: any) => {
+      const isScoped = scopedEngineers.some((eng: any) => 
+        t.concernEngineerId === eng.employeeId ||
+        t.approvedBy === eng.employeeId ||
+        t.recommendedBy === eng.employeeId ||
+        t.createdBy === eng.employeeId ||
+        t.assignedBy === eng.employeeId
+      );
+      if (!isScoped) return;
+
+      if ((t.status || '').toUpperCase() === 'COMPLETED' && t.completedAt) {
+        const dayKey = t.completedAt.split('T')[0];
+        if (trendDays[dayKey]) {
+          const creator = users.find((u: any) => u.employeeId === t.createdBy || u.id === t.createdBy);
+          const isOff = creator?.role === 'OFFICER' || t.responsibleOfficerId;
+          const eligible = isOff ? Boolean(t.engineerApproved) : t.requestStatus !== 'REJECTED';
+          if (eligible) {
+            trendDays[dayKey].completed += 1;
+            trendDays[dayKey].points += (Number(t.points) || 1);
+          }
+        }
+      }
+    });
+
+    const performanceTrend = Object.values(trendDays);
+
+    res.json({
+      scopeLabel,
+      userRole: user.role,
+      period,
+      summary: {
+        totalEarnedPoints: engineerStats.reduce((sum: number, e: any) => sum + e.earnedPoints, 0),
+        totalCompletedTasks: engineerStats.reduce((sum: number, e: any) => sum + e.completedTasks, 0),
+        totalRunningWorkload: engineerStats.reduce((sum: number, e: any) => sum + e.runningWorkload, 0),
+        totalPendingWorkload: engineerStats.reduce((sum: number, e: any) => sum + e.pendingWorkload, 0),
+        totalAwaitingRecommendations: awaitingTasksList.length,
+        engineerCount: engineerStats.length
+      },
+      engineers: engineerStats,
+      modelDistribution,
+      performanceTrend,
+      awaitingTasksList
+    });
+  });
+
   app.post("/api/admin/recalculate", authenticate, async (req: Request, res: Response) => {
     const user = (req as any).user;
     if (user.role !== 'SUPER_ADMIN' && user.role !== 'HOD' && user.role !== 'DHOD' && user.role !== 'CBO' && user.role !== 'DCBO') {
@@ -2296,7 +2690,7 @@ async function startServer() {
     if (!currentUser || !currentUser.role) return [];
     
     // 1. Enterprise overview roles see all tasks
-    const isSuperAdmin = currentUser.role === 'SUPER_ADMIN' || currentUser.employeeId === '38250' || currentUser.employeeId === 'jhfboss';
+    const isSuperAdmin = currentUser.role === 'SUPER_ADMIN' || currentUser.employeeId === 'jhfboss';
     if (isSuperAdmin || ['CBO', 'DCBO', 'HOD', 'DHOD'].includes(currentUser.role)) {
       return taskList;
     }
@@ -2416,11 +2810,7 @@ async function startServer() {
     // 5. OFFICER: Personal tasks only (strictly isolated from other officers' tasks)
     if (currentUser.role === 'OFFICER') {
       const myTechnicians = allUsers.filter(u => 
-        u.role === 'TECHNICIAN' && (
-          u.supervisorId === currentUserId || 
-          u.supervisorId === currentEmpId || 
-          (u.supervisor_ids || []).includes(currentEmpId)
-        )
+        u.role === 'TECHNICIAN' && isTechnicianSupervisedByOfficer(u, currentUser)
       );
       const myTechEmpIds = new Set(myTechnicians.map(t => t.employeeId));
       const myTechNames = new Set(myTechnicians.map(t => (t.name || '').toLowerCase()));
@@ -3070,21 +3460,17 @@ async function startServer() {
       if (!assignedToName && workType !== 'TEAM') {
         return res.status(400).json({ error: "Task must be assigned to a Technician." });
       }
-      if (assignedToName) {
+      if (assignedToName && assignedToName !== 'Team Work') {
         const targetUser = users.find(u => u.id === assignedToName || u.name === assignedToName || u.employeeId === assignedToName);
         if (!targetUser || targetUser.role !== 'TECHNICIAN') {
           return res.status(403).json({ error: "Access Denied: Officers can only assign tasks to Technicians." });
         }
-        // Technician Monitoring: Cannot assign to WORKING technician
-        if (targetUser.status === 'WORKING') {
-          return res.status(400).json({ error: `Technician ${targetUser.name} is currently WORKING. Please wait until they are FREE.` });
-        }
       }
       if (workType === 'TEAM' && Array.isArray(assignedTechnicians)) {
         for (const at of assignedTechnicians) {
-          const tech = users.find(u => u.employeeId === at.employeeId);
-          if (tech && tech.status === 'WORKING') {
-            return res.status(400).json({ error: `Technician ${tech.name} is currently WORKING. Please wait until they are FREE.` });
+          const tech = users.find(u => u.employeeId === at.employeeId || u.id === at.id || u.name === at.name);
+          if (!tech || tech.role !== 'TECHNICIAN') {
+            return res.status(403).json({ error: `Access Denied: ${at.name || 'Technician'} is not a valid technician.` });
           }
         }
       }
@@ -3304,6 +3690,7 @@ async function startServer() {
       workType: newTask.workType
     }).catch(err => console.error("[AUTO-BACKUP ERROR] Task entry backup failed:", err));
 
+    broadcastRealtimeUpdate({ type: 'TASK_CREATED', taskId: newTask.id });
     res.status(201).json(newTask);
   });
 
@@ -3362,6 +3749,7 @@ async function startServer() {
 
     recalculateAllPoints();
     await saveData();
+    broadcastRealtimeUpdate({ type: 'POINTS_UPDATED', taskId: task.id });
     return res.json(task);
   }
 
@@ -3746,7 +4134,7 @@ async function startServer() {
     }
 
     const oldTask = tasks[index];
-    const isSuperAdmin = user.role === 'SUPER_ADMIN' || user.employeeId === '38250' || user.employeeId === 'jhfboss';
+    const isSuperAdmin = user.role === 'SUPER_ADMIN' || user.employeeId === 'jhfboss';
     const isExecutive = ['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD'].includes(user.role) || isSuperAdmin;
 
     // Completed task locking:
@@ -3757,10 +4145,78 @@ async function startServer() {
 
     // Role-based authorization
     if (user.role === 'OFFICER') {
-      // Officers can edit ONLY tasks they personally created
-      const isCreator = oldTask.createdBy === user.employeeId || oldTask.createdBy === user.id;
-      if (!isCreator) {
-        return res.status(403).json({ error: "Access Denied: Officers can only edit tasks they personally created." });
+      const empIdStr = String(user.employeeId || '').trim();
+      const userIdStr = String(user.id || '').trim();
+      const nameStr = String(user.name || '').trim().toLowerCase();
+
+      // Check operational scope:
+      const myTechnicians = users.filter(u => u.role === 'TECHNICIAN' && isTechnicianSupervisedByOfficer(u, user));
+      const myTechEmpIds = new Set(myTechnicians.map(t => String(t.employeeId || '').trim()));
+      const myTechNames = new Set(myTechnicians.map(t => String(t.name || '').trim().toLowerCase()));
+      const myTechIds = new Set(myTechnicians.map(t => String(t.id || '').trim()));
+
+      const createdByStr = String(oldTask.createdBy || '').trim();
+      const assignedToStr = String(oldTask.assignedTo || '').trim();
+      const respOffStr = String(oldTask.responsibleOfficerId || '').trim();
+      const assignedByStr = String(oldTask.assignedBy || '').trim();
+
+      const isCreator = createdByStr === empIdStr || createdByStr === userIdStr || (createdByStr.length > 0 && createdByStr.toLowerCase() === nameStr);
+      const isAssignedToOfficer = assignedToStr === empIdStr || assignedToStr === userIdStr || (assignedToStr.length > 0 && assignedToStr.toLowerCase() === nameStr);
+      const isResponsibleOfficer = respOffStr === empIdStr || respOffStr === userIdStr || (respOffStr.length > 0 && respOffStr.toLowerCase() === nameStr);
+      const isAssigner = assignedByStr === empIdStr || assignedByStr === userIdStr || (assignedByStr.length > 0 && assignedByStr.toLowerCase() === nameStr);
+      
+      const hasMyTechAssigned = myTechEmpIds.has(assignedToStr) || myTechNames.has(assignedToStr.toLowerCase()) || myTechIds.has(assignedToStr) ||
+        (oldTask.workType === 'TEAM' && Array.isArray(oldTask.assignedTechnicians) && oldTask.assignedTechnicians.some((at: any) => 
+          myTechEmpIds.has(String(at.employeeId || '').trim()) || 
+          myTechNames.has(String(at.name || '').trim().toLowerCase()) ||
+          myTechIds.has(String(at.id || '').trim())
+        ));
+      const hasTeamApproval = Array.isArray(oldTask.teamApprovals) && oldTask.teamApprovals.some((a: any) => 
+        String(a.officerId || '').trim() === empIdStr || 
+        String(a.officerId || '').trim() === userIdStr || 
+        (a.officerName && String(a.officerName).trim().toLowerCase() === nameStr)
+      );
+
+      const isInScope = isCreator || isAssignedToOfficer || isResponsibleOfficer || isAssigner || hasMyTechAssigned || hasTeamApproval;
+
+      if (!isInScope && !isExecutive) {
+        return res.status(403).json({ error: "Access Denied: You do not have permission to update or assign this task." });
+      }
+
+      // Check if trying to edit core definition fields on tasks NOT created by this Officer:
+      const definitionFields = ['title', 'model', 'details', 'urgency', 'deadline', 'points'];
+      const isModifyingDefinition = definitionFields.some(field => {
+        if (req.body[field] === undefined) return false;
+        return String(req.body[field] || '').trim() !== String((oldTask as any)[field] || '').trim();
+      });
+
+      if (isModifyingDefinition && !isCreator && !isExecutive) {
+        return res.status(403).json({ error: "Access Denied: Officers can only edit task details (title, model, details, deadline, urgency, points) for tasks they entered/created." });
+      }
+
+      // Officers can only assign tasks to Technicians
+      const assignedToName = req.body.assignedTo;
+      const isTeam = req.body.workType === 'TEAM' || oldTask.workType === 'TEAM';
+      
+      if (assignedToName && assignedToName !== oldTask.assignedTo && !isTeam && assignedToName !== 'Team Work') {
+        const targetUser = users.find(u => 
+          u.id === assignedToName || 
+          u.name === assignedToName || 
+          u.employeeId === assignedToName
+        );
+        if (!targetUser || targetUser.role !== 'TECHNICIAN') {
+          return res.status(403).json({ error: "Access Denied: Officers can only assign tasks to Technicians." });
+        }
+      }
+
+      // If it's a team task, validate assignedTechnicians if provided
+      if (req.body.assignedTechnicians && Array.isArray(req.body.assignedTechnicians)) {
+        for (const at of req.body.assignedTechnicians) {
+          const tech = users.find(u => u.employeeId === at.employeeId || u.id === at.id || u.name === at.name);
+          if (!tech || tech.role !== 'TECHNICIAN') {
+            return res.status(403).json({ error: `Access Denied: ${at.name || 'Technician'} is not a valid technician.` });
+          }
+        }
       }
     } else if (user.role === 'TECHNICIAN') {
       // Technicians can only update tasks assigned to them
@@ -3802,31 +4258,6 @@ async function startServer() {
           return res.status(403).json({ error: "Access Denied: Only the creator or executive admin can update points and quality." });
         }
       }
-    } else if (user.role === 'OFFICER') {
-      // Officers can only assign tasks to Technicians
-      const assignedToName = req.body.assignedTo;
-      const isTeam = req.body.workType === 'TEAM' || oldTask.workType === 'TEAM';
-      
-      if (assignedToName && assignedToName !== oldTask.assignedTo && !isTeam) {
-        const targetUser = users.find(u => 
-          u.id === assignedToName || 
-          u.name === assignedToName || 
-          u.employeeId === assignedToName
-        );
-        if (!targetUser || targetUser.role !== 'TECHNICIAN') {
-          return res.status(403).json({ error: "Access Denied: Officers can only assign tasks to Technicians." });
-        }
-      }
-
-      // If it's a team task, validate assignedTechnicians if provided
-      if (req.body.assignedTechnicians && Array.isArray(req.body.assignedTechnicians)) {
-        for (const at of req.body.assignedTechnicians) {
-          const tech = users.find(u => u.employeeId === at.employeeId);
-          if (!tech || tech.role !== 'TECHNICIAN') {
-            return res.status(403).json({ error: `Access Denied: ${at.name || 'Technician'} is not a valid technician.` });
-          }
-        }
-      }
     }
 
     const updatedData = { ...req.body };
@@ -3840,8 +4271,8 @@ async function startServer() {
     if (updatedData.workType === 'TEAM' && updatedData.assignedTechnicians) {
       // Check if any technician is not in my team
       const hasOtherTeamTech = updatedData.assignedTechnicians.some((at: any) => {
-        const tech = users.find(u => u.employeeId === at.employeeId);
-        return tech && tech.supervisorId !== user.id;
+        const tech = users.find(u => u.employeeId === at.employeeId || u.id === at.id || u.name === at.name);
+        return tech && !isTechnicianSupervisedByOfficer(tech, user);
       });
 
       if (hasOtherTeamTech && user.role === 'OFFICER') {
@@ -3872,8 +4303,8 @@ async function startServer() {
       if (updatedData.status === 'REQUESTED') {
         const supervisorsToNotify = new Set();
         updatedData.assignedTechnicians.forEach((at: any) => {
-          const tech = users.find(u => u.employeeId === at.employeeId);
-          if (tech && tech.supervisorId && tech.supervisorId !== user.id) {
+          const tech = users.find(u => u.employeeId === at.employeeId || u.id === at.id || u.name === at.name);
+          if (tech && tech.supervisorId && !isTechnicianSupervisedByOfficer(tech, user)) {
             supervisorsToNotify.add(tech.supervisorId);
           }
         });
@@ -3890,11 +4321,11 @@ async function startServer() {
     }
 
     // Auto-start system: If assigned to a technician, status becomes RUNNING
-    if (updatedData.assignedTo && updatedData.assignedTo !== oldTask.assignedTo && updatedData.workType !== 'TEAM') {
+    if (updatedData.assignedTo && updatedData.assignedTo !== oldTask.assignedTo && updatedData.workType !== 'TEAM' && updatedData.assignedTo !== 'Team Work') {
       const assignedUser = users.find(u => u.id === updatedData.assignedTo || u.employeeId === updatedData.assignedTo || u.name === updatedData.assignedTo);
       if (assignedUser && assignedUser.role === 'TECHNICIAN') {
         // Check for cross-team
-        if (user.role === 'OFFICER' && assignedUser.supervisorId !== user.id) {
+        if (user.role === 'OFFICER' && !isTechnicianSupervisedByOfficer(assignedUser, user)) {
           updatedData.status = 'REQUESTED';
           updatedData.requestStatus = 'PENDING';
         } else {
@@ -4119,27 +4550,7 @@ async function startServer() {
         }
       }
 
-      // Point System: Add points if COMPLETED + APPROVED
-      const creator = users.find(u => u.employeeId === oldTask.createdBy);
-      const isOfficerTask = creator?.role === 'OFFICER';
-      const isEngineerTask = creator?.role === 'ENGINEER';
-      const isApproved = updatedData.requestStatus === 'APPROVED' || oldTask.requestStatus === 'APPROVED' || (!oldTask.requestStatus && oldTask.status === 'RUNNING');
-
-      if (!oldTask.pointAdded && (isEngineerTask || (isOfficerTask && isApproved))) {
-        const officer = users.find(u => u.employeeId === oldTask.assignedBy) || users.find(u => u.employeeId === oldTask.createdBy);
-        if (officer && officer.role === 'OFFICER') {
-          pointTransactions.push({
-            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-            taskId: oldTask.id,
-            officerId: officer.id,
-            engineerId: oldTask.approvedBy || oldTask.createdBy || '',
-            pointValue: updatedData.points || oldTask.points || 1,
-            taskPriority: oldTask.urgency,
-            completedAt: updatedData.completedAt
-          });
-          updatedData.pointAdded = true;
-        }
-      }
+      // Point transactions and user totals are authoritatively maintained by recalculateAllPoints() below.
       
       // Calculate Task Taken Time, Remaining Time, and Over Time
       const timing = computeTaskTiming({ ...oldTask, ...updatedData, completedAt });
@@ -4312,6 +4723,7 @@ async function startServer() {
       recalculateAllPoints();
       rebuildTechnicianStatuses(); // Ensure statuses are consistent after update
       await saveData();
+      broadcastRealtimeUpdate({ type: 'TASK_UPDATED', taskId: tasks[index].id, status: tasks[index].status });
       res.json(tasks[index]);
     } catch (error) {
       console.error("Error updating task:", error);
@@ -4359,7 +4771,7 @@ async function startServer() {
         return res.status(403).json({ error: "Access Denied: Officers are not permitted to delete tasks." });
       }
 
-      const isSuperAdmin = user.role === 'SUPER_ADMIN' || user.employeeId === '38250' || user.employeeId === 'jhfboss';
+      const isSuperAdmin = user.role === 'SUPER_ADMIN' || user.employeeId === 'jhfboss';
       const isCbo = user.role === 'CBO';
       const isDcbo = user.role === 'DCBO';
       const isHod = user.role === 'HOD';
@@ -4430,6 +4842,7 @@ async function startServer() {
       }).catch(err => console.error("[AUTO-BACKUP ERROR] Task delete backup failed:", err));
 
       console.log(`Task ${cleanId} deleted successfully. Remaining tasks in memory: ${tasks.length}`);
+      broadcastRealtimeUpdate({ type: 'TASK_DELETED', taskId: task.id });
       res.json({ success: true, message: "Task deleted successfully", taskId: task.id });
     } catch (err: any) {
       console.error("Error deleting task:", err);
@@ -4799,6 +5212,7 @@ Output JSON format:
       // Force recalculation before saving and returning
       recalculateAllPoints();
       await saveData();
+      broadcastRealtimeUpdate({ type: 'POINTS_UPDATED' });
       
       res.json({ success: true, newPoints: officer.total_point });
   });
@@ -4833,6 +5247,7 @@ Output JSON format:
       console.log("OFFICER & TECHNICIAN SYNC DONE");
 
       await saveData();
+      broadcastRealtimeUpdate({ type: 'POINTS_UPDATED' });
       console.log("SAVE DONE");
       
       return res.json({ 
@@ -4852,7 +5267,7 @@ Output JSON format:
   app.delete("/api/admin/tasks/:id", authenticate, async (req: Request, res: Response) => {
     try {
       const user = (req as any).user;
-      const isSuperAdmin = user.role === 'SUPER_ADMIN' || user.employeeId === '38250' || user.employeeId === 'jhfboss';
+      const isSuperAdmin = user.role === 'SUPER_ADMIN' || user.employeeId === 'jhfboss';
       const isExecutive = user.role === 'CBO' || user.role === 'DCBO' || user.role === 'HOD' || user.role === 'DHOD';
       if (!isSuperAdmin && !isExecutive) {
         return res.status(403).json({ error: "Only Super Admin and Executives can delete tasks" });

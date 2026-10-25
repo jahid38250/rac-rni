@@ -69,6 +69,7 @@ import {
   Check,
   RotateCcw,
   FolderDown,
+  UserPlus,
   PlusCircle
 } from 'lucide-react';
 import { 
@@ -1342,6 +1343,18 @@ export default function App() {
   // Track if any modal is open to prevent interruptions
   const isAnyModalOpen = isTaskModalOpen || isStaffModalOpen || isTaskDetailsModalOpen || isStatusUpdateModalOpen || isChangePasswordModalOpen || isResetPasswordModalOpen || isRejectModalOpen;
 
+  // Engineer Performance Analytics States
+  const [analyticsViewMode, setAnalyticsViewMode] = useState<'OFFICER' | 'ENGINEER'>('OFFICER');
+  const [engineerAnalyticsPeriod, setEngineerAnalyticsPeriod] = useState<'all' | 'today' | 'week' | 'month' | 'custom'>('all');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+  const [engineerAnalyticsData, setEngineerAnalyticsData] = useState<any>(null);
+  const [isLoadingEngineerAnalytics, setIsLoadingEngineerAnalytics] = useState(false);
+
+  const canViewEngineerAnalytics = Boolean(
+    user && ['ENGINEER', 'IN_CHARGE', 'MODEL_MANAGER', 'HOD', 'DHOD', 'CBO', 'DCBO', 'SUPER_ADMIN'].includes(user.role)
+  );
+
   const [hodDashboardView, setHodDashboardView] = useState<'command' | 'standard'>('command');
   const [hodAttendanceCategory, setHodAttendanceCategory] = useState<'IN_CHARGE' | 'ALL_ASSOCIATE' | 'MODEL_MANAGER' | 'ENGINEER' | 'OFFICER'>('IN_CHARGE');
   const isHodExecutiveUser = Boolean(
@@ -1695,50 +1708,41 @@ export default function App() {
     const officer = staffList.find(s => s.employeeId === officerId || s.id === officerId);
     if (!officer) return 0;
 
-    const myName = (officer.name || '').toLowerCase().trim();
     const myEmpId = String(officer.employeeId || '').toLowerCase().trim();
     const myId = String(officer.id || '').toLowerCase().trim();
 
-    // Single source of truth: tasks table (as per department rules)
+    // If all-time total is requested, return authoritative total_point from staff list
+    if (!monthOnly && officer.total_point !== undefined) {
+      return Number(officer.total_point || 0);
+    }
+
+    // Authoritative task points calculation for the period
     const taskPoints = tasks.filter(t => {
-      const assignedToStr = String(t.assignedTo || '').toLowerCase().trim();
+      const status = (t.status || '').toUpperCase();
+      if (status !== 'COMPLETED') return false;
+
+      // Ownership check: must be created, assigned, or marked responsible for this officer
       const createdByStr = String(t.createdBy || '').toLowerCase().trim();
       const assignedByStr = String(t.assignedBy || '').toLowerCase().trim();
-
-      const isAssignedToMe = assignedToStr === myName || assignedToStr === myId || assignedToStr === myEmpId;
-      const isCreatedByMe = createdByStr === myEmpId || createdByStr === myId;
-      const isAssignedByMe = assignedByStr === myEmpId || assignedByStr === myId;
+      const respOffStr = String(t.responsibleOfficerId || '').toLowerCase().trim();
       
+      const isMyTask = respOffStr === myEmpId || respOffStr === myId ||
+        createdByStr === myEmpId || createdByStr === myId ||
+        assignedByStr === myEmpId || assignedByStr === myId;
+      if (!isMyTask) return false;
+
+      // Strict point eligibility: Officer tasks MUST have engineerApproved = true
       const creator = staffList.find(s => s.employeeId === t.createdBy || s.id === t.createdBy);
+      const isOfficerTask = creator?.role === 'OFFICER' || Boolean(t.responsibleOfficerId);
+      if (isOfficerTask && !t.engineerApproved) return false;
+      if (t.requestStatus === 'REJECTED') return false;
 
-      let isInScope = false;
-      if (isCreatedByMe) {
-        isInScope = true;
-      } else if (isAssignedByMe) {
-        isInScope = true;
-      } else if (isAssignedToMe && creator?.role !== 'OFFICER') {
-        isInScope = true;
-      }
-      
-      const isCompleted = t.status === 'COMPLETED';
-      
-      if (!isInScope || !isCompleted) return false;
-      
       if (monthOnly) {
         const taskDate = new Date(t.completedAt || t.createdAt);
         return taskDate.getMonth() === now.getMonth() && taskDate.getFullYear() === now.getFullYear();
       }
       return true;
-    }).reduce((sum, t) => {
-      const ptMatch = pointTransactions.find(pt => pt.taskId === t.id && (pt.officerId === officer.id || pt.officerId === officer.employeeId));
-      const ptVal = ptMatch ? Number(ptMatch.pointValue || 0) : 0;
-      let tVal = Number(t.points !== undefined ? t.points : 0);
-      if (tVal === 0 && ptVal > 0) tVal = ptVal;
-      if (tVal === 0) {
-        tVal = t.urgency === 'MOST_URGENT' ? 3 : t.urgency === 'URGENT' ? 2 : 1;
-      }
-      return sum + Math.max(tVal, ptVal);
-    }, 0);
+    }).reduce((sum, t) => sum + (Number(t.points) || 1), 0);
 
     // Include manual adjustments from pointTransactions
     const manualPoints = pointTransactions.filter(pt => {
@@ -1749,11 +1753,11 @@ export default function App() {
         return ptDate.getMonth() === now.getMonth() && ptDate.getFullYear() === now.getFullYear();
       }
       return true;
-    }).reduce((sum, pt) => sum + (pt.pointValue || 0), 0);
+    }).reduce((sum, pt) => sum + (Number(pt.pointValue) || 0), 0);
 
     const calculatedTotal = taskPoints + manualPoints;
     if (monthOnly) return calculatedTotal;
-    return Math.max(calculatedTotal, Number(officer.total_point || 0));
+    return Number(officer.total_point !== undefined ? officer.total_point : calculatedTotal);
   };
 
   const getValidOfficerTaskCount = (officerId: string, monthOnly: boolean = false) => {
@@ -1761,34 +1765,22 @@ export default function App() {
     const officer = staffList.find(s => s.employeeId === officerId || s.id === officerId);
     if (!officer) return 0;
 
-    const myName = (officer.name || '').toLowerCase().trim();
     const myEmpId = String(officer.employeeId || '').toLowerCase().trim();
     const myId = String(officer.id || '').toLowerCase().trim();
 
     return tasks.filter(t => {
-      const assignedToStr = String(t.assignedTo || '').toLowerCase().trim();
+      const status = (t.status || '').toUpperCase();
+      if (status !== 'COMPLETED') return false;
+
       const createdByStr = String(t.createdBy || '').toLowerCase().trim();
       const assignedByStr = String(t.assignedBy || '').toLowerCase().trim();
+      const respOffStr = String(t.responsibleOfficerId || '').toLowerCase().trim();
 
-      const isAssignedToMe = assignedToStr === myName || assignedToStr === myId || assignedToStr === myEmpId;
-      const isCreatedByMe = createdByStr === myEmpId || createdByStr === myId;
-      const isAssignedByMe = assignedByStr === myEmpId || assignedByStr === myId;
-      
-      const creator = staffList.find(s => s.employeeId === t.createdBy || s.id === t.createdBy);
+      const isMyTask = respOffStr === myEmpId || respOffStr === myId ||
+        createdByStr === myEmpId || createdByStr === myId ||
+        assignedByStr === myEmpId || assignedByStr === myId;
+      if (!isMyTask) return false;
 
-      let isInScope = false;
-      if (isCreatedByMe) {
-        isInScope = true;
-      } else if (isAssignedByMe) {
-        isInScope = true;
-      } else if (isAssignedToMe && creator?.role !== 'OFFICER') {
-        isInScope = true;
-      }
-
-      const isCompleted = t.status === 'COMPLETED';
-      
-      if (!isInScope || !isCompleted) return false;
-      
       if (monthOnly) {
         const taskDate = new Date(t.completedAt || t.createdAt);
         return taskDate.getMonth() === now.getMonth() && taskDate.getFullYear() === now.getFullYear();
@@ -2270,6 +2262,31 @@ export default function App() {
       setAttendance(data);
     } catch (err) {
       console.error('Fetch attendance error:', err);
+    }
+  };
+
+  const fetchEngineerAnalytics = async (
+    token?: string,
+    period: string = engineerAnalyticsPeriod,
+    start: string = customStartDate,
+    end: string = customEndDate
+  ) => {
+    const authToken = token || localStorage.getItem('token');
+    if (!authToken || !canViewEngineerAnalytics) return;
+    setIsLoadingEngineerAnalytics(true);
+    try {
+      let url = `/api/analytics/engineer-performance?period=${period}`;
+      if (period === 'custom' && start && end) {
+        url += `&startDate=${encodeURIComponent(start)}&endDate=${encodeURIComponent(end)}`;
+      }
+      const data = await fetchJson(url, {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      });
+      setEngineerAnalyticsData(data);
+    } catch (err) {
+      console.error('Fetch engineer analytics error:', err);
+    } finally {
+      setIsLoadingEngineerAnalytics(false);
     }
   };
 
@@ -3017,6 +3034,9 @@ export default function App() {
       if (activeTab === 'analytics') {
         fetchTasks(token);
         fetchPoints(token);
+        if (canViewEngineerAnalytics) {
+          fetchEngineerAnalytics(token);
+        }
       }
       if (activeTab === 'attendance' || activeTab === 'technician_monitoring') {
         fetchAttendance(token);
@@ -3078,9 +3098,40 @@ export default function App() {
     };
     window.addEventListener('focus', handleFocus);
 
+    // Instant real-time Server-Sent Events (SSE) synchronization
+    let eventSource: EventSource | null = null;
+    try {
+      eventSource = new EventSource('/api/events');
+      eventSource.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (['TASK_UPDATED', 'TASK_CREATED', 'POINTS_UPDATED', 'TASK_DELETED'].includes(payload.type)) {
+            if (user?.role === 'CBO' || user?.role === 'DCBO') {
+              fetchTasks(token, true);
+            } else {
+              fetchTasks(token);
+            }
+            fetchPoints(token);
+            fetchStaff(token, isAnyModalOpen);
+            fetchPerformance(token);
+            if (activeTab === 'analytics' && canViewEngineerAnalytics) {
+              fetchEngineerAnalytics(token);
+            }
+          }
+        } catch {
+          // ignore keepalive comments
+        }
+      };
+    } catch (sseErr) {
+      console.warn('SSE initialization error:', sseErr);
+    }
+
     return () => {
       clearInterval(interval);
       window.removeEventListener('focus', handleFocus);
+      if (eventSource) {
+        eventSource.close();
+      }
     };
   }, [isLoggedIn, user, isAnyModalOpen, activeTab]);
 
@@ -3483,19 +3534,189 @@ export default function App() {
     })();
   };
 
-  const canEditTask = (task: Task, currentUser?: User | null): boolean => {
+  const isOfficerInScopeForTask = (task: Task, currentUser: User): boolean => {
+    if (currentUser.role !== 'OFFICER') return false;
+    const myEmpId = String(currentUser.employeeId || '').trim();
+    const myId = String(currentUser.id || '').trim();
+    const myName = (currentUser.name || '').toLowerCase().trim();
+
+    const createdBy = String(task.createdBy || '').trim();
+    const assignedTo = String(task.assignedTo || '').trim();
+    const responsibleOfficerId = String(task.responsibleOfficerId || '').trim();
+    const assignedBy = String(task.assignedBy || '').trim();
+
+    // 1. Created by this Officer
+    if (createdBy === myEmpId || createdBy === myId || (createdBy && createdBy.toLowerCase() === myName)) {
+      return true;
+    }
+    // 2. Assigned directly to this Officer (e.g., by Engineer or Manager)
+    if (assignedTo === myEmpId || assignedTo === myId || (assignedTo && assignedTo.toLowerCase() === myName)) {
+      return true;
+    }
+    // 3. Responsible Officer
+    if (responsibleOfficerId === myEmpId || responsibleOfficerId === myId) {
+      return true;
+    }
+    // 4. Assigned by this Officer
+    if (assignedBy === myEmpId || assignedBy === myId) {
+      return true;
+    }
+    // 5. Assigned to a technician supervised by this Officer
+    const subordinates = staffList.filter(s => s.role === 'TECHNICIAN' && isStaffInScope(s));
+    const subEmpIds = new Set(subordinates.map(s => String(s.employeeId || '').trim()));
+    const subNames = new Set(subordinates.map(s => (s.name || '').toLowerCase().trim()));
+    const subIds = new Set(subordinates.map(s => String(s.id || '').trim()));
+
+    if (assignedTo && (subEmpIds.has(assignedTo) || subNames.has(assignedTo.toLowerCase()) || subIds.has(assignedTo))) {
+      return true;
+    }
+    if (task.workType === 'TEAM' && Array.isArray(task.assignedTechnicians)) {
+      if (task.assignedTechnicians.some(at => 
+        subEmpIds.has(String(at.employeeId || '').trim()) || 
+        subNames.has(String(at.name || '').toLowerCase().trim()) || 
+        subIds.has(String((at as any).id || '').trim())
+      )) {
+        return true;
+      }
+    }
+    // 6. Cross-team approval requested from this Officer
+    if (Array.isArray(task.teamApprovals) && task.teamApprovals.some((a: any) => 
+      String(a.officerId || '').trim() === myEmpId || 
+      String(a.officerId || '').trim() === myId || 
+      (a.officerName && String(a.officerName).toLowerCase().trim() === myName)
+    )) {
+      return true;
+    }
+    return false;
+  };
+
+  const canViewTask = (_task: Task, currentUser?: User | null): boolean => {
     if (!currentUser) return false;
-    const isSuperAdmin = currentUser.role === 'SUPER_ADMIN' || currentUser.employeeId === '38250' || currentUser.employeeId === 'jhfboss';
+    return true;
+  };
+
+  const canAssignTask = (task: Task, currentUser?: User | null): boolean => {
+    if (!currentUser) return false;
+    // Completed tasks cannot be reassigned by non-executives
+    if ((task.status || '').toUpperCase() === 'COMPLETED') return false;
+
+    const isSuperAdmin = currentUser.role === 'SUPER_ADMIN' || currentUser.employeeId === 'jhfboss';
     const isExecutive = ['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD'].includes(currentUser.role) || isSuperAdmin;
     if (isExecutive) return true;
 
-    // Completed tasks are strictly locked against ordinary edits
+    if (currentUser.role === 'OFFICER') {
+      return isOfficerInScopeForTask(task, currentUser);
+    }
+
+    if (currentUser.role === 'ENGINEER') {
+      const isCreator = task.createdBy === currentUser.employeeId || task.createdBy === currentUser.id;
+      const isAssigned = task.assignedTo === currentUser.employeeId || task.assignedTo === currentUser.id || (task.assignedTo || '').toLowerCase() === (currentUser.name || '').toLowerCase();
+      const isConcern = task.concernEngineerId === currentUser.employeeId || task.concernEngineerId === currentUser.id;
+      return isCreator || isAssigned || isConcern;
+    }
+
+    if (currentUser.role === 'IN_CHARGE' || currentUser.role === 'MODEL_MANAGER') {
+      return true;
+    }
+
+    return false;
+  };
+
+  const canUpdateTaskStatus = (task: Task, currentUser?: User | null): boolean => {
+    if (!currentUser) return false;
+    if ((task.status || '').toUpperCase() === 'COMPLETED') return false;
+
+    const isSuperAdmin = currentUser.role === 'SUPER_ADMIN' || currentUser.employeeId === 'jhfboss';
+    const isExecutive = ['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD'].includes(currentUser.role) || isSuperAdmin;
+    if (isExecutive) return true;
+
+    if (currentUser.role === 'OFFICER') {
+      return isOfficerInScopeForTask(task, currentUser);
+    }
+
+    if (currentUser.role === 'ENGINEER' || currentUser.role === 'IN_CHARGE' || currentUser.role === 'MODEL_MANAGER') {
+      return true;
+    }
+
+    if (currentUser.role === 'TECHNICIAN') {
+      const isAssignedToMe = task.assignedTo === currentUser.id || task.assignedTo === currentUser.employeeId || (task.assignedTo || '').toLowerCase() === (currentUser.name || '').toLowerCase();
+      const isTeamMember = task.workType === 'TEAM' && Array.isArray(task.assignedTechnicians) && task.assignedTechnicians.some(at => at.employeeId === currentUser.employeeId || (at as any).id === currentUser.id);
+      return isAssignedToMe || isTeamMember;
+    }
+
+    return false;
+  };
+
+  const canFixTask = (task: Task, currentUser?: User | null): boolean => {
+    if (!currentUser) return false;
+    if ((task.status || '').toUpperCase() === 'COMPLETED') return false;
+
+    const isSuperAdmin = currentUser.role === 'SUPER_ADMIN' || currentUser.employeeId === 'jhfboss';
+    const isExecutive = ['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD'].includes(currentUser.role) || isSuperAdmin;
+    if (isExecutive) return true;
+
+    if (currentUser.role === 'OFFICER') {
+      return isOfficerInScopeForTask(task, currentUser);
+    }
+
+    if (currentUser.role === 'ENGINEER' || currentUser.role === 'IN_CHARGE' || currentUser.role === 'MODEL_MANAGER') {
+      return true;
+    }
+
+    return false;
+  };
+
+  const canUpdateTask = (task: Task, currentUser?: User | null): boolean => {
+    if (!currentUser) return false;
+
+    const isSuperAdmin = currentUser.role === 'SUPER_ADMIN' || currentUser.employeeId === 'jhfboss';
+    const isExecutive = ['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD'].includes(currentUser.role) || isSuperAdmin;
+    if (isExecutive) return true;
+
     if ((task.status || '').toUpperCase() === 'COMPLETED') return false;
 
     if (currentUser.role === 'OFFICER') {
-      // Officers can edit ONLY tasks they personally created
-      return task.createdBy === currentUser.employeeId || task.createdBy === currentUser.id;
+      return isOfficerInScopeForTask(task, currentUser);
     }
+
+    if (currentUser.role === 'ENGINEER' || currentUser.role === 'IN_CHARGE' || currentUser.role === 'MODEL_MANAGER') {
+      return true;
+    }
+
+    if (currentUser.role === 'TECHNICIAN') {
+      const isAssignedToMe = task.assignedTo === currentUser.id || task.assignedTo === currentUser.employeeId || (task.assignedTo || '').toLowerCase() === (currentUser.name || '').toLowerCase();
+      const isTeamMember = task.workType === 'TEAM' && Array.isArray(task.assignedTechnicians) && task.assignedTechnicians.some(at => at.employeeId === currentUser.employeeId || (at as any).id === currentUser.id);
+      return isAssignedToMe || isTeamMember;
+    }
+
+    return false;
+  };
+
+  const canEditTask = (task: Task, currentUser?: User | null): boolean => {
+    if (!currentUser) return false;
+
+    // Completed tasks are strictly locked against ordinary edits
+    if ((task.status || '').toUpperCase() === 'COMPLETED') {
+      const isSuperAdmin = currentUser.role === 'SUPER_ADMIN' || currentUser.employeeId === 'jhfboss';
+      return ['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD'].includes(currentUser.role) || isSuperAdmin;
+    }
+
+    // Officers can edit ONLY tasks they personally created/entered
+    if (currentUser.role === 'OFFICER') {
+      const myEmpId = String(currentUser.employeeId || '').trim();
+      const myId = String(currentUser.id || '').trim();
+      const myName = (currentUser.name || '').toLowerCase().trim();
+      const createdBy = String(task.createdBy || '').trim();
+
+      const isCreator = createdBy === myEmpId || 
+                        createdBy === myId || 
+                        (Boolean(createdBy) && createdBy.toLowerCase() === myName);
+      return Boolean(isCreator);
+    }
+
+    const isSuperAdmin = currentUser.role === 'SUPER_ADMIN' || currentUser.employeeId === 'jhfboss';
+    const isExecutive = ['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD'].includes(currentUser.role) || isSuperAdmin;
+    if (isExecutive) return true;
 
     if (currentUser.role === 'ENGINEER') {
       const isCreator = task.createdBy === currentUser.employeeId || task.createdBy === currentUser.id;
@@ -3514,7 +3735,10 @@ export default function App() {
 
   const canDeleteTask = (_task: Task, currentUser?: User | null): boolean => {
     if (!currentUser) return false;
-    const isSuperAdmin = currentUser.role === 'SUPER_ADMIN' || currentUser.employeeId === '38250' || currentUser.employeeId === 'jhfboss';
+    // Ordinary Officers can NEVER delete tasks
+    if (currentUser.role === 'OFFICER') return false;
+    if (currentUser.role === 'TECHNICIAN') return false;
+    const isSuperAdmin = currentUser.role === 'SUPER_ADMIN' || currentUser.employeeId === 'jhfboss';
     const isExecutive = ['SUPER_ADMIN', 'CBO', 'DCBO', 'HOD', 'DHOD'].includes(currentUser.role) || isSuperAdmin;
     return isExecutive;
   };
@@ -3759,15 +3983,28 @@ export default function App() {
 
   const isOwnTechnician = () => {
     if (user?.role !== 'OFFICER') return true;
+    const myId = String(user?.id || '').trim();
+    const myEmpId = String(user?.employeeId || '').trim();
+
+    const isTechMine = (tech: any) => {
+      if (!tech) return false;
+      const techSupId = String(tech.supervisorId || '').trim();
+      if (techSupId && (techSupId === myId || techSupId === myEmpId)) return true;
+      if (Array.isArray(tech.supervisor_ids)) {
+        if (tech.supervisor_ids.some((sid: any) => String(sid).trim() === myId || String(sid).trim() === myEmpId)) return true;
+      }
+      return false;
+    };
+
     if (newTask.workType === 'SINGLE') {
       if (!newTask.assignedTo) return true;
       const tech = staffList.find(s => s.id === newTask.assignedTo || s.name === newTask.assignedTo || s.employeeId === newTask.assignedTo);
-      return tech?.supervisorId === user.id;
+      return isTechMine(tech);
     } else {
       if (selectedTechs.length === 0) return true;
       return selectedTechs.every(st => {
-        const tech = staffList.find(s => s.employeeId === st.employeeId || s.name === st.name);
-        return tech?.supervisorId === user.id;
+        const tech = staffList.find(s => s.employeeId === st.employeeId || s.name === st.name || s.id === st.employeeId);
+        return isTechMine(tech);
       });
     }
   };
@@ -4391,15 +4628,8 @@ export default function App() {
     const allOfficers = staffList
       .filter(s => s.role === 'OFFICER')
       .map(s => {
-        const pts = Math.max(
-          getValidOfficerPoints(s.employeeId),
-          getValidOfficerPoints(s.id),
-          Number(s.total_point || 0)
-        );
-        const cnt = Math.max(
-          getValidOfficerTaskCount(s.employeeId),
-          getValidOfficerTaskCount(s.id)
-        );
+        const pts = getValidOfficerPoints(s.employeeId);
+        const cnt = getValidOfficerTaskCount(s.employeeId);
         return {
           id: s.id,
           employeeId: s.employeeId,
@@ -7337,7 +7567,7 @@ export default function App() {
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold bg-green-500/15 text-green-400 border border-green-500/25">
                                 <CheckCircle2 size={13} /> Fixed
                               </span>
-                            ) : (
+                            ) : canFixTask(task, user) ? (
                               <button
                                 onClick={() => {
                                   setStatusUpdateTask(task);
@@ -7354,20 +7584,51 @@ export default function App() {
                               >
                                 <Wrench size={13} /> Fix It
                               </button>
+                            ) : (
+                              <span className="text-gray-600 text-xs">-</span>
                             )}
                           </td>
                           <td className="px-4 py-4 text-right whitespace-nowrap">
-                            <div className="flex items-center justify-end gap-2">
-                              {['OFFICER', 'ENGINEER', 'IN_CHARGE', 'MODEL_MANAGER', 'DHOD', 'HOD'].includes(user?.role || '') && task.status !== 'COMPLETED' && (
+                            <div className="flex items-center justify-end gap-1.5">
+                              {canUpdateTaskStatus(task, user) && (
                                 <button 
                                   onClick={() => {
                                     setStatusUpdateTask(task);
                                     setStatusUpdateData({ progress: task.progress, status: task.status, remarks: task.remarks || '', actualCompletionTime: '' });
                                     setIsStatusUpdateModalOpen(true);
                                   }}
-                                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg text-white text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-blue-500/20"
+                                  className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg text-white text-[10px] font-black uppercase tracking-wider transition-all shadow-md shadow-blue-500/20"
+                                  title="Update Status"
                                 >
-                                  Update Status
+                                  Status
+                                </button>
+                              )}
+                              {canAssignTask(task, user) && (
+                                <button 
+                                  onClick={() => {
+                                    setShowDistributeModal(task.id);
+                                    setDistributeWorkType(task.workType || 'SINGLE');
+                                    setSelectedTechs(task.assignedTechnicians || []);
+                                    setTechSearch('');
+                                  }}
+                                  className="px-2.5 py-1.5 bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/30 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all inline-flex items-center gap-1"
+                                  title="Assign Task to Technician(s)"
+                                >
+                                  <UserPlus size={12} /> Assign
+                                </button>
+                              )}
+                              {canUpdateTask(task, user) && (
+                                <button 
+                                  onClick={() => {
+                                    setSelectedTask(task);
+                                    setTaskRemarks(task.remarks || '');
+                                    setAssignToTech('');
+                                    setIsTaskDetailsModalOpen(true);
+                                  }}
+                                  className="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all"
+                                  title="Task Update (Remarks, Progress, Assignment)"
+                                >
+                                  Update
                                 </button>
                               )}
                               {canEditTask(task, user) && (
@@ -7390,33 +7651,36 @@ export default function App() {
                                     setSelectedTechs(task.assignedTechnicians || []);
                                     setIsTaskModalOpen(true);
                                   }}
-                                  className="p-2 hover:bg-white/10 rounded-lg text-blue-400 transition-all"
-                                  title="Update Task"
+                                  className="p-1.5 hover:bg-white/10 rounded-lg text-blue-400 transition-all"
+                                  title="Edit Task"
                                 >
-                                  <Edit2 size={16} />
+                                  <Edit2 size={15} />
                                 </button>
                               )}
                               {canDeleteTask(task, user) && (
                                 <button 
                                   onClick={() => setTaskToDelete(task.id)}
-                                  className="p-2 hover:bg-white/10 rounded-lg text-red-400 transition-all"
+                                  className="p-1.5 hover:bg-white/10 rounded-lg text-red-400 transition-all"
                                   title="Delete Task"
                                 >
-                                  <Trash2 size={16} />
+                                  <Trash2 size={15} />
                                 </button>
                               )}
-                              <button 
-                                onClick={() => {
-                                  setSelectedTask(task);
-                                  setTaskRemarks(task.remarks || '');
-                                  setAssignToTech('');
-                                  setIsTaskDetailsModalOpen(true);
-                                }}
-                                className="p-2 hover:bg-white/10 rounded-lg text-gray-400 transition-all flex items-center gap-2"
-                              >
-                                <span className="text-[10px] font-bold uppercase tracking-wider">View Task</span>
-                                <ChevronRight size={18} />
-                              </button>
+                              {canViewTask(task, user) && (
+                                <button 
+                                  onClick={() => {
+                                    setSelectedTask(task);
+                                    setTaskRemarks(task.remarks || '');
+                                    setAssignToTech('');
+                                    setIsTaskDetailsModalOpen(true);
+                                  }}
+                                  className="p-1.5 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-all flex items-center gap-1"
+                                  title="View Task Details"
+                                >
+                                  <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">View</span>
+                                  <ChevronRight size={16} />
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -9925,8 +10189,439 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Officer Personal Performance Banner */}
-              {user?.role === 'OFFICER' && (
+              {/* Authorized Analytics View Selector */}
+              {canViewEngineerAnalytics && (
+                <div className="flex flex-wrap items-center justify-between gap-4 p-2 bg-white/[0.03] border border-white/10 rounded-2xl">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setAnalyticsViewMode('OFFICER')}
+                      className={cn(
+                        "flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all",
+                        analyticsViewMode === 'OFFICER'
+                          ? "bg-amber-500 text-black shadow-lg shadow-amber-500/20"
+                          : "text-gray-400 hover:text-white hover:bg-white/5"
+                      )}
+                    >
+                      <Award size={16} />
+                      <span>Officer & Department Stats</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setAnalyticsViewMode('ENGINEER');
+                        if (!engineerAnalyticsData) {
+                          fetchEngineerAnalytics();
+                        }
+                      }}
+                      className={cn(
+                        "flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all",
+                        analyticsViewMode === 'ENGINEER'
+                          ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20"
+                          : "text-gray-400 hover:text-white hover:bg-white/5"
+                      )}
+                    >
+                      <Activity size={16} />
+                      <span>Engineer Performance Analytics</span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-white/20">
+                        NEW
+                      </span>
+                    </button>
+                  </div>
+
+                  {analyticsViewMode === 'ENGINEER' && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex items-center bg-white/5 p-1 rounded-xl border border-white/10 text-xs">
+                        {(['all', 'today', 'week', 'month', 'custom'] as const).map(p => (
+                          <button
+                            key={p}
+                            onClick={() => {
+                              setEngineerAnalyticsPeriod(p);
+                              if (p !== 'custom') {
+                                fetchEngineerAnalytics(undefined, p);
+                              }
+                            }}
+                            className={cn(
+                              "px-3 py-1.5 rounded-lg font-bold capitalize transition-all",
+                              engineerAnalyticsPeriod === p
+                                ? "bg-blue-500 text-white shadow-md shadow-blue-500/30"
+                                : "text-gray-400 hover:text-white"
+                            )}
+                          >
+                            {p === 'all' ? 'All Time' : p === 'week' ? 'This Week' : p === 'month' ? 'This Month' : p}
+                          </button>
+                        ))}
+                      </div>
+
+                      {engineerAnalyticsPeriod === 'custom' && (
+                        <div className="flex items-center gap-2 bg-white/5 px-2.5 py-1 rounded-xl border border-white/10 text-xs">
+                          <input
+                            type="date"
+                            value={customStartDate}
+                            onChange={(e) => setCustomStartDate(e.target.value)}
+                            className="bg-black/40 border border-white/10 rounded px-2 py-1 text-white text-xs"
+                          />
+                          <span className="text-gray-400 text-xs">to</span>
+                          <input
+                            type="date"
+                            value={customEndDate}
+                            onChange={(e) => setCustomEndDate(e.target.value)}
+                            className="bg-black/40 border border-white/10 rounded px-2 py-1 text-white text-xs"
+                          />
+                          <button
+                            onClick={() => fetchEngineerAnalytics(undefined, 'custom', customStartDate, customEndDate)}
+                            disabled={!customStartDate || !customEndDate}
+                            className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-3 py-1 rounded font-bold text-xs"
+                          >
+                            Apply
+                          </button>
+                        </div>
+                      )}
+
+                      <button
+                        onClick={() => fetchEngineerAnalytics()}
+                        className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white border border-white/10"
+                        title="Refresh Engineer Analytics"
+                      >
+                        <RefreshCw size={14} className={isLoadingEngineerAnalytics ? "animate-spin" : ""} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {canViewEngineerAnalytics && analyticsViewMode === 'ENGINEER' ? (
+                <div className="space-y-6">
+                  {/* Scope Header Banner */}
+                  <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-900/30 via-indigo-900/20 to-purple-900/20 border border-blue-500/30 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-blue-500/20 border border-blue-500/40 flex items-center justify-center text-blue-400">
+                        <Activity size={20} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h2 className="text-base font-bold text-white">Engineer Performance Command</h2>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                            {engineerAnalyticsData?.scopeLabel || "Scoped Engineering Analytics"}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          Tracking point-eligible completed tasks, active running workloads, and awaiting engineer recommendations
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-xs text-gray-400 bg-black/40 px-3 py-1.5 rounded-xl border border-white/10">
+                      Period: <span className="font-bold text-white capitalize">{engineerAnalyticsPeriod}</span>
+                    </div>
+                  </div>
+
+                  {/* 4 Metric Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* Card 1: Eligible Earned Points */}
+                    <GlassCard className="p-5 border-emerald-500/20 hover:border-emerald-500/40 transition-all">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">Eligible Earned Points</span>
+                        <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400">
+                          <Award size={18} />
+                        </div>
+                      </div>
+                      <div className="text-3xl font-black text-white">
+                        {engineerAnalyticsData?.summary?.totalEarnedPoints ?? 0}
+                      </div>
+                      <p className="text-[11px] text-gray-400 mt-1">
+                        Verified & approved task points in period
+                      </p>
+                    </GlassCard>
+
+                    {/* Card 2: Completed Tasks */}
+                    <GlassCard className="p-5 border-blue-500/20 hover:border-blue-500/40 transition-all">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-bold uppercase tracking-wider text-blue-400">Completed Tasks</span>
+                        <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-400">
+                          <CheckCircle2 size={18} />
+                        </div>
+                      </div>
+                      <div className="text-3xl font-black text-white">
+                        {engineerAnalyticsData?.summary?.totalCompletedTasks ?? 0}
+                      </div>
+                      <p className="text-[11px] text-gray-400 mt-1">
+                        Finished assignments meeting eligibility
+                      </p>
+                    </GlassCard>
+
+                    {/* Card 3: Active Workload (Running & Pending) */}
+                    <GlassCard className="p-5 border-amber-500/20 hover:border-amber-500/40 transition-all">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-bold uppercase tracking-wider text-amber-400">Active Workload</span>
+                        <div className="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center text-amber-400">
+                          <Activity size={18} />
+                        </div>
+                      </div>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-3xl font-black text-amber-400">
+                          {engineerAnalyticsData?.summary?.totalRunningWorkload ?? 0}
+                        </span>
+                        <span className="text-xs text-gray-400 font-bold uppercase">Running</span>
+                        <span className="text-gray-500">/</span>
+                        <span className="text-xl font-bold text-purple-400">
+                          {engineerAnalyticsData?.summary?.totalPendingWorkload ?? 0}
+                        </span>
+                        <span className="text-xs text-gray-400 font-bold uppercase">Pending</span>
+                      </div>
+                      <p className="text-[11px] text-gray-400 mt-1">
+                        Workload tracked separately from earned points
+                      </p>
+                    </GlassCard>
+
+                    {/* Card 4: Awaiting Recommendation Queue */}
+                    <GlassCard className="p-5 border-rose-500/20 hover:border-rose-500/40 transition-all">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-bold uppercase tracking-wider text-rose-400">Awaiting Recommendation</span>
+                        <div className="w-8 h-8 rounded-lg bg-rose-500/20 flex items-center justify-center text-rose-400">
+                          <Clock size={18} />
+                        </div>
+                      </div>
+                      <div className="text-3xl font-black text-rose-400">
+                        {engineerAnalyticsData?.summary?.totalAwaitingRecommendations ?? 0}
+                      </div>
+                      <p className="text-[11px] text-gray-400 mt-1">
+                        Officer tasks pending engineer recommendation
+                      </p>
+                    </GlassCard>
+                  </div>
+
+                  {/* Charts Grid */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Dual-Bar Chart: Engineer Comparison */}
+                    <GlassCard className="p-6 h-[420px] flex flex-col">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                          <Award className="text-emerald-400" size={18} />
+                          <h3 className="text-base font-bold text-white">Engineer Points & Tasks Comparison</h3>
+                        </div>
+                        <span className="text-xs text-gray-400 font-mono">
+                          {engineerAnalyticsData?.engineers?.length || 0} Engineers
+                        </span>
+                      </div>
+                      <div className="flex-1 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={engineerAnalyticsData?.engineers || []} margin={{ bottom: 40, right: 10 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
+                            <XAxis 
+                              dataKey="name" 
+                              stroke="#94a3b8" 
+                              fontSize={11} 
+                              tickLine={false} 
+                              axisLine={false}
+                              interval={0}
+                              angle={-30}
+                              textAnchor="end"
+                              height={50}
+                            />
+                            <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} />
+                            <Tooltip 
+                              contentStyle={{ backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', fontSize: '12px' }}
+                              itemStyle={{ color: '#fff' }}
+                            />
+                            <Legend iconType="circle" wrapperStyle={{ paddingTop: '10px' }} />
+                            <Bar dataKey="earnedPoints" name="Earned Points" fill="#10b981" radius={[4, 4, 0, 0]} />
+                            <Bar dataKey="completedTasks" name="Completed Tasks" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </GlassCard>
+
+                    {/* Model Distribution Comparison */}
+                    <GlassCard className="p-6 h-[420px] flex flex-col">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                          <AirVent className="text-purple-400" size={18} />
+                          <h3 className="text-base font-bold text-white">Model Distribution (Points & Workload)</h3>
+                        </div>
+                        <span className="text-xs text-gray-400 font-mono">
+                          {engineerAnalyticsData?.modelDistribution?.length || 0} Models
+                        </span>
+                      </div>
+                      <div className="flex-1 w-full">
+                        {engineerAnalyticsData?.modelDistribution?.length > 0 ? (
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={engineerAnalyticsData?.modelDistribution || []} margin={{ bottom: 40, right: 10 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
+                              <XAxis 
+                                dataKey="name" 
+                                stroke="#94a3b8" 
+                                fontSize={11} 
+                                tickLine={false} 
+                                axisLine={false}
+                                angle={-30}
+                                textAnchor="end"
+                                height={50}
+                              />
+                              <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} />
+                              <Tooltip 
+                                contentStyle={{ backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', fontSize: '12px' }}
+                                itemStyle={{ color: '#fff' }}
+                              />
+                              <Legend iconType="circle" wrapperStyle={{ paddingTop: '10px' }} />
+                              <Bar dataKey="points" name="Earned Points" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+                              <Bar dataKey="completed" name="Completed" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                              <Bar dataKey="running" name="Running Workload" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        ) : (
+                          <div className="h-full flex flex-col items-center justify-center text-gray-500 text-xs">
+                            <AirVent className="mb-2 opacity-40" size={24} />
+                            <span>No model data recorded for the selected period</span>
+                          </div>
+                        )}
+                      </div>
+                    </GlassCard>
+                  </div>
+
+                  {/* Comprehensive Engineer Performance Table */}
+                  <GlassCard className="p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h3 className="text-base font-bold text-white">Engineer Performance Breakdown</h3>
+                        <p className="text-xs text-gray-400">Detailed metric breakdown by individual engineer</p>
+                      </div>
+                      <span className="text-xs text-blue-400 font-mono font-bold bg-blue-500/10 px-3 py-1 rounded-full border border-blue-500/20">
+                        {engineerAnalyticsData?.engineers?.length || 0} Active Records
+                      </span>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-sm">
+                        <thead>
+                          <tr className="text-gray-400 border-b border-white/10 text-xs font-bold uppercase tracking-wider">
+                            <th className="pb-3">Rank</th>
+                            <th className="pb-3">Engineer Name</th>
+                            <th className="pb-3">ID</th>
+                            <th className="pb-3">Section</th>
+                            <th className="pb-3 text-right">Completed</th>
+                            <th className="pb-3 text-right">Running</th>
+                            <th className="pb-3 text-right">Pending</th>
+                            <th className="pb-3 text-right">Awaiting Rec.</th>
+                            <th className="pb-3 text-right text-emerald-400">Earned Points</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                          {(engineerAnalyticsData?.engineers || []).map((eng: any, idx: number) => {
+                            const isMe = user && (user.id === eng.id || user.employeeId === eng.employeeId);
+                            return (
+                              <tr 
+                                key={eng.id || eng.employeeId} 
+                                className={cn(
+                                  "transition-colors",
+                                  isMe ? "bg-blue-500/15 border-l-2 border-blue-500 hover:bg-blue-500/20" : "hover:bg-white/5"
+                                )}
+                              >
+                                <td className="py-3 font-mono text-gray-400">
+                                  {idx === 0 ? '🥇 #1' : idx === 1 ? '🥈 #2' : idx === 2 ? '🥉 #3' : `#${idx + 1}`}
+                                </td>
+                                <td className="py-3 font-bold flex items-center gap-2">
+                                  <span className={isMe ? "text-blue-300 font-black" : "text-white"}>{eng.name}</span>
+                                  {isMe && (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/30 text-blue-300 font-bold border border-blue-500/50">
+                                      You
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="py-3 font-mono text-xs text-gray-400">{eng.employeeId}</td>
+                                <td className="py-3 text-xs text-gray-300">{eng.section}</td>
+                                <td className="py-3 text-right font-mono text-blue-400 font-bold">{eng.completedTasks}</td>
+                                <td className="py-3 text-right font-mono text-amber-400">{eng.runningWorkload}</td>
+                                <td className="py-3 text-right font-mono text-purple-400">{eng.pendingWorkload}</td>
+                                <td className="py-3 text-right font-mono text-rose-400 font-bold">{eng.awaitingRecommendations}</td>
+                                <td className="py-3 text-right text-emerald-400 font-black text-base">{eng.earnedPoints}</td>
+                              </tr>
+                            );
+                          })}
+                          {(!engineerAnalyticsData?.engineers || engineerAnalyticsData.engineers.length === 0) && (
+                            <tr>
+                              <td colSpan={9} className="py-8 text-center text-gray-500 text-xs">
+                                No engineer performance data found for the selected filter.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </GlassCard>
+
+                  {/* Awaiting Recommendation Queue (Interactive Quick-Review) */}
+                  {engineerAnalyticsData?.awaitingTasksList?.length > 0 && (
+                    <GlassCard className="p-6 border border-rose-500/30 bg-gradient-to-r from-rose-950/20 via-transparent to-transparent">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                          <Clock className="text-rose-400" size={18} />
+                          <div>
+                            <h3 className="text-base font-bold text-white">Pending Officer Tasks Awaiting Engineer Recommendation</h3>
+                            <p className="text-xs text-gray-400">
+                              These Officer-created tasks will earn points only after authorized Concern Engineer recommendation
+                            </p>
+                          </div>
+                        </div>
+                        <span className="text-xs font-mono font-bold text-rose-400 bg-rose-500/10 px-2.5 py-1 rounded-full border border-rose-500/20">
+                          {engineerAnalyticsData.awaitingTasksList.length} Tasks
+                        </span>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead>
+                            <tr className="text-gray-400 border-b border-white/10 uppercase tracking-wider">
+                              <th className="pb-2.5">Task ID</th>
+                              <th className="pb-2.5">Title</th>
+                              <th className="pb-2.5">Model</th>
+                              <th className="pb-2.5">Officer</th>
+                              <th className="pb-2.5">Urgency</th>
+                              <th className="pb-2.5">Status</th>
+                              <th className="pb-2.5 text-right">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-white/5">
+                            {engineerAnalyticsData.awaitingTasksList.map((t: any) => (
+                              <tr key={t.id} className="hover:bg-white/5 transition-colors">
+                                <td className="py-2.5 font-mono text-gray-300">{t.taskId || t.id.slice(-6)}</td>
+                                <td className="py-2.5 font-bold text-white">{t.title}</td>
+                                <td className="py-2.5 text-gray-300">{t.model || '-'}</td>
+                                <td className="py-2.5 text-gray-300">{t.officerName}</td>
+                                <td className="py-2.5">
+                                  <span className={cn(
+                                    "px-2 py-0.5 rounded text-[10px] font-bold uppercase",
+                                    t.urgency === 'MOST_URGENT' ? "bg-rose-500/20 text-rose-300 border border-rose-500/30" :
+                                    t.urgency === 'URGENT' ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" :
+                                    "bg-blue-500/20 text-blue-300 border border-blue-500/30"
+                                  )}>
+                                    {t.urgency}
+                                  </span>
+                                </td>
+                                <td className="py-2.5 font-mono text-gray-400">{t.status}</td>
+                                <td className="py-2.5 text-right">
+                                  <button
+                                    onClick={() => {
+                                      const matchedTask = tasks.find(x => x.id === t.id);
+                                      if (matchedTask) {
+                                        setSelectedTask(matchedTask);
+                                        setIsTaskDetailsModalOpen(true);
+                                      }
+                                    }}
+                                    className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-[11px] transition-all"
+                                  >
+                                    View & Recommend
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </GlassCard>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-8">
+                  {/* Officer Personal Performance Banner */}
+                  {user?.role === 'OFFICER' && (
                 <GlassCard className="p-5 border border-amber-500/30 bg-gradient-to-r from-amber-500/10 via-blue-500/5 to-transparent">
                   <div className="flex flex-wrap items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
@@ -10256,6 +10951,8 @@ export default function App() {
               </div>
             </div>
           )}
+        </div>
+      )}
           {/* Reject Request Modal */}
       <AnimatePresence>
         {isRejectModalOpen && (
@@ -10588,7 +11285,7 @@ export default function App() {
                         />
                       </div>
 
-                      {user?.role === 'OFFICER' && selectedTask.status !== 'COMPLETED' && (
+                      {canAssignTask(selectedTask, user) && user?.role === 'OFFICER' && (
                         <div className="pt-4 border-t border-white/10 space-y-4">
                           <div className="space-y-3">
                             <label className="block text-xs text-gray-400 uppercase tracking-widest">Work Type</label>
@@ -10734,13 +11431,15 @@ export default function App() {
                       )}
 
                       <div className="flex gap-4 pt-4">
-                        <button 
-                          onClick={() => handleUpdateTask(selectedTask.id, { remarks: taskRemarks })}
-                          disabled={isLoading}
-                          className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all"
-                        >
-                          Save Remarks
-                        </button>
+                        {canUpdateTask(selectedTask, user) && (
+                          <button 
+                            onClick={() => handleUpdateTask(selectedTask.id, { remarks: taskRemarks })}
+                            disabled={isLoading}
+                            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all"
+                          >
+                            Save Remarks
+                          </button>
+                        )}
                         {user?.role === 'TECHNICIAN' && selectedTask.status !== 'COMPLETED' && (
                           <button 
                             onClick={() => handleUpdateTask(selectedTask.id, { 
