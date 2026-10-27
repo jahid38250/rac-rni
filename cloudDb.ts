@@ -214,6 +214,7 @@ export async function loadCloudProductionData(): Promise<any | null> {
       return null;
     }
   } catch (err: any) {
+    checkAndHandleQuotaError(err);
     console.error('[CLOUD DB] Error loading production data from Firestore:', err.message);
     return null;
   }
@@ -529,6 +530,7 @@ export async function getPersistentBackupList(): Promise<PersistentBackupRecord[
         }
       });
     } catch (err: any) {
+      checkAndHandleQuotaError(err);
       console.warn('[CLOUD DB] Error reading cloud backup list:', err.message);
     }
   }

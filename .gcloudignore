@@ -1,0 +1,13 @@
+.gcloudignore
+.git
+.gitignore
+.dockerignore
+node_modules/
+dist/
+coverage/
+backups/
+uploads/
+*.bak
+*.tmp
+*.log
+.DS_Store

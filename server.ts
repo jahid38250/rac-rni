@@ -1240,16 +1240,37 @@ async function startServer() {
     return savePromise;
   }
 
+  let lastAutoBackupHash = '';
+
   async function createHourlyBackup(
     isManualOrType: boolean | string = false,
     customType?: string,
     metaDetails?: Record<string, any>
   ) {
     try {
+      const now = new Date();
+      const currentDataHash = `${users.length}_${tasks.length}_${deletedTaskIds.length}_${attendanceRecords.length}_${pointTransactions.length}_${tasks.map(t => `${t.id}:${t.status}:${t.progress}:${t.completedAt || ''}`).join('|')}`;
+
+      // If this is an automated timer backup and data is completely unchanged, skip redundant file generation and cloud writes
+      if (!isManualOrType && lastAutoBackupHash && currentDataHash === lastAutoBackupHash) {
+        autoBackupSettings.lastBackupTime = now.toISOString();
+        autoBackupSettings.nextBackupTime = new Date(now.getTime() + (autoBackupSettings.intervalMinutes || 5) * 60 * 1000).toISOString();
+        return {
+          filename: 'latest-backup.json',
+          timestamp: now.toISOString(),
+          type: 'HOURLY_AUTO',
+          size: 0,
+          tasksCount: tasks.length,
+          usersCount: users.length,
+          details: { skipped: 'unchanged_dataset' },
+          sourceFolder: 'backups/ (Firestore & Local Disk)'
+        };
+      }
+
       await fs.mkdir(BACKUPS_DIR, { recursive: true });
       await fs.mkdir(DATA_DIR, { recursive: true });
 
-      const now = new Date();
+      lastAutoBackupHash = currentDataHash;
       const timeStr = now.toISOString().replace(/[:.]/g, '-');
 
       let backupType = 'HOURLY_AUTO';
@@ -5428,7 +5449,6 @@ Output JSON format:
   // --- Vite & Static Asset Integration ---
   app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
-  let frontendMiddleware: any = null;
   const distPath = path.join(process.cwd(), "dist");
   const hasDist = fsSync.existsSync(path.join(distPath, "index.html"));
   const isProduction = process.env.NODE_ENV === "production" || (!process.env.NODE_ENV && hasDist);
@@ -5438,18 +5458,22 @@ Output JSON format:
     app.use(express.static(distPath));
     app.get("*", (req, res) => res.sendFile(path.join(distPath, "index.html")));
   } else {
-    app.use((req, res, next) => {
-      if (frontendMiddleware) {
-        return frontendMiddleware(req, res, next);
-      }
-      next();
+    console.log("Starting Vite in development mode...");
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
     });
+    app.use(vite.middlewares);
+    console.log("Vite middleware ready.");
   }
 
   // --- Global Error Handler ---
   app.use((err: any, req: Request, res: Response, next: NextFunction) => {
     console.error("Unhandled Error:", err);
-    res.status(500).json({ error: "Internal Server Error", message: err.message });
+    if (res.headersSent) {
+      return next(err);
+    }
+    res.status(err.status || 500).json({ error: err.message || "Internal Server Error" });
   });
 
   app.listen(PORT, "0.0.0.0", () => {
@@ -5477,16 +5501,6 @@ Output JSON format:
       }
     }, 1000);
   });
-
-  if (!isProduction || !hasDist) {
-    console.log("Starting Vite in development mode...");
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    frontendMiddleware = vite.middlewares;
-    console.log("Vite middleware ready.");
-  }
 
   process.on('uncaughtException', (err) => {
     console.error('UNCAUGHT EXCEPTION:', err);

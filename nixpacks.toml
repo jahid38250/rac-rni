@@ -1,9 +1,9 @@
 [variables]
-    NODE_VERSION = "20.19.0"
+    NODE_VERSION = "22"
     NPM_CONFIG_PRODUCTION = "false"
 
 [phases.setup]
-    nixPkgs = ["nodejs_20"]
+    nixPkgs = ["nodejs_22"]
 
 [phases.install]
     cmds = ["npm install"]
