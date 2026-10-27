@@ -41,7 +41,7 @@ let isInitialized = false;
 let configCache: any = null;
 
 // --- Firestore Quota Management & Circuit Breaker ---
-let quotaExhaustedUntil = Date.now() + 60 * 60 * 1000; // Activated due to daily limit on consumer 177638914489
+let quotaExhaustedUntil = 0;
 let hasLoggedQuotaNotice = false;
 
 export function isQuotaExhausted(): boolean {

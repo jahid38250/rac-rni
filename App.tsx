@@ -3335,16 +3335,38 @@ export default function App() {
 
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
+  const openedTaskIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (selectedTask && isTaskDetailsModalOpen) {
-      setTaskRemarks(selectedTask.remarks || '');
-      setDistributeWorkType(selectedTask.workType || 'SINGLE');
-      setSelectedTechs(selectedTask.assignedTechnicians || []);
-      setAssignToTech('');
-      setTechSearchQuery('');
-      setAssignDuration(selectedTask.estimatedDuration || '60');
+      // Only initialize ONCE when opening the modal for this task.
+      // Do NOT re-initialize and wipe user changes when staffList or component re-renders!
+      if (openedTaskIdRef.current !== selectedTask.id) {
+        openedTaskIdRef.current = selectedTask.id;
+        setTaskRemarks(selectedTask.remarks || '');
+        setDistributeWorkType(selectedTask.workType || 'SINGLE');
+        setSelectedTechs(selectedTask.assignedTechnicians || []);
+        if (selectedTask.workType !== 'TEAM' && selectedTask.assignedTo && selectedTask.assignedTo !== 'Team Work') {
+          const found = staffList.find(s => 
+            s.id === selectedTask.assignedTo || 
+            s.employeeId === selectedTask.assignedTo || 
+            (s.name && s.name.toLowerCase() === String(selectedTask.assignedTo).toLowerCase())
+          );
+          if (found && found.role === 'TECHNICIAN') {
+            setAssignToTech(found.id);
+          } else {
+            setAssignToTech('');
+          }
+        } else {
+          setAssignToTech('');
+        }
+        setTechSearchQuery('');
+        setAssignDuration(selectedTask.estimatedDuration || '60');
+      }
+    } else if (!isTaskDetailsModalOpen) {
+      openedTaskIdRef.current = null;
     }
-  }, [selectedTask, isTaskDetailsModalOpen]);
+  }, [selectedTask?.id, isTaskDetailsModalOpen]);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [statusUpdateTask, setStatusUpdateTask] = useState<Task | null>(null);
   const [statusUpdateData, setStatusUpdateData] = useState({ progress: 0, status: 'RUNNING' as TaskStatus, remarks: '', actualCompletionTime: '' });
@@ -6689,7 +6711,10 @@ export default function App() {
           </div>
         </header>
 
-        <div className="p-8 max-w-7xl mx-auto space-y-8">
+        <div className={cn(
+          "space-y-8",
+          activeTab === 'tasks' ? "w-full px-4 sm:px-6 py-6 max-w-[100%] mx-0" : "p-8 max-w-7xl mx-auto"
+        )}>
           {/* Executive Command Panel Tab (Direct from Sidebar) */}
           {activeTab === 'executive_command' && (
             <ExecutiveCommandCenter
@@ -7401,24 +7426,24 @@ export default function App() {
                     </div>
                   )}
                 </div>
-                <div className="overflow-x-auto max-h-[600px] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
-                  <table className="w-full text-left border-collapse">
-                    <thead className="sticky top-0 bg-[#0a0a0c] z-20 shadow-sm">
-                      <tr className="border-b border-white/10 text-gray-400 text-[10px] uppercase tracking-widest whitespace-nowrap">
-                        <th className="px-4 py-4 font-bold">Task ID</th>
-                        <th className="px-4 py-4 font-bold">Title & Assigned</th>
-                        <th className="px-4 py-4 font-bold">Concern</th>
-                        <th className="px-4 py-4 font-bold">Model</th>
-                        <th className="px-4 py-4 font-bold">Urgency</th>
-                        <th className="px-4 py-4 font-bold">Points</th>
-                        <th className="px-4 py-4 font-bold">Technician Type</th>
-                        <th className="px-4 py-4 font-bold">Start Time</th>
-                        <th className="px-4 py-4 font-bold">Complete Time</th>
-                        <th className="px-4 py-4 font-bold">Status</th>
-                        <th className="px-4 py-4 font-bold">Progress</th>
-                        <th className="px-4 py-4 font-bold">Deadline</th>
-                        <th className="px-4 py-4 font-bold text-center">Fix It</th>
-                        <th className="px-4 py-4 font-bold text-right">Action</th>
+                <div className="overflow-x-auto max-h-[620px] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+                  <table className="w-full text-left border-collapse table-auto">
+                    <thead className="sticky top-0 bg-[#0e0e12] z-20 shadow-md border-b border-white/15">
+                      <tr className="text-gray-100 text-[13px] font-bold tracking-wider whitespace-nowrap">
+                        <th className="px-3 py-3.5 text-left text-gray-100 font-bold min-w-[85px]">Task ID</th>
+                        <th className="px-3 py-3.5 text-left text-gray-100 font-bold min-w-[170px] max-w-[250px]">Title & Assigned</th>
+                        <th className="px-2.5 py-3.5 text-left text-gray-100 font-bold min-w-[105px]">Concern</th>
+                        <th className="px-2.5 py-3.5 text-left text-gray-100 font-bold min-w-[90px]">Model</th>
+                        <th className="px-2.5 py-3.5 text-left text-gray-100 font-bold min-w-[80px]">Urgency</th>
+                        <th className="px-2 py-3.5 text-center text-gray-100 font-bold min-w-[60px]">Points</th>
+                        <th className="px-2.5 py-3.5 text-left text-gray-100 font-bold min-w-[95px]">Technician Type</th>
+                        <th className="px-2.5 py-3.5 text-left text-gray-100 font-bold min-w-[105px]">Start Time</th>
+                        <th className="px-2.5 py-3.5 text-left text-gray-100 font-bold min-w-[110px]">Complete Time</th>
+                        <th className="px-2.5 py-3.5 text-left text-gray-100 font-bold min-w-[90px]">Status</th>
+                        <th className="px-2.5 py-3.5 text-left text-gray-100 font-bold min-w-[125px]">Progress</th>
+                        <th className="px-2.5 py-3.5 text-left text-gray-100 font-bold min-w-[90px]">Deadline</th>
+                        <th className="px-2.5 py-3.5 text-center text-gray-100 font-bold min-w-[85px]">Fix It</th>
+                        <th className="px-3 py-3.5 text-right text-gray-100 font-bold min-w-[170px]">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
@@ -7426,11 +7451,11 @@ export default function App() {
                         .filter(t => activeTaskTab === 'ALL' || (activeTaskTab === 'Hold Task' ? t.status === 'HOLD' : t.status === activeTaskTab))
                         .slice(0, taskLimit)
                         .map(task => (
-                        <tr key={task.id} className="hover:bg-white/5 transition-all group">
-                          <td className="px-4 py-4 text-sm font-mono text-blue-400 font-bold whitespace-nowrap">{task.taskId}</td>
-                          <td className="px-4 py-4">
-                            <p className="text-sm font-bold text-white group-hover:text-blue-400 transition-colors">{task.title}</p>
-                            <p className="text-[11px] text-gray-400 mt-1">
+                        <tr key={task.id} className="hover:bg-white/[0.04] transition-colors group">
+                          <td className="px-3 py-3 text-xs font-mono text-blue-400 font-bold whitespace-nowrap">{task.taskId}</td>
+                          <td className="px-3 py-3 min-w-[170px] max-w-[250px]">
+                            <p className="text-sm font-bold text-white group-hover:text-blue-400 transition-colors truncate" title={task.title}>{task.title}</p>
+                            <p className="text-[11px] text-gray-400 mt-0.5 truncate">
                               <span className="text-gray-500">Assigned to: </span>
                               {(() => {
                                 if (task.workType === 'TEAM' && Array.isArray(task.assignedTechnicians) && task.assignedTechnicians.length > 0) {
@@ -7448,49 +7473,49 @@ export default function App() {
                               })()}
                             </p>
                           </td>
-                          <td className="px-4 py-4 whitespace-nowrap">
+                          <td className="px-2.5 py-3 whitespace-nowrap">
                             {(() => {
                               const officer = staffList.find(s => s.employeeId === task.assignedBy || s.id === task.assignedBy);
                               if (officer) {
-                                return <span className="text-sm text-blue-400 font-medium">{officer.name}</span>;
+                                return <span className="text-xs text-blue-400 font-medium truncate block max-w-[110px]" title={officer.name}>{officer.name}</span>;
                               }
                               const creator = staffList.find(s => s.employeeId === task.createdBy || s.id === task.createdBy);
                               if (creator) {
-                                return <span className="text-sm text-blue-400 font-medium">{creator.name}</span>;
+                                return <span className="text-xs text-blue-400 font-medium truncate block max-w-[110px]" title={creator.name}>{creator.name}</span>;
                               }
                               const assignee = staffList.find(s => s.id === task.assignedTo || s.name.toLowerCase() === (task.assignedTo || '').toLowerCase());
                               if (assignee?.role === 'TECHNICIAN') {
                                 const supervisor = staffList.find(s => s.id === assignee.supervisorId || s.employeeId === assignee.supervisorId);
-                                return <span className="text-sm text-blue-400 font-medium">{supervisor?.name || 'N/A'}</span>;
+                                return <span className="text-xs text-blue-400 font-medium truncate block max-w-[110px]" title={supervisor?.name}>{supervisor?.name || 'N/A'}</span>;
                               }
-                              return <span className="text-sm text-gray-500">N/A</span>;
+                              return <span className="text-xs text-gray-500">N/A</span>;
                             })()}
                           </td>
-                          <td className="px-4 py-4 text-sm font-semibold text-gray-300 whitespace-nowrap">{task.model}</td>
-                          <td className="px-4 py-4 whitespace-nowrap">
+                          <td className="px-2.5 py-3 text-xs font-semibold text-gray-200 whitespace-nowrap">{task.model}</td>
+                          <td className="px-2.5 py-3 whitespace-nowrap">
                             <span className={cn(
-                              "text-[10px] font-bold px-2.5 py-1 rounded-full",
+                              "text-[10px] font-bold px-2 py-0.5 rounded-full inline-block",
                               task.urgency === 'MOST_URGENT' ? "bg-red-500/20 text-red-400 border border-red-500/30" : 
                               task.urgency === 'URGENT' ? "bg-amber-500/20 text-amber-400 border border-amber-500/30" : "bg-blue-500/20 text-blue-400 border border-blue-500/30"
                             )}>
                               {task.urgency}
                             </span>
                           </td>
-                          <td className="px-4 py-4 whitespace-nowrap">
+                          <td className="px-2 py-3 text-center whitespace-nowrap">
                             <span className="text-sm font-black text-blue-400">{task.points || 0}</span>
                           </td>
-                          <td className="px-4 py-4 whitespace-nowrap">
+                          <td className="px-2.5 py-3 whitespace-nowrap">
                             {getTaskTechnicianType(task) === 'Hired' ? (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-black uppercase tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/40">
-                                <Users size={12} className="text-purple-400" /> Hired
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/40">
+                                <Users size={11} className="text-purple-400" /> Hired
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                                <UserCheck size={12} className="text-emerald-400" /> Own
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                                <UserCheck size={11} className="text-emerald-400" /> Own
                               </span>
                             )}
                           </td>
-                          <td className="px-4 py-4 whitespace-nowrap">
+                          <td className="px-2.5 py-3 whitespace-nowrap">
                             {(() => {
                               const sTime = task.customStartTime || task.startedAt || task.createdAt;
                               if (!sTime) return <span className="text-gray-500 text-xs">-</span>;
@@ -7501,20 +7526,20 @@ export default function App() {
                                   <span className="text-xs font-semibold text-gray-200">
                                     {d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                                   </span>
-                                  <span className="text-[11px] text-gray-400 font-mono">
+                                  <span className="text-[10px] text-gray-400 font-mono">
                                     {d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
                                   </span>
                                 </div>
                               );
                             })()}
                           </td>
-                          <td className="px-4 py-4 whitespace-nowrap">
+                          <td className="px-2.5 py-3 whitespace-nowrap">
                             {(() => {
                               const cTime = task.actualCompletionTime || task.completedAt;
                               if (!cTime) {
                                 return (
                                   <span className={cn(
-                                    "text-[11px] font-medium px-2 py-0.5 rounded whitespace-nowrap",
+                                    "text-[10px] font-medium px-1.5 py-0.5 rounded whitespace-nowrap",
                                     task.status === 'RUNNING' ? "text-amber-400 bg-amber-400/10 border border-amber-400/20" : 
                                     task.status === 'HOLD' ? "text-red-400 bg-red-400/10 border border-red-400/20" : "text-gray-500"
                                   )}>
@@ -7529,16 +7554,16 @@ export default function App() {
                                   <span className="text-xs font-semibold text-green-400">
                                     {d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                                   </span>
-                                  <span className="text-[11px] text-green-300/80 font-mono">
+                                  <span className="text-[10px] text-green-300/80 font-mono">
                                     {d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
                                   </span>
                                 </div>
                               );
                             })()}
                           </td>
-                          <td className="px-4 py-4 whitespace-nowrap">
+                          <td className="px-2.5 py-3 whitespace-nowrap">
                             <span className={cn(
-                              "text-xs px-2.5 py-1 rounded-full font-bold inline-block",
+                              "text-[11px] px-2 py-0.5 rounded-full font-bold inline-block",
                               task.status === 'RUNNING' ? "bg-amber-500/20 text-amber-400 border border-amber-500/30" : 
                               task.status === 'COMPLETED' ? "bg-green-500/20 text-green-400 border border-green-500/30" :
                               task.status === 'HOLD' ? "bg-red-500/20 text-red-400 border border-red-500/30" :
@@ -7547,25 +7572,25 @@ export default function App() {
                               {task.status}
                             </span>
                             {task.status === 'HOLD' && task.remarks && (
-                              <p className="text-[10px] text-red-400 mt-1 italic max-w-[150px] truncate" title={task.remarks}>
+                              <p className="text-[10px] text-red-400 mt-0.5 italic max-w-[130px] truncate" title={task.remarks}>
                                 Reason: {task.remarks}
                               </p>
                             )}
                           </td>
-                          <td className="px-4 py-4 whitespace-nowrap">
-                            <CountdownTimer task={task} />
-                          </td>
-                          <td className="px-4 py-4 whitespace-nowrap">
-                            <div className="flex flex-col">
-                              <span className="text-xs font-black text-red-400 uppercase tracking-tight">
-                                {task.engineer_deadline ? new Date(task.engineer_deadline).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }) : (task.deadline ? new Date(task.deadline).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'N/A')}
-                              </span>
+                          <td className="px-2.5 py-3 whitespace-nowrap">
+                            <div className="w-[125px]">
+                              <CountdownTimer task={task} />
                             </div>
                           </td>
-                          <td className="px-4 py-4 text-center whitespace-nowrap">
+                          <td className="px-2.5 py-3 whitespace-nowrap">
+                            <span className="text-xs font-bold text-red-400 uppercase tracking-tight">
+                              {task.engineer_deadline ? new Date(task.engineer_deadline).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }) : (task.deadline ? new Date(task.deadline).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'N/A')}
+                            </span>
+                          </td>
+                          <td className="px-2.5 py-3 text-center whitespace-nowrap">
                             {task.status === 'COMPLETED' ? (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold bg-green-500/15 text-green-400 border border-green-500/25">
-                                <CheckCircle2 size={13} /> Fixed
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold bg-green-500/15 text-green-400 border border-green-500/25">
+                                <CheckCircle2 size={12} /> Fixed
                               </span>
                             ) : canFixTask(task, user) ? (
                               <button
@@ -7579,16 +7604,16 @@ export default function App() {
                                   });
                                   setIsStatusUpdateModalOpen(true);
                                 }}
-                                className="px-2.5 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 border border-amber-500/30 rounded-lg text-[11px] font-bold transition-all shadow-sm inline-flex items-center gap-1.5"
+                                className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 border border-amber-500/30 rounded-lg text-[11px] font-bold transition-all shadow-sm inline-flex items-center gap-1 cursor-pointer"
                                 title="Quick Fix / Complete this Task"
                               >
-                                <Wrench size={13} /> Fix It
+                                <Wrench size={12} /> Fix It
                               </button>
                             ) : (
                               <span className="text-gray-600 text-xs">-</span>
                             )}
                           </td>
-                          <td className="px-4 py-4 text-right whitespace-nowrap">
+                          <td className="px-3 py-3 text-right whitespace-nowrap">
                             <div className="flex items-center justify-end gap-1.5">
                               {canUpdateTaskStatus(task, user) && (
                                 <button 
@@ -7597,38 +7622,9 @@ export default function App() {
                                     setStatusUpdateData({ progress: task.progress, status: task.status, remarks: task.remarks || '', actualCompletionTime: '' });
                                     setIsStatusUpdateModalOpen(true);
                                   }}
-                                  className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg text-white text-[10px] font-black uppercase tracking-wider transition-all shadow-md shadow-blue-500/20"
-                                  title="Update Status"
+                                  className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 rounded-lg text-white text-[10px] font-black uppercase tracking-wider transition-all shadow-md shadow-blue-500/20 cursor-pointer"
                                 >
-                                  Status
-                                </button>
-                              )}
-                              {canAssignTask(task, user) && (
-                                <button 
-                                  onClick={() => {
-                                    setShowDistributeModal(task.id);
-                                    setDistributeWorkType(task.workType || 'SINGLE');
-                                    setSelectedTechs(task.assignedTechnicians || []);
-                                    setTechSearch('');
-                                  }}
-                                  className="px-2.5 py-1.5 bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/30 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all inline-flex items-center gap-1"
-                                  title="Assign Task to Technician(s)"
-                                >
-                                  <UserPlus size={12} /> Assign
-                                </button>
-                              )}
-                              {canUpdateTask(task, user) && (
-                                <button 
-                                  onClick={() => {
-                                    setSelectedTask(task);
-                                    setTaskRemarks(task.remarks || '');
-                                    setAssignToTech('');
-                                    setIsTaskDetailsModalOpen(true);
-                                  }}
-                                  className="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all"
-                                  title="Task Update (Remarks, Progress, Assignment)"
-                                >
-                                  Update
+                                  Update Status
                                 </button>
                               )}
                               {canEditTask(task, user) && (
@@ -7651,7 +7647,7 @@ export default function App() {
                                     setSelectedTechs(task.assignedTechnicians || []);
                                     setIsTaskModalOpen(true);
                                   }}
-                                  className="p-1.5 hover:bg-white/10 rounded-lg text-blue-400 transition-all"
+                                  className="p-1.5 hover:bg-white/10 rounded-lg text-blue-400 transition-all cursor-pointer"
                                   title="Edit Task"
                                 >
                                   <Edit2 size={15} />
@@ -7660,7 +7656,7 @@ export default function App() {
                               {canDeleteTask(task, user) && (
                                 <button 
                                   onClick={() => setTaskToDelete(task.id)}
-                                  className="p-1.5 hover:bg-white/10 rounded-lg text-red-400 transition-all"
+                                  className="p-1.5 hover:bg-white/10 rounded-lg text-red-400 transition-all cursor-pointer"
                                   title="Delete Task"
                                 >
                                   <Trash2 size={15} />
@@ -7674,11 +7670,10 @@ export default function App() {
                                     setAssignToTech('');
                                     setIsTaskDetailsModalOpen(true);
                                   }}
-                                  className="p-1.5 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-all flex items-center gap-1"
-                                  title="View Task Details"
+                                  className="px-2 py-1 hover:bg-white/10 rounded-lg text-gray-300 hover:text-white transition-all flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider cursor-pointer"
                                 >
-                                  <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">View</span>
-                                  <ChevronRight size={16} />
+                                  <span>View Task</span>
+                                  <ChevronRight size={14} />
                                 </button>
                               )}
                             </div>
@@ -11290,9 +11285,14 @@ export default function App() {
                           <div className="space-y-3">
                             <label className="block text-xs text-gray-400 uppercase tracking-widest">Work Type</label>
                             <div className="flex gap-4">
-                              <label className="flex items-center gap-2 cursor-pointer group">
+                              <div 
+                                onClick={() => {
+                                  setDistributeWorkType('SINGLE');
+                                  setTechSearchQuery('');
+                                }}
+                                className="flex items-center gap-2 cursor-pointer group select-none"
+                              >
                                 <div 
-                                  onClick={() => setDistributeWorkType('SINGLE')}
                                   className={cn(
                                     "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all",
                                     distributeWorkType === 'SINGLE' ? "border-blue-500 bg-blue-500/20" : "border-white/20 group-hover:border-white/40"
@@ -11300,11 +11300,22 @@ export default function App() {
                                 >
                                   {distributeWorkType === 'SINGLE' && <div className="w-2 h-2 rounded-full bg-blue-500" />}
                                 </div>
-                                <span className="text-sm font-medium">Single Work</span>
-                              </label>
-                              <label className="flex items-center gap-2 cursor-pointer group">
+                                <span className={cn("text-sm font-medium transition-colors", distributeWorkType === 'SINGLE' ? "text-white font-bold" : "text-gray-400 group-hover:text-gray-200")}>Single Work</span>
+                              </div>
+                              <div 
+                                onClick={() => {
+                                  setDistributeWorkType('TEAM');
+                                  setTechSearchQuery('');
+                                  if (selectedTechs.length === 0 && assignToTech) {
+                                    const found = staffList.find(s => s.id === assignToTech || s.employeeId === assignToTech || s.name === assignToTech);
+                                    if (found) {
+                                      setSelectedTechs([{ id: found.id, employeeId: found.employeeId, name: found.name, supervisorId: found.supervisorId, supervisor_ids: found.supervisor_ids }]);
+                                    }
+                                  }
+                                }}
+                                className="flex items-center gap-2 cursor-pointer group select-none"
+                              >
                                 <div 
-                                  onClick={() => setDistributeWorkType('TEAM')}
                                   className={cn(
                                     "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all",
                                     distributeWorkType === 'TEAM' ? "border-blue-500 bg-blue-500/20" : "border-white/20 group-hover:border-white/40"
@@ -11312,8 +11323,8 @@ export default function App() {
                                 >
                                   {distributeWorkType === 'TEAM' && <div className="w-2 h-2 rounded-full bg-blue-500" />}
                                 </div>
-                                <span className="text-sm font-medium">Team Work</span>
-                              </label>
+                                <span className={cn("text-sm font-medium transition-colors", distributeWorkType === 'TEAM' ? "text-white font-bold" : "text-gray-400 group-hover:text-gray-200")}>Team Work</span>
+                              </div>
                             </div>
                           </div>
 
@@ -11324,60 +11335,167 @@ export default function App() {
                             <div className="relative">
                               <input 
                                 type="text"
-                                placeholder="Search by ID or Name..."
+                                placeholder={distributeWorkType === 'SINGLE' && assignToTech ? "Search to change technician..." : "Search by ID or Name..."}
                                 value={techSearchQuery}
                                 onChange={(e) => setTechSearchQuery(e.target.value)}
-                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 pr-10"
                               />
                               {techSearchQuery && (
-                                <div className="absolute z-10 w-full mt-2 bg-[#1a1a1e] border border-white/10 rounded-xl shadow-2xl max-h-48 overflow-y-auto">
-                                  {staffList
-                                    .filter(s => s.role === 'TECHNICIAN' && (
-                                      s.name.toLowerCase().includes(techSearchQuery.toLowerCase()) || 
-                                      s.employeeId.includes(techSearchQuery)
-                                    ))
-                                    .map(s => (
-                                      <button
-                                        key={s.id}
-                                        onClick={() => {
-                                          if (distributeWorkType === 'SINGLE') {
-                                            setAssignToTech(s.id);
-                                            setTechSearchQuery(`${s.name} (${s.employeeId})`);
-                                          } else {
-                                            if (!selectedTechs.some(t => t.id === s.id)) {
-                                              setSelectedTechs([...selectedTechs, s]);
+                                <button
+                                  type="button"
+                                  onClick={() => setTechSearchQuery('')}
+                                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white p-1"
+                                  title="Clear search"
+                                >
+                                  <X size={16} />
+                                </button>
+                              )}
+                              {techSearchQuery.trim() && (
+                                <div className="absolute z-20 w-full mt-2 bg-[#1a1a1e] border border-white/15 rounded-xl shadow-2xl max-h-56 overflow-y-auto">
+                                  {(() => {
+                                    const query = techSearchQuery.trim().toLowerCase();
+                                    const filtered = staffList.filter(s => 
+                                      s.role === 'TECHNICIAN' && (
+                                        (s.name && s.name.toLowerCase().includes(query)) || 
+                                        (s.employeeId && s.employeeId.includes(query))
+                                      )
+                                    );
+                                    if (filtered.length === 0) {
+                                      return (
+                                        <div className="px-4 py-3 text-sm text-gray-400">
+                                          No technicians found matching &quot;{techSearchQuery}&quot;
+                                        </div>
+                                      );
+                                    }
+                                    return filtered.map(s => {
+                                      const isSupervised = s.supervisorId === user?.id || 
+                                        s.supervisorId === user?.employeeId || 
+                                        (Array.isArray(s.supervisor_ids) && s.supervisor_ids.includes(user?.employeeId));
+                                      const techStatus = getTechnicianStatus(s.employeeId).status;
+                                      return (
+                                        <button
+                                          key={s.id}
+                                          type="button"
+                                          onClick={() => {
+                                            if (distributeWorkType === 'SINGLE') {
+                                              setAssignToTech(s.id);
+                                              setTechSearchQuery('');
+                                            } else {
+                                              const techObj = {
+                                                id: s.id,
+                                                employeeId: s.employeeId,
+                                                name: s.name,
+                                                supervisorId: s.supervisorId,
+                                                supervisor_ids: s.supervisor_ids
+                                              };
+                                              if (!selectedTechs.some(t => (t.id && t.id === s.id) || (t.employeeId && t.employeeId === s.employeeId))) {
+                                                setSelectedTechs([...selectedTechs, techObj]);
+                                              }
+                                              setTechSearchQuery('');
                                             }
-                                            setTechSearchQuery('');
-                                          }
-                                        }}
-                                        className="w-full text-left px-4 py-3 hover:bg-white/5 text-sm text-gray-300 border-b border-white/5 last:border-0"
-                                      >
-                                        <div className="font-medium text-white">{s.name}</div>
-                                        <div className="text-[10px] text-gray-500">ID: {s.employeeId} • {getTechnicianStatus(s.employeeId).status === 'Working' ? 'Working' : 'Free'} • {s.supervisorId !== user.id ? 'Other Team' : 'My Team'}</div>
-                                      </button>
-                                    ))
-                                  }
-                                  {staffList.filter(s => s.role === 'TECHNICIAN' && (s.name.toLowerCase().includes(techSearchQuery.toLowerCase()) || s.employeeId.includes(techSearchQuery))).length === 0 && (
-                                    <div className="px-4 py-3 text-sm text-gray-500">No technicians found</div>
-                                  )}
+                                          }}
+                                          className="w-full text-left px-4 py-3 hover:bg-white/10 text-sm text-gray-300 border-b border-white/5 last:border-0 transition-colors flex items-center justify-between group"
+                                        >
+                                          <div>
+                                            <div className="font-semibold text-white group-hover:text-blue-400 flex items-center gap-2">
+                                              <span>{s.name}</span>
+                                              <span className="text-xs text-blue-300/70 font-mono">({s.employeeId})</span>
+                                            </div>
+                                            <div className="text-[11px] text-gray-400 mt-0.5 flex items-center gap-2">
+                                              <span className={cn(
+                                                "px-1.5 py-0.5 rounded text-[10px]",
+                                                techStatus === 'Working' ? "text-amber-400 font-medium" : "text-emerald-400 font-medium"
+                                              )}>
+                                                {techStatus === 'Working' ? '● Working' : '● Free'}
+                                              </span>
+                                              <span>•</span>
+                                              <span className={isSupervised ? "text-gray-300" : "text-amber-300"}>
+                                                {isSupervised ? 'My Team' : 'Other Team'}
+                                              </span>
+                                            </div>
+                                          </div>
+                                          <span className="text-xs text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity font-medium">
+                                            {distributeWorkType === 'SINGLE' ? 'Select →' : 'Add +'}
+                                          </span>
+                                        </button>
+                                      );
+                                    });
+                                  })()}
                                 </div>
                               )}
                             </div>
                           </div>
 
-                          {distributeWorkType === 'TEAM' && selectedTechs.length > 0 && (
-                            <div className="flex flex-wrap gap-2">
-                              {selectedTechs.map(tech => (
-                                <div key={tech.id} className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                                  <span className="text-xs font-bold text-blue-400">{tech.name}</span>
-                                  <button 
-                                    onClick={() => setSelectedTechs(selectedTechs.filter(t => t.id !== tech.id))}
-                                    className="text-blue-400 hover:text-blue-300"
-                                  >
-                                    <X size={12} />
-                                  </button>
+                          {/* Single Work: Selected Technician with Remove button */}
+                          {distributeWorkType === 'SINGLE' && assignToTech && (() => {
+                            const selectedTech = staffList.find(s => s.id === assignToTech || s.employeeId === assignToTech || s.name === assignToTech);
+                            if (!selectedTech) return null;
+                            const isSupervised = selectedTech.supervisorId === user?.id || 
+                              selectedTech.supervisorId === user?.employeeId || 
+                              (Array.isArray(selectedTech.supervisor_ids) && selectedTech.supervisor_ids.includes(user?.employeeId));
+                            const techStatus = getTechnicianStatus(selectedTech.employeeId).status;
+
+                            return (
+                              <div className="p-3.5 bg-blue-500/10 border border-blue-500/30 rounded-xl flex items-center justify-between animate-in fade-in">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-9 h-9 rounded-full bg-blue-500/20 border border-blue-500/40 flex items-center justify-center text-blue-400 font-bold text-sm">
+                                    {selectedTech.name.charAt(0).toUpperCase()}
+                                  </div>
+                                  <div>
+                                    <div className="text-sm font-bold text-white flex items-center gap-2">
+                                      <span>{selectedTech.name}</span>
+                                      <span className="text-xs text-blue-300 font-mono">({selectedTech.employeeId})</span>
+                                    </div>
+                                    <div className="text-[11px] text-gray-400 flex items-center gap-2 mt-0.5">
+                                      <span className={cn(
+                                        "px-1.5 py-0.5 rounded text-[10px] font-medium",
+                                        techStatus === 'Working' ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                                      )}>
+                                        {techStatus === 'Working' ? 'Working' : 'Free'}
+                                      </span>
+                                      <span className="text-gray-500">•</span>
+                                      <span className={isSupervised ? "text-emerald-400" : "text-amber-400"}>
+                                        {isSupervised ? 'My Team' : 'Other Team (Borrow request)'}
+                                      </span>
+                                    </div>
+                                  </div>
                                 </div>
-                              ))}
+                                <button 
+                                  type="button"
+                                  onClick={() => {
+                                    setAssignToTech('');
+                                    setTechSearchQuery('');
+                                  }}
+                                  className="px-2.5 py-1.5 rounded-lg bg-red-500/15 hover:bg-red-500/25 text-red-400 hover:text-red-300 border border-red-500/30 transition-all flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
+                                  title="Remove technician"
+                                >
+                                  <X size={14} />
+                                  <span>Remove</span>
+                                </button>
+                              </div>
+                            );
+                          })()}
+
+                          {/* Team Work: Selected Team Members with Remove buttons */}
+                          {distributeWorkType === 'TEAM' && selectedTechs.length > 0 && (
+                            <div className="space-y-2 mt-2 animate-in fade-in">
+                              <div className="text-xs text-gray-400 font-medium">Selected Team Members ({selectedTechs.length}):</div>
+                              <div className="flex flex-wrap gap-2">
+                                {selectedTechs.map(tech => (
+                                  <div key={tech.id || tech.employeeId} className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/15 border border-blue-500/30 rounded-xl">
+                                    <span className="text-xs font-semibold text-white">{tech.name}</span>
+                                    <span className="text-[11px] text-blue-300 font-mono">({tech.employeeId})</span>
+                                    <button 
+                                      type="button"
+                                      onClick={() => setSelectedTechs(selectedTechs.filter(t => (t.id || t.employeeId) !== (tech.id || tech.employeeId)))}
+                                      className="text-red-400 hover:text-red-300 ml-1 p-0.5 rounded hover:bg-white/10 transition-colors cursor-pointer"
+                                      title="Remove technician"
+                                    >
+                                      <X size={14} />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
                           )}
 
@@ -11422,7 +11540,15 @@ export default function App() {
                                   disabled={isLoading}
                                   className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-blue-500/20"
                                 >
-                                  {distributeWorkType === 'SINGLE' && staffList.find(s => s.id === assignToTech)?.supervisorId !== user.id ? 'Request' : 'Assign'}
+                                  {distributeWorkType === 'SINGLE' ? (() => {
+                                    const targetTech = staffList.find(s => s.id === assignToTech || s.employeeId === assignToTech || s.name === assignToTech);
+                                    const isSupervised = targetTech && (
+                                      targetTech.supervisorId === user?.id || 
+                                      targetTech.supervisorId === user?.employeeId || 
+                                      (Array.isArray(targetTech.supervisor_ids) && targetTech.supervisor_ids.includes(user?.employeeId))
+                                    );
+                                    return !isSupervised ? 'Request' : 'Assign';
+                                  })() : 'Assign Team'}
                                 </button>
                               </div>
                             </div>

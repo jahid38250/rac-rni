@@ -184,7 +184,7 @@ async function startServer() {
     try {
       const cloudData = await loadCloudProductionData();
       if (cloudData && Array.isArray(cloudData.users) && cloudData.users.length > 0) {
-        console.log(`[CLOUD RECOVERY] Authoritative production data loaded from Firestore (${cloudData.users.length} users, ${cloudData.tasks?.length || 0} tasks)`);
+        console.log(`[CLOUD RECOVERY] Production data received from Firestore (${cloudData.users.length} users, ${cloudData.tasks?.length || 0} tasks)`);
         loadedContent = cloudData;
         loadedFrom = 'FIRESTORE_CLOUD';
       }
@@ -192,10 +192,30 @@ async function startServer() {
       console.warn('[CLOUD RECOVERY] Could not load from Firestore, falling back to disk cache:', cloudErr.message);
     }
 
-    // If loaded from Firestore, Firestore is the single authoritative source of truth.
-    // Local container disk must NEVER resurrect deleted tasks or overwrite cloud state.
-    if (loadedContent && loadedFrom === 'FIRESTORE_CLOUD') {
-      console.log(`[CLOUD TRUTH] Authoritative production state loaded from Firestore (${loadedContent.users?.length || 0} users, ${loadedContent.tasks?.length || 0} tasks). Local ephemeral disk will not override cloud state.`);
+    // Inspect local DB_FILE (data/db.json) to compare timestamps with cloud state
+    try {
+      if (fsSync.existsSync(DB_FILE)) {
+        const dbContent = await fs.readFile(DB_FILE, "utf-8");
+        const parsedDb = JSON.parse(dbContent);
+        if (parsedDb && typeof parsedDb === 'object') {
+          if (!loadedContent) {
+            loadedContent = parsedDb;
+            loadedFrom = DB_FILE;
+          } else {
+            const cloudTime = loadedContent.lastSavedAt ? new Date(loadedContent.lastSavedAt).getTime() : 0;
+            const dbTime = parsedDb.lastSavedAt ? new Date(parsedDb.lastSavedAt).getTime() : 0;
+            // If local DB file has fresher modifications than Firestore, prefer local and sync to Firestore
+            if (dbTime > cloudTime && Array.isArray(parsedDb.users) && parsedDb.users.length > 0) {
+              console.log(`[DATA RECOVERY] Local DB_FILE has fresher timestamp (${parsedDb.lastSavedAt}) than Firestore (${loadedContent.lastSavedAt}). Using fresher local state and scheduling cloud sync.`);
+              loadedContent = parsedDb;
+              loadedFrom = DB_FILE;
+              setTimeout(() => triggerCloudSync(), 1000);
+            }
+          }
+        }
+      }
+    } catch (dbErr: any) {
+      console.warn('[DATA RECOVERY] Error inspecting DB_FILE:', dbErr.message);
     }
 
     // 1. Attempt to load from primary DATA_FILE (data.json) if Firestore was not available
